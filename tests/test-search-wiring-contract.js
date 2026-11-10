@@ -66,6 +66,14 @@ check('M03 AI 搜索按解析-确认-执行接线', () => {
   assert.ok(!page.includes('AI 猜你喜欢暂未开放'), 'suggestions must no longer be permanently disabled')
 })
 
+check('解析成功后自动搜索并隐藏确认区', () => {
+  assert.ok(!page.includes('请确认搜索条件'), 'the manual condition-confirmation panel must be removed')
+  assert.ok(!page.includes('确认条件并查看候选'), 'the confirm-and-search button must be removed')
+  assert.ok(/setAiDraftResponse\(draft\)[\s\S]{0,400}await confirmAiSearch\(\)/.test(page), 'a successful parse must execute the search automatically')
+  assert.ok(page.includes('没有识别到可执行的搜索条件'), 'empty parses must stay on the form with an error')
+  assert.ok(page.includes('已按可执行条件搜索'), 'conflicts must still be surfaced on the result screen')
+})
+
 check('AI 能力位：master+search 才放行，关闭时全入口拦截', () => {
   assert.ok(aiCapabilities.includes("url: '/ai/capabilities'"), 'capabilities endpoint must be wired')
   assert.ok(aiCapabilities.includes('body.master == true && body.search == true'), 'master+search must both be true')
