@@ -98,12 +98,12 @@
 
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
-	const lockHint = '需要 80 积分解锁对方资料后才可使用'
+	const lockHint = '需要 50 积分解锁对方资料后才可使用'
 
 	const conversationId = ref(0)
 	const targetUserId = ref(0)
 	const profileUnlocked = ref(false)
-	const unlockCost = ref(80)
+	const unlockCost = ref(50)
 	const unlocking = ref(false)
 	const loading = ref(false)
 	const sending = ref(false)
@@ -171,7 +171,7 @@
 			const res = await getPaperPlaneProfileUnlock(targetUserId.value)
 			if (res != null && res.success && res.data != null) {
 				profileUnlocked.value = res.data.unlocked === true
-				unlockCost.value = res.data.points_cost != null ? Number(res.data.points_cost) : 80
+				unlockCost.value = res.data.points_cost != null ? Number(res.data.points_cost) : 50
 			}
 		} catch (error) {
 			console.error('读取纸飞机资料解锁状态失败', error)

@@ -35,7 +35,7 @@ const canUseActivityDemoFallback = !USE_MOCK && API_BASE_URL.indexOf('127.0.0.1'
 
 const PAPER_PLANE_STORAGE_KEY = 'xsa_paper_plane_state_v1'
 const PAPER_PLANE_PROFILE_UNLOCK_STORAGE_KEY = 'xsa_paper_plane_profile_unlocks_v1'
-export const PAPER_PLANE_PROFILE_UNLOCK_COST = 80
+export const PAPER_PLANE_PROFILE_UNLOCK_COST = 50
 const PAPER_PLANE_FREE_TIMES = 3
 let paperPlaneStateLoaded = false
 let paperPlaneStateDateKey = ''
