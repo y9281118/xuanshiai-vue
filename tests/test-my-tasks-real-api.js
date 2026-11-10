@@ -8,7 +8,7 @@ const apiIndex = fs.readFileSync(path.join(root, 'api', 'index.uts'), 'utf8')
 
 // F-M4：页面是「额度用完 → 去兑换」的落点，必须真调接口，且不能再有假成功。
 assert.ok(
-  page.includes("import { getPointProducts, getPointsSummary, redeemPointProduct } from '@/api'"),
+  page.includes("from '@/api'") && page.includes('getPointProducts') && page.includes('getPointsSummary') && page.includes('redeemPointProduct'),
   'my-tasks should read points products, balance and redeem through the shared api barrel',
 )
 assert.ok(!page.includes("from '@/api/"), 'pages must not import api modules directly')
@@ -44,8 +44,9 @@ assert.ok(!page.includes('确认充值'), 'no confirm button may promise a recha
 assert.ok(!page.includes('invite-share-sheet'), 'the fake invite reward sheet should be deleted')
 assert.ok(!page.includes('双方各得50积分'), 'invite copy must not promise rewards that cannot be earned')
 assert.ok(!page.includes('已连续签到'), 'check-in copy must not imply a real streak')
-;['积分充值暂未开放', '每日抽签暂未开放', '邀请好友暂未开放'].forEach((copy) => {
-  assert.ok(page.includes(copy), `unavailable features should say ${copy}`)
-})
+assert.ok(page.includes('积分充值暂未开放'), 'unavailable recharge should say 积分充值暂未开放')
+assert.ok(!page.includes('每日抽签暂未开放'), 'daily check-in must not stay disabled')
+assert.ok(!page.includes('邀请好友暂未开放'), 'invite list must not stay disabled')
+assert.ok(page.includes('dailyCheckin') && page.includes('getMyInvites'), 'check-in and invites must call the shared API barrel')
 
 console.log('我的任务页接真接口契约测试通过')
