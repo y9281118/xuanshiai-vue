@@ -185,11 +185,37 @@
 				</scroll-view>
 			</view>
 		</view>
+
+		<!-- 提醒谁看 -->
+		<view class="sheet-mask" v-if="showMentionSheet" @click="closeMentionSheet">
+			<view class="topic-sheet" @click.stop="">
+				<view class="sheet-handle"></view>
+				<text class="sheet-title">提醒谁看（最多 {{ MAX_MENTIONS }} 人）</text>
+				<text class="text-muted" style="font-size: 24rpx; padding: 0 24rpx 12rpx;">审核通过后会通知已选用户。</text>
+				<view v-if="mentionLoading" class="sheet-status">
+					<text class="text-muted">加载中...</text>
+				</view>
+				<view v-else-if="mentionError !== ''" class="sheet-status">
+					<text class="text-muted">{{ mentionError }}</text>
+					<text class="text-accent" @click="loadMentionOptions">重试</text>
+				</view>
+				<scroll-view scroll-y class="sheet-list" v-else>
+					<view class="topic-row" v-if="mentionOptions.length == 0">
+						<text class="text-muted">暂无可提醒的联系人</text>
+					</view>
+					<view class="topic-row" v-for="u in mentionOptions" :key="u.userId" @click="toggleMention(u.userId)">
+						<text class="topic-row-title">{{ u.name }}</text>
+						<text class="topic-row-tag">{{ mentions.indexOf(u.userId) >= 0 ? '已选' : '选择' }}</text>
+					</view>
+				</scroll-view>
+				<text class="text-accent" style="text-align: center; padding: 20rpx;" @click="closeMentionSheet">完成</text>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script setup lang="uts">
-	import { publishDynamic, getTopics, getTopicDetail, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, getCommunityMediaStatus, deleteCommunityMedia } from '@/api'
+	import { publishDynamic, getTopics, getTopicDetail, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, getCommunityMediaStatus, deleteCommunityMedia, getConversationPage } from '@/api'
 	import { guardCommunityVerification } from '@/utils/realNameGate.uts'
 
 		type LocalMedia = {
@@ -210,6 +236,11 @@
 		const location = ref('')
 		const visibility = ref(0)
 		const mentions = ref<number[]>([])
+		const showMentionSheet = ref(false)
+		const mentionOptions = ref([] as any[])
+		const mentionLoading = ref(false)
+		const mentionError = ref('')
+		const MAX_MENTIONS = 20
 		const publishing = ref(false)
 		const publishedOk = ref(false)
 		const pendingPublishKey = ref('')
@@ -700,6 +731,23 @@ const chooseLocation = () => {
 	uni.chooseLocation({
 		success: (res) => {
 			location.value = res.name || res.address
+		},
+		fail: (err: any) => {
+			const message = err != null && err.errMsg != null ? ('' + err.errMsg) : ''
+			// 取消不打扰；只有拒绝授权/能力不可用时给明确出口。
+			if (message.indexOf('cancel') >= 0) return
+			if (message.indexOf('auth') >= 0 || message.indexOf('deny') >= 0 || message.indexOf('permission') >= 0) {
+				uni.showModal({
+					title: '需要位置权限',
+					content: '请在小程序设置中允许位置信息后再添加位置。',
+					confirmText: '去设置',
+					success: (res) => {
+						if (res.confirm) uni.openSetting({})
+					}
+				})
+				return
+			}
+			uni.showToast({ title: '位置选择失败，请稍后重试', icon: 'none' })
 		}
 	})
 }
@@ -713,11 +761,58 @@ const selectVisibility = () => {
 	})
 }
 
+const loadMentionOptions = async () => {
+	mentionLoading.value = true
+	mentionError.value = ''
+	const res = await getConversationPage('', 50)
+	if (res != null && res.success && res.data != null && res.data.list != null) {
+		const list = res.data.list as any[]
+		const options: any[] = []
+		for (let i = 0; i < list.length; i++) {
+			const item = list[i]
+			const userId = Number(item != null && item.userId != null ? item.userId : 0)
+			if (userId <= 0) continue
+			let duplicated = false
+			for (let j = 0; j < options.length; j++) {
+				if (Number(options[j].userId) == userId) { duplicated = true; break }
+			}
+			if (duplicated) continue
+			options.push({
+				userId: userId,
+				name: item.name != null && '' + item.name != '' ? '' + item.name : '用户',
+				avatar: item.avatar != null ? '' + item.avatar : ''
+			})
+		}
+		mentionOptions.value = options
+	} else {
+		mentionError.value = res != null && res.message != null && '' + res.message != '' ? '' + res.message : '最近联系人加载失败'
+	}
+	mentionLoading.value = false
+}
+
 const selectMention = () => {
-	uni.showToast({
-		title: '功能开发中',
-		icon: 'none'
-	})
+	showMentionSheet.value = true
+	if (mentionOptions.value.length == 0 && !mentionLoading.value) loadMentionOptions()
+}
+
+const closeMentionSheet = () => {
+	showMentionSheet.value = false
+}
+
+const toggleMention = (userId: number) => {
+	let index = -1
+	for (let i = 0; i < mentions.value.length; i++) {
+		if (mentions.value[i] == userId) { index = i; break }
+	}
+	if (index >= 0) {
+		mentions.value.splice(index, 1)
+		return
+	}
+	if (mentions.value.length >= MAX_MENTIONS) {
+		uni.showToast({ title: '最多提醒 ' + MAX_MENTIONS + ' 人', icon: 'none' })
+		return
+	}
+	mentions.value.push(userId)
 }
 
 const openTopicSheet = async () => {
@@ -886,7 +981,8 @@ const handleCancel = () => {
 				topicId: topicId.value,
 				visibility: visibility.value,
 				declaration: declaration.value,
-				idempotencyKey: pendingPublishKey.value
+				idempotencyKey: pendingPublishKey.value,
+				remindUserIds: mentions.value
 			}
 			if (imageMediaIds.length > 0) {
 				payload.imageMediaIds = imageMediaIds

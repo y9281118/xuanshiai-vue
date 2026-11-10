@@ -20,6 +20,8 @@ export {
   loginByPhone,
   loginByWechat,
   bindPhone,
+  changePhone,
+  createPhoneChangeKey,
   submitRealname,
   getUserCertifications,
   submitEducationCertification,
@@ -38,6 +40,7 @@ export {
   updateOwnNickname,
   getOwnPreferences,
   updateOwnPreferences,
+  verifyFace,
   uploadUserProfileMedia,
   deleteUserProfilePhoto,
   applyToMeet,
@@ -69,7 +72,7 @@ export {
 } from './discovery.uts'
 // 择偶偏好（详情页「Ta 的理想型」）
 export { getUserPartnerPreference } from './preference.uts'
-export { getPointProducts, getPointsSummary, getMyQuotas, redeemPointProduct } from './points.uts'
+export { getPointProducts, getPointsSummary, getMyQuotas, redeemPointProduct, dailyCheckin, getMyInvites } from './points.uts'
 // AI 资料卡成稿出口
 export { summarizeProfileCard, getProfileCardDraft, applyProfileCardDraft, waitForProfileCardTask } from './ai-profile-card.uts'
 
@@ -95,6 +98,7 @@ export {
   sendMessage,
   uploadChatMedia,
   revokeMessage,
+  hideMessageForMe,
   handleContactExchangeRequest,
   getContactExchanges,
   createContactExchange,
@@ -276,7 +280,10 @@ export {
   respondPaperPlaneContactExchange,
   readPaperPlaneConversation,
   getPaperPlaneProfileUnlock,
+  getPaperPlaneProfileUnlockHistory,
   unlockPaperPlaneProfile,
+  getPaperPlaneCatchSummary,
+  catchPaperPlane,
   PAPER_PLANE_PROFILE_UNLOCK_COST,
   endPaperPlaneConversation,
   createCommunityCreateKey,

@@ -91,6 +91,12 @@ export function buildStructuredSearchParams(input: any): any {
 		const status = marriageStatusFor(input.marriage)
 		if (status != null) params.marriage_status = status
 	}
+	if (input.certifiedOnly === true) params.certified_only = true
+	if (input.hometownCityCode != null && ('' + input.hometownCityCode) != '') {
+		params.hometown_city_code = '' + input.hometownCityCode
+	} else if (input.hometownProvinceCode != null && ('' + input.hometownProvinceCode) != '') {
+		params.hometown_province_code = '' + input.hometownProvinceCode
+	}
 	if (input.residenceCityCode != null && ('' + input.residenceCityCode) != '') {
 		params.city_code = '' + input.residenceCityCode
 	} else if (input.residenceProvinceCode != null && ('' + input.residenceProvinceCode) != '') {

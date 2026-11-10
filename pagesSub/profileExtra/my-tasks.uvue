@@ -22,13 +22,13 @@
 
 			<view class="checkin-section">
 				<view class="section-heading">
-					<text class="section-title">每日抽签</text>
+					<text class="section-title">每日签到</text>
 				</view>
-				<view class="daily-draw-card daily-draw-card-disabled" @tap="drawCheckIn">
-					<text class="draw-card-label">DAILY BLESSING</text>
-					<text class="draw-card-number">—</text>
-					<text class="draw-card-message">每日抽签暂未开放</text>
-					<text class="draw-card-action">开放后可在此收下今日祝福</text>
+				<view class="daily-draw-card" @tap="drawCheckIn">
+					<text class="draw-card-label">DAILY CHECK-IN</text>
+					<text class="draw-card-number">{{ checkinDone ? '已签' : '签到' }}</text>
+					<text class="draw-card-message">{{ checkinMessage }}</text>
+					<text class="draw-card-action">每天签到可获得积分奖励</text>
 				</view>
 			</view>
 
@@ -36,13 +36,13 @@
 				<text class="section-title">积分获取</text>
 				<view class="earn-card">
 					<view class="earn-icon"><text>📅</text></view>
-					<view class="earn-copy"><text class="earn-title">每日抽签领积分</text><text class="earn-desc">暂未开放，开放后每天可抽一支签</text></view>
-					<view class="small-action small-action-disabled" @tap="drawCheckIn"><text>暂未开放</text></view>
+					<view class="earn-copy"><text class="earn-title">每日签到领积分</text><text class="earn-desc">每天签到一次，积分由服务端发放</text></view>
+					<view class="small-action" @tap="drawCheckIn"><text>{{ checkinDone ? '已签到' : '签到' }}</text></view>
 				</view>
 				<view class="earn-card">
 					<view class="earn-icon"><text>👥</text></view>
-					<view class="earn-copy"><text class="earn-title">邀请好友赚积分</text><text class="earn-desc">暂未开放，开放后邀请注册双方各得积分</text></view>
-					<view class="small-action small-action-disabled" @tap="openInvite"><text>暂未开放</text></view>
+					<view class="earn-copy"><text class="earn-title">邀请好友赚积分</text><text class="earn-desc">查看已邀请人数与奖励状态</text></view>
+					<view class="small-action" @tap="openInvite"><text>查看邀请</text></view>
 				</view>
 			</view>
 
@@ -78,11 +78,14 @@
 </template>
 
 <script setup lang="uts">
-import { getPointProducts, getPointsSummary, redeemPointProduct } from '@/api'
+import { getPointProducts, getPointsSummary, redeemPointProduct, dailyCheckin, getMyInvites } from '@/api'
 
 type ExchangeItem = { key: string; name: string; cost: number }
 
 const points = ref(0)
+const checkinDone = ref(false)
+const checkinMessage = ref('点击签到领取今日积分')
+const checkinSubmitting = ref(false)
 const exchangeItems = ref<ExchangeItem[]>([])
 const exchangeLoading = ref(false)
 const exchangeSubmitting = ref(false)
@@ -158,12 +161,40 @@ onShow(() => {
 const goBack = () => { uni.navigateBack() }
 const openPurchase = () => { uni.showToast({ title: '积分充值暂未开放', icon: 'none' }) }
 const openExchange = () => { activeSheet.value = 'exchange'; if (exchangeItems.value.length == 0) loadExchangeItems() }
-const openInvite = () => { uni.showToast({ title: '邀请好友暂未开放', icon: 'none' }) }
+const openInvite = async () => {
+	const res = await getMyInvites(1, 20)
+	if (res != null && res.success && res.data != null) {
+		const total = res.data.total != null ? Number(res.data.total) : 0
+		uni.showModal({
+			title: '我的邀请',
+			content: '已邀请 ' + total + ' 位好友，奖励状态以服务端记录为准。',
+			showCancel: false,
+			confirmText: '知道了'
+		})
+		return
+	}
+	uni.showToast({ title: res != null && res.message != null ? '' + res.message : '邀请记录加载失败', icon: 'none' })
+}
 const closeSheet = () => { activeSheet.value = '' }
 const selectExchangeItem = (index: number) => { selectedExchangeItem.value = index }
 
-const drawCheckIn = () => {
-	uni.showToast({ title: '每日抽签暂未开放', icon: 'none' })
+const drawCheckIn = async () => {
+	if (checkinSubmitting.value || checkinDone.value) return
+	checkinSubmitting.value = true
+	try {
+		const res = await dailyCheckin()
+		if (res != null && res.success && res.data != null) {
+			checkinDone.value = true
+			const earned = res.data.points != null ? Number(res.data.points) : 0
+			checkinMessage.value = res.data.checked_in == true ? (earned > 0 ? '签到成功，获得 ' + earned + ' 积分' : '签到成功') : '今日已签到'
+			await loadPoints()
+			uni.showToast({ title: checkinMessage.value, icon: 'none' })
+			return
+		}
+		uni.showToast({ title: res != null && res.message != null ? '' + res.message : '签到失败，请重试', icon: 'none' })
+	} finally {
+		checkinSubmitting.value = false
+	}
 }
 
 const confirmExchange = async () => {

@@ -5,6 +5,16 @@ export async function getPointProducts() {
   return request({ url: '/points/products', method: 'GET' })
 }
 
+/** 每日签到（POST /users/me/checkin）。 */
+export async function dailyCheckin() {
+  return request({ url: '/users/me/checkin', method: 'POST', data: {}, mockData: { checked_in: true, points: 5, balance: 0, checkin_date: '' } })
+}
+
+/** 邀请记录（GET /users/me/invites）。 */
+export async function getMyInvites(page: number = 1, pageSize: number = 20) {
+  return request({ url: '/users/me/invites', method: 'GET', data: { page: page, page_size: pageSize }, mockData: { items: [], total: 0, has_more: false, page: page, page_size: pageSize } })
+}
+
 /** 当前积分余额（GET /users/me/points）。 */
 export async function getPointsSummary() {
   return request({ url: '/users/me/points', method: 'GET' })
@@ -40,13 +50,13 @@ export async function getMyQuotas() {
 }
 
 /** 兑换积分商品/权益（POST /users/me/points/redeem）。后端强制要求 Idempotency-Key。 */
-export async function redeemPointProduct(productCode: string, idempotencyKey: string = '') {
+export async function redeemPointProduct(productCode: string, idempotencyKey: string = '', count: number = 1) {
   let key = idempotencyKey
   if (key == '') key = 'redeem-' + Date.now() + '-' + Math.floor(Math.random() * 1000000)
   return request({
     url: '/users/me/points/redeem',
     method: 'POST',
-    data: { product_code: productCode },
+    data: { product_code: productCode, count: Math.max(1, Math.min(10, count)) },
     headers: { 'Idempotency-Key': key }
   })
 }

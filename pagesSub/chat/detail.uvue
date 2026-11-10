@@ -167,6 +167,10 @@
 			</scroll-view>
 
 			<view class="input-bar" :class="{ expanded: showMore && !isAiAvatarMode, 'ai-mode': isAiAvatarMode && !isParentMode }">
+				<view v-if="quotedMessage != null && !isAiAvatarMode" class="quote-preview">
+					<text class="quote-preview-text">引用：{{ quotedMessage.content }}</text>
+					<text class="quote-preview-close" @click="clearQuotedMessage">✕</text>
+				</view>
 				<view class="input-wrapper">
 					<input
 						class="input"
@@ -270,6 +274,22 @@
 					</view>
 				</view>
 			</XsaSheet>
+
+			<XsaModal
+				:visible="voicePreviewVisible"
+				title="录音预览"
+				cancel-text="重录"
+				confirm-text="发送"
+				@close="closeVoicePreview"
+				@cancel="rerecordVoice"
+				@confirm="sendVoicePreview"
+			>
+				<view style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
+					<text>录完可以先试听，确认后发送。</text>
+					<button class="voice-preview-play" @click="toggleVoicePreviewPlay">{{ voicePreviewPlaying ? '停止试听' : '试听录音' }}</button>
+					<text style="color: #7A8286; font-size: 13px;" @click="closeVoicePreview">取消本次录音</text>
+				</view>
+			</XsaModal>
 		</view>
 </template>
 
@@ -279,6 +299,7 @@
 	import XsaAiAdvisorSheet from '@/pagesSub/chat/components/XsaAiAdvisorSheet.uvue'
 	import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 	import XsaSheet from '@/components/XsaSheet.uvue'
+	import XsaModal from '@/components/XsaModal.uvue'
 	import type { MessageSubject, ParentContext } from '@/api'
 	import {
 		getChatMessages,
@@ -291,6 +312,7 @@
 		sendMessage as sendMessageApi,
 		uploadChatMedia,
 		revokeMessage,
+		hideMessageForMe,
 		getContactExchanges,
 		createContactExchange,
 		respondContactExchange,
@@ -300,11 +322,13 @@
 		sendAiAvatarMessage,
 		resolveAiAvatarHandoffs,
 		clearAiAvatarConversation,
-		submitAdvisorFeedback
+		submitAdvisorFeedback,
+		getAiCapabilities
 	} from '@/api'
 	import { getCurrentUserVipStatus, setCurrentUserVipStatus } from '@/utils/quota.uts'
 	const messages = ref([] as any[])
 	const inputText = ref('')
+	const quotedMessage = ref(null as any)
 	const showMore = ref(false)
 	const scrollToView = ref('')
 	const loading = ref(false)
@@ -330,6 +354,10 @@
 	const permissionError = ref('双方同意后才能开始聊天')
 	const sendingText = ref(false)
 	const voiceRecording = ref(false)
+	const voicePreviewVisible = ref(false)
+	const voicePreviewPath = ref('')
+	const voicePreviewPlaying = ref(false)
+	let voicePreviewAudio: any = null
 	const contactVisible = ref(false)
 	const contactLoading = ref(false)
 	const contactSubmitting = ref(false)
@@ -423,6 +451,7 @@
 			voiceRecorder.stop()
 		}
 		voiceRecording.value = false
+		stopVoicePreviewAudio()
 	})
 
 	const retryHistory = () => {
@@ -1067,7 +1096,8 @@
 				message.type,
 					message.clientMessageId,
 					subject,
-					message.mediaId != null ? Number(message.mediaId) : null
+					message.mediaId != null ? Number(message.mediaId) : null,
+					message.quoteMessageId != null && message.quoteMessageId > 0 ? Number(message.quoteMessageId) : null
 			)
 			if (handleSubjectUnauthorizedResponse(res, expectedSubjectKey)) return
 			if (!isDeliveryAttemptCurrent(message, attemptId, expectedVersion, expectedSubjectKey)) return
@@ -1114,9 +1144,11 @@
 			avatar: isParentMode.value ? '' : myAvatar.value,
 			status: 'queued',
 			errorMessage: '',
-			subjectKey: subjectKey(subject)
+			subjectKey: subjectKey(subject),
+			quoteMessageId: quotedMessage.value != null && quotedMessage.value.id > 0 ? Number(quotedMessage.value.id) : 0
 		}
 		messages.value.push(message)
+		quotedMessage.value = null
 		inputText.value = ''
 		scrollToBottom()
 		try {
@@ -1209,13 +1241,65 @@
 					return
 				}
 				const path = res != null && res.tempFilePath != null ? '' + res.tempFilePath : ''
-				if (path != '') sendMediaFile(path, 'voice')
+				if (path != '') {
+					voicePreviewPath.value = path
+					voicePreviewVisible.value = true
+				}
 			})
 			voiceRecorder.onError(() => {
 				voiceRecording.value = false
 				uni.showToast({ title: '录音失败，请检查麦克风权限', icon: 'none' })
 			})
 			// #endif
+		}
+
+		const stopVoicePreviewAudio = () => {
+			if (voicePreviewAudio != null) {
+				try { voicePreviewAudio.stop() } catch (e) {}
+				try { voicePreviewAudio.destroy() } catch (e) {}
+				voicePreviewAudio = null
+			}
+			voicePreviewPlaying.value = false
+		}
+
+		const toggleVoicePreviewPlay = () => {
+			if (voicePreviewPlaying.value) {
+				stopVoicePreviewAudio()
+				return
+			}
+			if (voicePreviewPath.value == '') return
+			voicePreviewAudio = uni.createInnerAudioContext()
+			voicePreviewAudio.src = voicePreviewPath.value
+			voicePreviewAudio.onEnded(() => { voicePreviewPlaying.value = false })
+			voicePreviewAudio.onError(() => {
+				stopVoicePreviewAudio()
+				uni.showToast({ title: '试听失败，请重录', icon: 'none' })
+			})
+			voicePreviewAudio.play()
+			voicePreviewPlaying.value = true
+		}
+
+		const closeVoicePreview = () => {
+			stopVoicePreviewAudio()
+			voicePreviewVisible.value = false
+			voicePreviewPath.value = ''
+		}
+
+		const rerecordVoice = () => {
+			closeVoicePreview()
+			// #ifdef MP-WEIXIN
+			if (voiceRecorder != null) {
+				discardVoiceRecording = false
+				voiceRecording.value = true
+				voiceRecorder.start({ duration: 60000, format: 'mp3' })
+			}
+			// #endif
+		}
+
+		const sendVoicePreview = () => {
+			const path = voicePreviewPath.value
+			closeVoicePreview()
+			if (path != '') sendMediaFile(path, 'voice')
 		}
 
 		const toggleVoiceRecording = () => {
@@ -1356,7 +1440,9 @@
 			const items: string[] = []
 			if (message.type === 'text' && message.content != null && String(message.content).length > 0) items.push('复制')
 			if (message.isMine === true && message.type === 'text' && message.status === 'sent') items.push('重新编辑')
+			if (message.id > 0 && message.revoked !== true) items.push('引用')
 			if (message.isMine === true && message.id > 0 && message.status === 'sent' && message.revoked !== true) items.push('撤回')
+			if (message.id > 0) items.push('仅自己删除')
 			if (items.length === 0) return
 			messageMenuOpenedAt = Date.now()
 			uni.showActionSheet({
@@ -1367,10 +1453,27 @@
 					const action = items[tapIndex]
 					if (action === '复制') copyMessageContent(message)
 					else if (action === '重新编辑') reEditMessage(message)
+					else if (action === '引用') quotedMessage.value = message
 					else if (action === '撤回') requestRevokeMessage(message)
+					else if (action === '仅自己删除') hideMessageForMeLocally(message)
 				}
 			})
 		}
+
+		const hideMessageForMeLocally = async (message: any) => {
+			if (isParentMode.value || message == null || message.id <= 0) return
+			const subject = activeMessageSubject.value
+			if (subject == null) return
+			const res = await hideMessageForMe(Number(message.id), subject)
+			if (res != null && res.success == true) {
+				const next = messages.value.filter((item: any) => item !== message)
+				messages.value = next
+				return
+			}
+			uni.showToast({ title: responseMessage(res, '删除失败，请重试'), icon: 'none' })
+		}
+
+		const clearQuotedMessage = () => { quotedMessage.value = null }
 
 		const requestRevokeMessage = (message: any) => {
 			if (isParentMode.value || message == null || message.id <= 0 || message.revoked == true) return
@@ -1422,7 +1525,10 @@
 			uni.navigateTo({ url: '/pagesSub/parent/user-detail?id=' + userId.value })
 			return
 		}
-			uni.navigateTo({ url: '/pages/user/detail?userId=' + userId.value })
+		uni.navigateTo({
+			url: '/pagesSub/userExtra/user/detail?userId=' + userId.value,
+			fail: () => uni.showToast({ title: '资料页打开失败，请重试', icon: 'none' })
+		})
 	}
 
 	const openChatReport = () => {
@@ -1434,6 +1540,17 @@
 	const openAiAdvisor = async () => {
 		if (isParentMode.value || isAiAvatarMode.value) return
 		closeMoreMenu()
+		try {
+			const capabilities = await getAiCapabilities()
+			const advisorEnabled = capabilities != null && capabilities.success == true && capabilities.data != null && capabilities.data.advisor == true
+			if (!advisorEnabled) {
+				uni.showToast({ title: 'AI 军师暂未开放', icon: 'none' })
+				return
+			}
+		} catch (e) {
+			uni.showToast({ title: 'AI 军师暂未开放', icon: 'none' })
+			return
+		}
 		let advisorVip = false
 		try {
 			const membership = await getMembershipStatus()
@@ -2129,4 +2246,38 @@
 	}
 
 	.chat-page.ai-avatar-mode .ai-disclaimer { text-align: center; }
+
+	.voice-preview-play {
+		padding: 8px 24px;
+		border-radius: 20px;
+		background: var(--sage);
+		color: var(--paper);
+		font-size: 14px;
+	}
+
+	.quote-preview {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 6px 12px;
+		margin-bottom: 6px;
+		border-radius: 10px;
+		background: var(--warm);
+	}
+
+	.quote-preview-text {
+		flex: 1;
+		font-size: 12px;
+		color: var(--ink2);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.quote-preview-close {
+		font-size: 14px;
+		color: var(--muted);
+	}
 	</style>

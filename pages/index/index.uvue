@@ -134,6 +134,7 @@
 							<view class="home-qa-item" v-for="(qa, qi) in currentRecommendUser.qaAnswers.slice(0, 2)" :key="qi">
 								<text class="home-qa-question">{{ qa.question }}</text>
 								<text class="home-qa-answer">{{ qa.answer }}</text>
+								<image v-if="qa.mediaUrl != null && qa.mediaUrl != ''" class="home-qa-photo" :src="qa.mediaUrl" mode="aspectFill"></image>
 							</view>
 						</view>
 
@@ -143,8 +144,11 @@
 						     无认证数据的候选隐藏该区块，不展示未接线的认证结论 -->
 						<view class="cert-section" v-if="currentCertTags.length > 0">
 							<text class="cert-label">已认证:</text>
-							<view class="cert-tag" v-for="(tag, ci) in currentCertTags" :key="ci">
+							<view class="cert-tag" v-for="(tag, ci) in visibleCertTags" :key="ci">
 								<text class="cert-text">{{ tag }}</text>
+							</view>
+							<view v-if="hiddenCertTagCount > 0" class="cert-tag" @tap="certTagsExpanded = !certTagsExpanded">
+								<text class="cert-text">{{ certTagsExpanded ? '收起' : '+' + hiddenCertTagCount }}</text>
 							</view>
 						</view>
 
@@ -733,11 +737,12 @@
 <!-- 每日查看配额用尽弹窗 -->
 		<XsaModal
 			:visible="quotaExhaustedVisible && !welcomeVisible"
-			title="今日可查看的新资料已用完"
-			:show-cancel="false"
-			confirm-text="开通会员"
+			:title="quotaExhaustedVip ? '今日查看次数已用完' : '今日可查看的新资料已用完'"
+			:cancel-text="quotaSecondaryText"
+			:confirm-text="quotaPrimaryText"
 			@close="quotaExhaustedVisible = false"
-			@confirm="handleQuotaUpgrade"
+			@cancel="handleQuotaSecondary"
+			@confirm="handleQuotaPrimary"
 		>
 			<view class="apply-body">
 				<text>{{ quotaExhaustedMessage }}</text>
@@ -773,6 +778,7 @@
 		resetDailyIfNeeded,
 		getDailyViewRemaining,
 		getDailyViewQuota,
+		getCurrentUserVipStatus,
 		setCurrentUserVipStatus
 	} from '@/utils/quota.uts'
 
@@ -1066,6 +1072,9 @@
 				return
 			}
 			if (refreshSeq != homeRefreshSeq) return
+			if (recommendRes != null && !recommendRes.success && (Number(recommendRes.code) == 429 || (recommendRes.businessCode != null && '' + recommendRes.businessCode == 'BROWSE_QUOTA_EXHAUSTED'))) {
+				showQuotaExhaustedFromResponse(recommendRes)
+			}
 			if (recommendRes != null && recommendRes.success && recommendRes.data != null) {
 				recommendUsers.value = recommendRes.data.items as any[]
 				currentRecommendIndex.value = 0
@@ -1086,6 +1095,9 @@
 				return
 			}
 			if (refreshSeq != homeRefreshSeq) return
+			if (plazaRes != null && !plazaRes.success && (Number(plazaRes.code) == 429 || (plazaRes.businessCode != null && '' + plazaRes.businessCode == 'BROWSE_QUOTA_EXHAUSTED'))) {
+				showQuotaExhaustedFromResponse(plazaRes)
+			}
 			if (plazaRes.success && plazaRes.data != null) {
 				squareUsers.value = plazaRes.data.items as any[]
 				squareTotal.value = plazaRes.data.total != null ? Number(plazaRes.data.total) : squareUsers.value.length
@@ -1123,14 +1135,77 @@
 	}
 	const quotaExhaustedVisible = ref(false)
 	const quotaExhaustedMessage = ref('')
+	const quotaExhaustedVip = ref(false)
+	const quotaCanUpgrade = ref(true)
+	const quotaCanRedeem = ref(true)
+	const quotaPrimaryAction = computed(() => {
+		if (quotaExhaustedVip.value) return quotaCanRedeem.value ? 'redeem' : 'close'
+		if (quotaCanUpgrade.value) return 'upgrade'
+		return quotaCanRedeem.value ? 'redeem' : 'close'
+	})
+	const quotaPrimaryText = computed(() => quotaPrimaryAction.value == 'upgrade' ? '开通会员' : (quotaPrimaryAction.value == 'redeem' ? '积分兑换次数' : '知道了'))
+	const quotaSecondaryText = computed(() => (!quotaExhaustedVip.value && quotaCanRedeem.value) ? '积分兑换次数' : '关闭')
 	const showQuotaExhausted = (serverMessage: string = '') => {
+		quotaExhaustedVip.value = getCurrentUserVipStatus()
+		quotaCanUpgrade.value = !quotaExhaustedVip.value
+		quotaCanRedeem.value = true
 		const message = serverMessage.trim()
-		quotaExhaustedMessage.value = message != ''
-			? message + '。开通会员可提高每日查看人数。'
-			: '今日可查看的新资料已用完，开通会员可提高每日查看人数。'
+		if (quotaExhaustedVip.value) {
+			quotaExhaustedMessage.value = message != ''
+				? message + '。可使用积分兑换查看次数。'
+				: '今日可查看的新资料已用完，可使用积分兑换查看次数。'
+		} else {
+			quotaExhaustedMessage.value = message != ''
+				? message + '。开通会员可提高每日查看人数，也可用积分兑换次数。'
+				: '今日可查看的新资料已用完，开通会员可提高每日查看人数，也可用积分兑换次数。'
+		}
 		quotaExhaustedVisible.value = true
 	}
 	const handleQuotaUpgrade = () => { quotaExhaustedVisible.value = false; uni.navigateTo({ url: '/pagesSub/profileExtra/vip' }) }
+	const handleQuotaRedeem = () => { quotaExhaustedVisible.value = false; uni.navigateTo({ url: '/pagesSub/profileExtra/my-tasks' }) }
+	const handleQuotaPrimary = () => {
+		if (quotaPrimaryAction.value == 'upgrade') handleQuotaUpgrade()
+		else if (quotaPrimaryAction.value == 'redeem') handleQuotaRedeem()
+		else quotaExhaustedVisible.value = false
+	}
+	const handleQuotaSecondary = () => {
+		if (!quotaExhaustedVip.value && quotaCanRedeem.value) handleQuotaRedeem()
+		else quotaExhaustedVisible.value = false
+	}
+	/** 429 响应带 quota/suggested_actions 时按其分流；无字段时退回本地会员态。 */
+	const showQuotaExhaustedFromResponse = (res: any) => {
+		const raw = res != null ? res.data : null
+		const detail = raw != null && raw.detail != null && typeof raw.detail == 'object' ? raw.detail : raw
+		const quota = detail != null && detail.quota != null ? detail.quota : null
+		const vip = quota != null && quota.is_vip != null ? quota.is_vip === true : getCurrentUserVipStatus()
+		const actions = detail != null && detail.suggested_actions != null && Array.isArray(detail.suggested_actions) ? detail.suggested_actions as any[] : null
+		let canUpgrade = !vip
+		let canRedeem = true
+		if (actions != null) {
+			canUpgrade = false
+			canRedeem = false
+			for (let i = 0; i < actions.length; i++) {
+				const action = actions[i] != null ? '' + actions[i] : ''
+				if (action == 'upgrade_vip') canUpgrade = true
+				if (action == 'redeem_points') canRedeem = true
+			}
+		}
+		quotaExhaustedVip.value = vip
+		quotaCanUpgrade.value = canUpgrade
+		quotaCanRedeem.value = canRedeem
+		const rawMessage = detail != null && detail.message != null ? '' + detail.message : (res != null && res.message != null ? '' + res.message : '')
+		const message = rawMessage.trim()
+		if (vip) {
+			quotaExhaustedMessage.value = message != ''
+				? message + '。可使用积分兑换查看次数。'
+				: '今日可查看的新资料已用完，可使用积分兑换查看次数。'
+		} else {
+			quotaExhaustedMessage.value = message != ''
+				? message + '。开通会员可提高每日查看人数，也可用积分兑换次数。'
+				: '今日可查看的新资料已用完，开通会员可提高每日查看人数，也可用积分兑换次数。'
+		}
+		quotaExhaustedVisible.value = true
+	}
 	// 会员态以服务端为准：每次回首页同步一次，写回按 user_id 分键的本地缓存。
 	// 解决两类问题：① 换测试账号后本地残留上一个号的 VIP 标记；② 账号一/二本身是会员，
 	// 本地无缓存时会被当成普通用户，本地查看额度按 8 次判定。
@@ -1335,11 +1410,14 @@
 		return user.avatar != null ? '' + user.avatar : ''
 	})
 	// 认证标签：后端 certification_tags 真实字段（mapCard 已映射），缺失时隐藏区块
+	const certTagsExpanded = ref(false)
 	const currentCertTags = computed((): string[] => {
 		const user = currentRecommendUser.value as any
 		const tags = user.certificationTags
 		return tags != null && tags.length > 0 ? tags : []
 	})
+	const visibleCertTags = computed((): string[] => certTagsExpanded.value ? currentCertTags.value : currentCertTags.value.slice(0, 3))
+	const hiddenCertTagCount = computed((): number => Math.max(0, currentCertTags.value.length - 3))
 	const aiOtherMbti = computed((): string => {
 		const user = currentRecommendUser.value as any
 		const mbti = user.mbti != null ? '' + user.mbti : ''
@@ -1712,6 +1790,7 @@
 .home-qa-item { display: flex; flex-direction: column; gap: 6rpx; padding: 18rpx 20rpx; border-radius: 16rpx; background: var(--bg-card-soft); }
 .home-qa-question { font-size: 24rpx; font-weight: 700; color: var(--text-primary); }
 .home-qa-answer { font-size: 24rpx; color: var(--text-secondary); line-height: 1.5; }
+.home-qa-photo { width: 100%; height: 260rpx; border-radius: 16rpx; margin-top: 10rpx; }
 
 /* 认证信息 */
 .cert-section { display: flex; flex-direction: row; align-items: center; gap: 16rpx; flex-wrap: wrap; }

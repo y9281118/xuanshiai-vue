@@ -19,6 +19,31 @@ import {
 } from './config.uts'
 import { debugLog } from '@/utils/debug-log.uts'
 
+let loginRedirectPending = false
+
+/** 401 续期失败后统一回登录页；登录页自身与静默请求不触发。 */
+function redirectToLoginAfterAuthFailure() {
+  if (loginRedirectPending) return
+  let route = ''
+  try {
+    const pages = getCurrentPages()
+    if (pages.length > 0) {
+      const current = pages[pages.length - 1] as any
+      route = current != null && current.route != null ? '' + current.route : ''
+    }
+  } catch (e) {
+    // 页面栈不可用时仍尝试跳转
+  }
+  if (route == 'pages/auth/login') return
+  loginRedirectPending = true
+  uni.reLaunch({
+    url: '/pages/auth/login',
+    complete: () => {
+      setTimeout(() => { loginRedirectPending = false }, 800)
+    }
+  })
+}
+
 /**
  * 统一请求方法
  * options:
@@ -348,6 +373,7 @@ async function httpRequest(options: any) {
           const preserved = snapshotOnboardingState()
           clearAuthTokens()
           restoreOnboardingState(preserved)
+          if (options.skipAuth != true) redirectToLoginAfterAuthFailure()
         }
         const message = safeErrorMessage(raw, status)
         const biz = extractBusinessError(raw)

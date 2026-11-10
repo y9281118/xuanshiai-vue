@@ -68,8 +68,8 @@
 					<view id="age-track" class="range-control" @touchstart="onAgeTrackTouchStart" @touchmove="onAgeTrackTouchMove" @touchend="onTrackTouchEnd"><view class="range-track"></view><view class="range-active" :style="{ left: ageLoPct + '%', width: ageZoneWidth + '%' }"></view><view class="range-handle" :style="{ left: ageLoPct + '%' }"></view><view class="range-handle" :style="{ left: ageHiPct + '%' }"></view></view>
 				</view>
 				<view class="condition-group condition-toggle-group">
-					<view class="condition-toggle-copy"><text class="condition-label">仅认证用户</text><text class="condition-help">暂不支持：筛选接口暂无认证字段</text></view>
-					<button class="condition-toggle" disabled :class="{ active: false }"><view class="toggle-knob"></view></button>
+					<view class="condition-toggle-copy"><text class="condition-label">仅认证用户</text><text class="condition-help">仅展示实名认证通过的用户</text></view>
+					<button class="condition-toggle" :class="{ active: certificationOnly }" @tap="certificationOnly = !certificationOnly"><view class="toggle-knob"></view></button>
 				</view>
 
 				<view class="advanced-heading"><text class="condition-label">更多筛选</text></view>
@@ -88,7 +88,7 @@
 				</view>
 				<view class="condition-group advanced-condition-group">
 					<text class="condition-label">家乡偏好</text>
-					<view class="wide-picker-disabled"><text>暂不支持：筛选接口暂无家乡字段</text></view>
+					<view class="condition-control location-row"><picker class="condition-picker" mode="multiSelector" :range="hometownColumns" :value="hometownMultiIndex" @columnchange="onHometownColumnChange" @change="onHometownChange"><view class="picker-value"><text>{{ hometownLabel }}</text><text>⌄</text></view></picker></view>
 				</view>
 				<view class="condition-group advanced-condition-group">
 					<text class="condition-label">学历偏好</text>
@@ -409,7 +409,6 @@
 		} finally { aiSuggestionGenerating.value = false }
 	}
 
-	const hometownOptions = ['不限', '江苏', '浙江', '上海', '安徽']
 	const RESIDENCE_ANY = '不限'
 	// 仅用于恢复旧版搜索历史（旧记录只存中文标签）。
 	const LEGACY_RESIDENCE_OPTIONS = ['不限', '南京', '杭州', '上海', '深圳']
@@ -422,7 +421,8 @@
 	// 小学/初中/技校在存储域不可表达，隐藏（后端字典冲突已单独记录）。
 	const educationOptions = ['不限', '高中', '大专', '本科', '硕士', '博士']
 	const marriageOptions = ['未婚', '离异', '丧偶']
-	const hometownIndex = ref(0)
+	const hometownProvinceIndex = ref(0)
+	const hometownCityIndex = ref(0)
 	const residenceProvinceIndex = ref(0)
 	const residenceCityIndex = ref(0)
 	const residenceProvinceName = (): string => {
@@ -465,6 +465,46 @@
 		return [provinces, cities]
 	})
 	const residenceMultiIndex = computed<number[]>(() => [residenceProvinceIndex.value, residenceCityIndex.value])
+	const hometownProvinceName = (): string => {
+		const index = hometownProvinceIndex.value
+		return index > 0 && index <= LOCATION_TREE.length ? '' + LOCATION_TREE[index - 1].name : RESIDENCE_ANY
+	}
+	const hometownCityName = (): string => {
+		const provinceIndex = hometownProvinceIndex.value
+		const cityIndex = hometownCityIndex.value
+		if (provinceIndex <= 0 || provinceIndex > LOCATION_TREE.length) return RESIDENCE_ANY
+		const cities = LOCATION_TREE[provinceIndex - 1].city
+		return cityIndex > 0 && cityIndex <= cities.length ? '' + cities[cityIndex - 1].name : RESIDENCE_ANY
+	}
+	const hometownLabel = computed(() => {
+		const province = hometownProvinceName()
+		if (province == RESIDENCE_ANY) return RESIDENCE_ANY
+		const city = hometownCityName()
+		return city == RESIDENCE_ANY ? province : province + ' ' + city
+	})
+	const hometownProvinceCode = computed(() => {
+		const index = hometownProvinceIndex.value
+		return index > 0 && index <= LOCATION_TREE.length ? '' + LOCATION_TREE[index - 1].code : ''
+	})
+	const hometownCityCode = computed(() => {
+		const provinceIndex = hometownProvinceIndex.value
+		const cityIndex = hometownCityIndex.value
+		if (provinceIndex <= 0 || provinceIndex > LOCATION_TREE.length) return ''
+		const cities = LOCATION_TREE[provinceIndex - 1].city
+		return cityIndex > 0 && cityIndex <= cities.length ? '' + cities[cityIndex - 1].code : ''
+	})
+	const hometownColumns = computed<any[]>(() => {
+		const provinces: string[] = [RESIDENCE_ANY]
+		for (let i = 0; i < LOCATION_TREE.length; i++) provinces.push('' + LOCATION_TREE[i].name)
+		const cities: string[] = [RESIDENCE_ANY]
+		const provinceIndex = hometownProvinceIndex.value
+		if (provinceIndex > 0 && provinceIndex <= LOCATION_TREE.length) {
+			const list = LOCATION_TREE[provinceIndex - 1].city
+			for (let i = 0; i < list.length; i++) cities.push('' + list[i].name)
+		}
+		return [provinces, cities]
+	})
+	const hometownMultiIndex = computed<number[]>(() => [hometownProvinceIndex.value, hometownCityIndex.value])
 	const ageMin = ref(null as any)
 	const ageMax = ref(null as any)
 	const heightMin = ref(null as any)
@@ -473,7 +513,6 @@
 	const incomeMax = ref(null as any)
 	const education = ref('')
 	const marriage = ref('')
-	// 认证筛选依赖后端 Q20 字段；上线前保持关闭，也不恢复历史里的旧开关值。
 	const certificationOnly = ref(false)
 
 	const mbtiSheetVisible = ref(false)
@@ -777,7 +816,46 @@
 		resultState.value = resultCandidates.value.length > 0 ? 'success' : 'empty'
 		return true
 	}
-	const onHometownChange = (event: any) => { hometownIndex.value = Number(event.detail.value) }
+	const onHometownColumnChange = (event: any) => {
+		const column = Number(event != null && event.detail != null ? event.detail.column : 0)
+		const value = Number(event != null && event.detail != null ? event.detail.value : 0)
+		if (column == 0) {
+			hometownProvinceIndex.value = value
+			hometownCityIndex.value = 0
+		} else if (column == 1) {
+			hometownCityIndex.value = value
+		}
+	}
+	const onHometownChange = (event: any) => {
+		const values = event != null && event.detail != null && Array.isArray(event.detail.value) ? event.detail.value as any[] : []
+		if (values.length >= 2) {
+			hometownProvinceIndex.value = Number(values[0])
+			hometownCityIndex.value = Number(values[1])
+		}
+	}
+	const applyHometownByCode = (cityCode: string, provinceCode: string) => {
+		for (let provinceIndex = 1; provinceIndex <= LOCATION_TREE.length; provinceIndex++) {
+			const province = LOCATION_TREE[provinceIndex - 1]
+			if (cityCode == '') {
+				if (provinceCode != '' && '' + province.code == provinceCode) {
+					hometownProvinceIndex.value = provinceIndex
+					hometownCityIndex.value = 0
+					return
+				}
+				continue
+			}
+			const cities = province.city
+			for (let cityIndex = 1; cityIndex <= cities.length; cityIndex++) {
+				if ('' + cities[cityIndex - 1].code == cityCode) {
+					hometownProvinceIndex.value = provinceIndex
+					hometownCityIndex.value = cityIndex
+					return
+				}
+			}
+		}
+		hometownProvinceIndex.value = 0
+		hometownCityIndex.value = 0
+	}
 	const onResidenceColumnChange = (event: any) => {
 		if (event == null || event.detail == null) return
 		const column = Number(event.detail.column)
@@ -1014,7 +1092,7 @@
 		}
 		applyIncomeTrackValue(x)
 	}
-	const resetCondition = () => { hometownIndex.value = 0; residenceProvinceIndex.value = 0; residenceCityIndex.value = 0; ageMin.value = null; ageMax.value = null; heightMin.value = null; heightMax.value = null; incomeMin.value = null; incomeMax.value = null; education.value = ''; marriage.value = ''; certificationOnly.value = false; targetMbtis.value = []; activeTrait.value = '' }
+	const resetCondition = () => { hometownProvinceIndex.value = 0; hometownCityIndex.value = 0; residenceProvinceIndex.value = 0; residenceCityIndex.value = 0; ageMin.value = null; ageMax.value = null; heightMin.value = null; heightMax.value = null; incomeMin.value = null; incomeMax.value = null; education.value = ''; marriage.value = ''; certificationOnly.value = false; targetMbtis.value = []; activeTrait.value = '' }
 	const loadHistory = () => {
 		try {
 			const stored = uni.getStorageSync(SEARCH_HISTORY_STORAGE_KEY)
@@ -1030,7 +1108,9 @@
 			label: '',
 			aiQuery: aiQuery.value,
 			targetMbtis: targetMbtis.value.slice(),
-			hometownIndex: hometownIndex.value,
+			hometownProvinceCode: hometownProvinceCode.value,
+			hometownCityCode: hometownCityCode.value,
+			hometownLabel: hometownLabel.value,
 			residenceProvinceCode: residenceProvinceCode.value,
 			residenceCityCode: residenceCityCode.value,
 			residenceLabel: residenceLabel.value,
@@ -1110,7 +1190,10 @@
 			education: education.value,
 			marriage: marriage.value,
 			residenceProvinceCode: residenceProvinceCode.value,
-			residenceCityCode: residenceCityCode.value
+			residenceCityCode: residenceCityCode.value,
+			certifiedOnly: certificationOnly.value,
+			hometownProvinceCode: hometownProvinceCode.value,
+			hometownCityCode: hometownCityCode.value
 		})
 	}
 	const beginSearch = async () => {
@@ -1239,7 +1322,7 @@
 			if (Array.isArray(item.targetMbtis)) targetMbtis.value = item.targetMbtis as string[]
 			else targetMbtis.value = []
 		} else if (tab == 2) {
-			hometownIndex.value = validIndex(item.hometownIndex, hometownOptions.length)
+			applyHometownByCode(toText(item.hometownCityCode), toText(item.hometownProvinceCode))
 			const storedResidenceCode = toText(item.residenceCityCode)
 			const storedProvinceCode = toText(item.residenceProvinceCode)
 			if (storedResidenceCode != '') {
@@ -1264,8 +1347,7 @@
 			incomeMax.value = item.incomeMax == null ? null : INCOME_STOPS[incomeStopIndex(Number(item.incomeMax))]
 			education.value = toText(item.education)
 			marriage.value = toText(item.marriage)
-			// Q20 未上线：不恢复旧历史里的认证开关值，避免解禁前误传 certified_only。
-			certificationOnly.value = false
+			certificationOnly.value = item.certificationOnly === true
 		} else {
 			aiQuery.value = toText(item.aiQuery)
 			resetAiDraftState()

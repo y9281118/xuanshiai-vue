@@ -1,10 +1,9 @@
 /**
  * 情感实验室离线门禁。
  *
- * 背景：后端 app/api/router.py 目前没有任何 /emotion-lab/* 路由，任何真实调用
- * 都是 404（服务器实测 {"detail":"Not Found"}），页面会整页「暂时无法加载」。
- * 前端因此长期走端侧 mock。本测试守住三件事：
- *   1. 开关必须保持 true，且只能有一处声明；
+ * 背景：后端 /emotion-lab/* 已就绪，前端已切换真实接口，失败时保留端侧降级。
+ * 本测试守住三件事：
+ *   1. 开关必须保持 false，且只能有一处声明；
  *   2. 所有 /emotion-lab 真实请求都必须处在 mock 短路之后（不可达）；
  *   3. 页面不得回退到「单个 errorMessage 决定整页生死」的旧结构，且必须有端侧兜底。
  */
@@ -22,11 +21,11 @@ const apiSource = read('api/emotionLab.uts')
 const indexSource = read('api/index.uts')
 const pageSource = read('pagesSub/emotionLab/emotion-lab.uvue')
 
-// 1. 开关集中在 config.uts，且为 true
+// 1. 开关集中在 config.uts，且为 false（走真实接口）
 assert.match(
   configSource,
-  /export\s+const\s+EMOTION_LAB_USE_MOCK\s*=\s*true/,
-  'api/config.uts must declare EMOTION_LAB_USE_MOCK = true（后端无 /emotion-lab 模块）'
+  /export\s+const\s+EMOTION_LAB_USE_MOCK\s*=\s*false/,
+  'api/config.uts must declare EMOTION_LAB_USE_MOCK = false（后端 /emotion-lab 已就绪）'
 )
 assert.ok(
   !/export\s+const\s+EMOTION_LAB_USE_MOCK/.test(apiSource),

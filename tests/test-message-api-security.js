@@ -122,7 +122,10 @@ assert.ok(apiSource.includes('export const CHAT_USE_MOCK = false'), 'ordinary ch
 assert.ok(apiSource.includes("url: '/chat/sessions'"), 'ordinary chat must resolve sessions from the server-visible session list')
 assert.ok(apiSource.includes('const sessionId = Number(item?.id ?? 0)'), 'ordinary chat must use the server-provided session id')
 assert.ok(apiSource.includes("url: '/chat/sessions/' + sessionId + '/messages'"), 'chat history must be scoped by the resolved session id')
-assert.ok(apiSource.includes("data: { type: 1, content: content.trim(), client_message_id: resolvedClientMessageId }"), 'chat send must include the same client_message_id for retries')
+assert.ok(
+  apiSource.includes('client_message_id: resolvedClientMessageId') && apiSource.includes('quote_message_id: quoteMessageId'),
+  'chat send must include the same client_message_id for retries and an optional quote_message_id',
+)
 assert.ok(apiSource.includes('function chatBackendUnavailable(subjectContext: any)'), 'formal chat must have a dedicated fail-closed subject boundary')
 assert.ok(apiSource.includes("'PARENT_BACKEND_NOT_AVAILABLE'"), 'unsupported parent-mode chat must fail closed')
 assert.ok(!apiSource.includes("url: '/chat/sessions/' + userId + '/messages'"), 'a peer user id must never be used as a session id')

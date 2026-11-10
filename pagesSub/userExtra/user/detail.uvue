@@ -97,7 +97,8 @@
 
 					<view v-if="certs.length > 0" class="vip-section-card">
 						<text class="vip-section-title">认证信息</text>
-						<view v-for="cert in certs" :key="cert.label" class="cert-item"><view class="cert-icon-wrap"><text class="cert-icon">{{ cert.icon }}</text></view><view class="cert-copy"><text class="cert-label">{{ cert.label }}</text><text class="cert-desc">{{ cert.desc }}</text></view><text class="cert-check">✓</text></view>
+						<view v-for="cert in visibleCerts" :key="cert.label" class="cert-item"><view class="cert-icon-wrap"><text class="cert-icon">{{ cert.icon }}</text></view><view class="cert-copy"><text class="cert-label">{{ cert.label }}</text><text class="cert-desc">{{ cert.desc }}</text></view><text class="cert-check">✓</text></view>
+						<view v-if="certs.length > 3" class="detail-info-toggle" @tap="certsExpanded = !certsExpanded"><text class="detail-info-toggle-text">{{ certsExpanded ? '收起认证' : '展开全部 ' + certs.length + ' 项认证' }}</text></view>
 					</view>
 
 					<view v-if="user.lifePhotos.length > 0" id="anchor-moments" class="vip-section-card">
@@ -146,6 +147,7 @@
 						<view v-for="(item, index) in user.qaAnswers" :key="index" class="qa-card">
 							<text class="qa-question">{{ item.question }}</text>
 							<text class="qa-answer">{{ item.answer }}</text>
+							<image v-if="item.mediaUrl != null && item.mediaUrl != ''" class="qa-photo" :src="item.mediaUrl" mode="aspectFill"></image>
 						</view>
 					</view>
 
@@ -461,6 +463,8 @@ const buildCertsFromTags = (tags: any): any[] => {
 }
 
 const certs = ref([] as any[])
+const certsExpanded = ref(false)
+const visibleCerts = computed(() => certsExpanded.value ? certs.value : certs.value.slice(0, 3))
 
 const dynamics = ref([] as any[])
 
@@ -661,7 +665,14 @@ const mapDetailUser = (raw: any, id: number) => {
 		const answer = String(item.answer ?? '').trim()
 		if (answer == '') continue
 		const question = String(item.question ?? '').trim()
-		qaAnswers.push({ question: question != '' ? question : '关于我', answer: answer })
+		let mediaUrl = ''
+		const mediaList = Array.isArray(item.media) ? item.media as any[] : []
+		if (mediaList.length > 0 && mediaList[0] != null) {
+			const media = mediaList[0]
+			const url = media.file_url != null ? media.file_url : media.thumbnail_url
+			if (url != null) mediaUrl = resolveMediaUrl('' + url)
+		}
+		qaAnswers.push({ question: question != '' ? question : '关于我', answer: answer, mediaUrl: mediaUrl })
 	}
 	// 基础资料固定 3 行 × 3 列 = 9 格（2026-10-27 定版）：
 	// 婚姻、MBTI 与新增的 10 项一起归入「详细资料」，避免两块重复展示同一字段。
@@ -1286,6 +1297,7 @@ const onLike = async () => {
 .qa-card { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx; border-radius: 16rpx; background-color: var(--canvas); }
 .qa-question { color: var(--accent2); font-size: 24rpx; font-weight: 700; }
 .qa-answer { color: var(--ink2); font-size: 24rpx; line-height: 1.6; }
+.qa-photo { width: 100%; height: 320rpx; border-radius: 16rpx; margin-top: 12rpx; }
 .qa-question { color: var(--ink); font-size: 26rpx; font-weight: 700; line-height: 1.5; }
 .section-more { color: var(--accent2); font-size: 22rpx; }
 .dynamic-card { display: flex; flex-direction: column; gap: 18rpx; padding: 24rpx; border-radius: 18rpx; background-color: var(--canvas); }

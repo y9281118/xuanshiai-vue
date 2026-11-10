@@ -742,6 +742,9 @@ function mapBanner(row: any): any {
     id: row.id,
     type: type,
     title: row.title != null ? row.title : '',
+    startAt: row.start_at != null ? '' + row.start_at : '',
+    endAt: row.end_at != null ? '' + row.end_at : '',
+    city: '',
     subtitle: '',
     description: '',
     cta: type == 'activity' ? '查看活动' : type == 'plane' ? '去放飞' : (type == 'topic' ? '进入话题' : '查看详情'),
@@ -886,13 +889,15 @@ export function normalizeCommunityNotification(row: any): any {
   const rawAction = row.action != null ? '' + row.action : ''
   const commentLike = rawType == 'comment' || rawType == 'reply' || rawType == 'comment_reply' || rawAction == 'comment' || rawAction == 'reply'
   const likeLike = rawType == 'like' || rawType == 'post_like' || rawAction == 'like'
-  const normalizedType = commentLike ? 'comment' : (likeLike ? 'like' : (isOfficialActivity(row) ? 'activity' : 'other'))
+  const matchLike = rawType == 'match' || rawType == 'match_success' || (row.category != null && '' + row.category == 'match')
+  const normalizedType = commentLike ? 'comment' : (likeLike ? 'like' : (matchLike ? 'match' : (isOfficialActivity(row) ? 'activity' : 'other')))
   const postId = row.post_id != null ? Number(row.post_id) : (row.postId != null ? Number(row.postId) : (payload.post_id != null ? Number(payload.post_id) : (targetType == 'post' ? Number(targetId) : 0)))
   const commentId = row.comment_id != null ? Number(row.comment_id) : (row.commentId != null ? Number(row.commentId) : (payload.comment_id != null ? Number(payload.comment_id) : (targetType == 'comment' ? Number(targetId) : 0)))
   return {
     id: row.id,
     type: normalizedType,
     rawType,
+    category: row.category != null ? '' + row.category : '',
     title: row.title != null ? row.title : '',
     content: row.content != null ? row.content : '',
     timeText: row.timeText != null ? '' + row.timeText : timeTextFrom(row.created_at),
@@ -1866,7 +1871,20 @@ export async function getCommunityBanners() {
   const arr = res.data != null && Array.isArray(res.data) ? (res.data as any[]) : []
   const list: any[] = []
   for (let i = 0; i < arr.length; i++) {
-    list.push(mapBanner(arr[i]))
+    const banner = mapBanner(arr[i])
+    // 活动位优先用活动标题/城市/时间覆盖运营位文案；详情失败时保留运营位兜底。
+    if (banner != null && banner.type == 'activity' && Number(banner.targetId) > 0) {
+      const detail = await getActivityDetail(Number(banner.targetId))
+      if (detail != null && detail.success && detail.data != null) {
+        if (detail.data.title != null && '' + detail.data.title != '') banner.title = '' + detail.data.title
+        if (detail.data.location != null) banner.city = '' + detail.data.location
+        if (detail.data.date != null && detail.data.time != null) {
+          banner.startAt = '' + detail.data.date + ' ' + detail.data.time
+          banner.description = banner.city != '' ? banner.city + ' · ' + banner.startAt : banner.startAt
+        }
+      }
+    }
+    list.push(banner)
   }
   return okRes(ensureCommunityBanners(list))
 }
@@ -2004,11 +2022,21 @@ export async function getCommunityQuotas() {
 
 /** 购买纸飞机次数（加次）。后端没有 /community/paper-planes/chances 路由，
  *  加次统一走积分兑换：POST /users/me/points/redeem，product_code = paper_plane_unlock。 */
-export async function purchasePaperPlaneChance(type: string) {
+/** 今日已捡纸飞机数量（服务端按 UTC 日期去重）。 */
+export async function getPaperPlaneCatchSummary() {
+  return request({ url: '/paper-planes/catches/summary', method: 'GET', mockData: { plane_id: 0, already_picked: false, picked_today: 0 } })
+}
+
+/** 标记捡到某条纸飞机；同一天同一纸飞机只计一次。 */
+export async function catchPaperPlane(planeId: number) {
+  return request({ url: '/paper-planes/' + planeId + '/catch', method: 'POST', mockData: { plane_id: planeId, already_picked: false, picked_today: 1 } })
+}
+
+export async function purchasePaperPlaneChance(type: string, count: number = 1) {
   if (type != 'throw' && type != 'catch') {
     return failRes('无效的纸飞机次数类型', 'INVALID_TYPE')
   }
-  return redeemPointProduct('paper_plane_unlock')
+  return redeemPointProduct('paper_plane_unlock', '', count)
 }
 
 // ─── 发布 / 点赞 / 收藏 / 关注 / 评论 ───────────────────────
@@ -2035,6 +2063,7 @@ export async function publishDynamic(
   let suppliedCreateKey = ''
   let imageMediaIds: number[] = []
   let videoMediaId = 0
+  let remindUserIds: number[] = []
 
   if (contentOrPayload != null && typeof contentOrPayload === 'object' && !Array.isArray(contentOrPayload)) {
     content = contentOrPayload.content != null ? ('' + contentOrPayload.content).trim() : ''
@@ -2054,6 +2083,10 @@ export async function publishDynamic(
     const rawVideoMediaId = contentOrPayload.videoMediaId != null ? contentOrPayload.videoMediaId : contentOrPayload.video_media_id
     if (rawVideoMediaId != null) {
       videoMediaId = rawVideoMediaId as number
+    }
+    const rawRemindUserIds = contentOrPayload.remindUserIds != null ? contentOrPayload.remindUserIds : contentOrPayload.remind_user_ids
+    if (rawRemindUserIds != null && Array.isArray(rawRemindUserIds)) {
+      remindUserIds = rawRemindUserIds as number[]
     }
   } else {
     content = contentOrPayload != null ? ('' + contentOrPayload).trim() : ''
@@ -2081,6 +2114,9 @@ export async function publishDynamic(
   }
   if (hasImageMediaIds && imageMediaIds.length > 9) {
     imageMediaIds = imageMediaIds.slice(0, 9)
+  }
+  if (remindUserIds != null && remindUserIds.length > 20) {
+    remindUserIds = remindUserIds.slice(0, 20)
   }
 
   if (USE_MOCK) {
@@ -2200,6 +2236,9 @@ export async function publishDynamic(
     topic_id: topicId > 0 ? topicId : null,
     visibility: visibility,
     declaration: declaration
+  }
+  if (remindUserIds != null && remindUserIds.length > 0) {
+    body.remind_user_ids = remindUserIds
   }
   // 优先走已上传的 media ids；有 ids 时不硬拦临时路径
   if (hasImageMediaIds || hasVideoMediaId) {
@@ -3535,6 +3574,18 @@ export async function getPaperPlaneProfileUnlock(targetUserId: number) {
     unlocked: raw.unlocked == true,
     points_cost: raw.points_cost != null ? Number(raw.points_cost) : PAPER_PLANE_PROFILE_UNLOCK_COST,
     balance: raw.balance != null ? Number(raw.balance) : 0
+  })
+}
+
+/** 本人解锁过的纸飞机目标资料（分页）。 */
+export async function getPaperPlaneProfileUnlockHistory(page: number = 1, pageSize: number = 20) {
+  if (USE_MOCK) {
+    return okRes({ items: [], total: 0, has_more: false, page: page, page_size: pageSize })
+  }
+  return request({
+    url: '/paper-plane/profile-unlocks',
+    method: 'GET',
+    data: { page: page, page_size: pageSize }
   })
 }
 

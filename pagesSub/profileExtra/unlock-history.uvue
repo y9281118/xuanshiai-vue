@@ -9,40 +9,36 @@
 			<view class="nav-placeholder"></view>
 		</view>
 
-		<scroll-view class="scroller" scroll-y>
-			<view class="match-list">
+		<scroll-view class="scroller" scroll-y @scrolltolower="loadMore">
+			<view v-if="loading && historyList.length == 0" class="state"><text>加载中...</text></view>
+			<view v-else-if="loadError != ''" class="state">
+				<text>{{ loadError }}</text>
+				<text class="retry" @tap="load(true)">重试</text>
+			</view>
+			<view v-else-if="historyList.length == 0" class="state"><text>还没有解锁过资料</text></view>
+			<view v-else class="match-list">
 				<view
 					class="match-card"
 					v-for="item in historyList"
-					:key="item.id"
+					:key="item.targetUserId"
 					@click="openProfile(item)"
 				>
 					<view class="match-top">
 						<view class="match-user">
-							<XsaAvatar :name="item.name" size="medium"></XsaAvatar>
+							<XsaAvatar :name="item.name" :src="item.avatar" size="medium"></XsaAvatar>
 							<view class="match-text">
 								<text class="match-name">{{ item.name }}</text>
-								<text class="match-meta">{{ item.age }}岁 · {{ item.city }}</text>
-								<text class="match-school">{{ item.school }} · {{ item.major }}</text>
+								<text class="match-meta">{{ item.age > 0 ? item.age + '岁' : '年龄未公开' }}</text>
+								<text class="match-school">解锁于 {{ item.unlockedAt }}</text>
 							</view>
 						</view>
 						<view class="match-score">
-							<text class="match-percent">{{ item.matchPercent }}%</text>
-							<text class="match-score-label">合拍度</text>
+							<text class="match-percent">{{ item.pointsCost }}</text>
+							<text class="match-score-label">积分</text>
 						</view>
 					</view>
-
-					<view class="match-tags">
-						<view v-if="item.mbti" class="match-tag match-tag-accent">
-							<text class="match-tag-text">{{ item.mbti }}</text>
-						</view>
-						<view v-for="tag in item.tags" :key="tag" class="match-tag">
-							<text class="match-tag-text">{{ tag }}</text>
-						</view>
-					</view>
-
-					<text class="match-bio">{{ item.bio }}</text>
 				</view>
+				<view v-if="loadingMore" class="state"><text>加载更多...</text></view>
 			</view>
 		</scroll-view>
 	</view>
@@ -50,55 +46,72 @@
 
 <script setup lang="uts">
 import XsaAvatar from '@/components/XsaAvatar.uvue'
+import { getPaperPlaneProfileUnlockHistory } from '@/api'
 
-const historyList = ref<any[]>([
-	{
-		id: 1,
-		name: '陈屿',
-		age: 28,
-		city: '上海',
-		school: '上海交通大学',
-		major: '计算机',
-		matchPercent: 68,
-		mbti: 'INFJ',
-		tags: ['情绪稳定', '硕士在读'],
-		bio: '在上海读研，性格偏安静，喜欢阅读和长距离散步，期待能互相理解、长期陪伴的关系。'
-	},
-	{
-		id: 2,
-		name: '苏晓',
-		age: 26,
-		city: '南京',
-		school: '南京大学',
-		major: '金融',
-		matchPercent: 65,
-		mbti: 'INTJ',
-		tags: ['互联网产品', '健身爱好者'],
-		bio: '定居南京，做互联网产品。逻辑清晰，热爱健身和摄影，希望遇见三观一致、生活节奏同频的人。'
-	},
-	{
-		id: 3,
-		name: '林知微',
-		age: 27,
-		city: '杭州',
-		school: '浙江大学',
-		major: '心理学',
-		matchPercent: 70,
-		mbti: 'ESTP',
-		tags: ['年薪30w+', '名校硕士'],
-		bio: '杭州人，做用户体验研究。喜欢爬山和看展，希望遇见能一起成长、探索生活的人。'
+const historyList = ref([] as any[])
+const page = ref(1)
+const hasMore = ref(true)
+const loading = ref(false)
+const loadingMore = ref(false)
+const loadError = ref('')
+
+const mapItem = (row: any): any => {
+	const avatar = row != null && row.avatar_thumb != null && '' + row.avatar_thumb != '' ? '' + row.avatar_thumb : (row != null && row.avatar != null ? '' + row.avatar : '')
+	return {
+		targetUserId: Number(row != null && row.target_user_id != null ? row.target_user_id : 0),
+		name: row != null && row.nickname != null && '' + row.nickname != '' ? '' + row.nickname : '用户',
+		avatar: avatar,
+		age: row != null && row.age != null ? Number(row.age) : 0,
+		unlockedAt: row != null && row.unlocked_at != null ? ('' + row.unlocked_at).slice(0, 10) : '',
+		pointsCost: row != null && row.points_cost != null ? Number(row.points_cost) : 0
 	}
-])
+}
+
+const load = async (reset: boolean = false) => {
+	if (loading.value || loadingMore.value) return
+	if (reset) { page.value = 1; hasMore.value = true; historyList.value = [] }
+	loadError.value = ''
+	if (page.value == 1) loading.value = true
+	else loadingMore.value = true
+	try {
+		const res = await getPaperPlaneProfileUnlockHistory(page.value, 20)
+		if (res == null || !res.success || res.data == null) {
+			loadError.value = res != null && res.message != null ? '' + res.message : '解锁记录加载失败'
+			return
+		}
+		const rows = res.data.items != null && Array.isArray(res.data.items) ? res.data.items as any[] : []
+		const mapped: any[] = []
+		for (let i = 0; i < rows.length; i++) {
+			const item = mapItem(rows[i])
+			if (item.targetUserId > 0) mapped.push(item)
+		}
+		historyList.value = reset ? mapped : historyList.value.concat(mapped)
+		hasMore.value = res.data.has_more == true
+		if (hasMore.value) page.value += 1
+	} catch (e) {
+		loadError.value = '解锁记录加载失败，请重试'
+	} finally {
+		loading.value = false
+		loadingMore.value = false
+	}
+}
+
+const loadMore = () => {
+	if (hasMore.value && !loading.value && !loadingMore.value) load(false)
+}
 
 const goBack = () => { uni.navigateBack({}) }
 const openProfile = (item: any) => {
+	if (item == null || item.targetUserId <= 0) return
 	uni.navigateTo({
-		url: '/pagesSub/userExtra/user/detail?userId=' + item.id,
+		url: '/pagesSub/userExtra/user/detail?userId=' + item.targetUserId,
 		fail: () => {
 			uni.showToast({ title: '页面跳转失败', icon: 'none' })
 		}
 	})
 }
+
+onMounted(() => { load(true) })
 </script>
 
 <style scoped>
@@ -268,5 +281,20 @@ const openProfile = (item: any) => {
 		font-size: 12px;
 		line-height: 1.5;
 		color: #8E8E93;
+	}
+
+	.state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		padding: 80px 24px;
+		font-size: 14px;
+		color: #8E8E93;
+	}
+
+	.retry {
+		color: #5F9F7A;
+		font-weight: 600;
 	}
 </style>

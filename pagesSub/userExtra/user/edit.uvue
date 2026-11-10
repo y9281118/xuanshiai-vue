@@ -308,6 +308,17 @@
 					<text class="qa-sheet-question">{{ qaEditingQuestion }}</text>
 					<textarea class="qa-sheet-textarea" :value="qaDraft" maxlength="300" placeholder="真诚的表达最能打动人..." @input="onQaDraftInput"></textarea>
 					<text class="qa-sheet-count">{{ qaDraft.length }}/300</text>
+					<text class="qa-media-title">配图（可选，最多 1 张）</text>
+					<scroll-view class="qa-media-scroll" scroll-x v-if="formData.photos.length > 0">
+						<view class="qa-media-list">
+							<view v-for="photo in formData.photos" :key="photo.id" class="qa-media-item" :class="{ selected: qaDraftMediaId == photo.id }" @tap="selectQaMedia(photo)">
+								<image class="qa-media-image" :src="photo.url" mode="aspectFill"></image>
+								<text class="qa-media-check">{{ qaDraftMediaId == photo.id ? '✓' : '' }}</text>
+							</view>
+						</view>
+					</scroll-view>
+					<text v-else class="qa-media-hint">暂无可选相册照片，请先在相册上传并通过审核。</text>
+					<text v-if="qaDraftMediaId > 0" class="qa-media-clear" @tap="clearQaMedia">移除配图</text>
 				</view>
 				<view class="sheet-footer">
 					<view class="cancel-button" @tap="closeQaEditor"><text>取消</text></view>
@@ -322,16 +333,17 @@
 				<view class="sheet-nav"><text class="sheet-title">AI 润色预览</text><text class="sheet-close" @tap="closeIntroPolish">✕</text></view>
 				<scroll-view class="intro-polish-body" scroll-y enhanced show-scrollbar="false">
 					<text class="intro-polish-note">只会替换关于我编辑框，不会自动保存或发布。</text>
-					<text class="intro-polish-label">原文</text>
-					<text class="intro-polish-copy">{{ introPolishOriginal }}</text>
-					<text class="intro-polish-label">润色后</text>
-					<text class="intro-polish-copy intro-polish-proposed">{{ introPolishProposed }}</text>
+					<text v-if="introPolishNoChange" class="intro-polish-note">未产生改写，可直接保存原文。</text>
+					<text v-if="!introPolishNoChange" class="intro-polish-label">原文</text>
+					<text v-if="!introPolishNoChange" class="intro-polish-copy">{{ introPolishOriginal }}</text>
+					<text v-if="!introPolishNoChange" class="intro-polish-label">润色后</text>
+					<text v-if="!introPolishNoChange" class="intro-polish-copy intro-polish-proposed">{{ introPolishProposed }}</text>
 					<view v-if="introPolishChangedPoints.length > 0" class="intro-polish-changes">
 						<view class="intro-polish-change-heading" @tap="introPolishChangesExpanded = !introPolishChangesExpanded"><text>本次调整</text><text>{{ introPolishChangesExpanded ? '收起' : '展开' }}</text></view>
 						<view v-if="introPolishChangesExpanded" class="intro-polish-change-list"><text v-for="(point, index) in introPolishChangedPoints" :key="index" class="intro-polish-change">• {{ point }}</text></view>
 					</view>
 				</scroll-view>
-				<view class="sheet-footer"><view class="cancel-button" @tap="closeIntroPolish"><text>继续编辑</text></view><view class="save-button" @tap="adoptIntroPolish"><text>采用到关于我</text></view></view>
+				<view class="sheet-footer"><view class="cancel-button" @tap="closeIntroPolish"><text>继续编辑</text></view><view class="save-button" :style="{ opacity: introPolishNoChange ? 0.5 : 1 }" @tap="adoptIntroPolish"><text>{{ introPolishNoChange ? '未产生改写' : '采用到关于我' }}</text></view></view>
 			</view>
 		</view>
 
@@ -472,6 +484,7 @@
 	const introPolishProposed = ref('')
 	const introPolishChangedPoints = ref([] as string[])
 	const introPolishChangesExpanded = ref(false)
+	const introPolishNoChange = ref(false)
 
 	const textValue = (value: any): string => value == null ? '' : '' + value
 	const optionalNumber = (value: any): any => {
@@ -1467,6 +1480,8 @@
 			const points = res.data.changedPoints != null && Array.isArray(res.data.changedPoints) ? res.data.changedPoints as any[] : []
 			introPolishChangedPoints.value = points.map((point: any) => '' + point)
 			introPolishChangesExpanded.value = false
+			// changed=false 或服务端原样回显时，不再展示两份相同文本。
+			introPolishNoChange.value = res.data.changed === false || introPolishProposed.value.trim() == introPolishOriginal.value.trim()
 			introPolishVisible.value = true
 		} catch (e) {
 			uni.showToast({ title: '网络异常，AI 润色失败，请稍后再试', icon: 'none' })
@@ -1476,6 +1491,7 @@
 	}
 	const closeIntroPolish = () => { introPolishVisible.value = false }
 	const adoptIntroPolish = () => {
+		if (introPolishNoChange.value) return
 		const proposed = introPolishProposed.value.trim()
 		if (proposed == '') return
 		formData.value.introduction = proposed
@@ -1510,20 +1526,25 @@
 	// 本地兜底：同步写 storage，云端尚未支持该字段或请求失败时，回答也不会丢。
 	const QA_STORAGE_KEY = 'xsa_own_qa_answers_v1'
 	const qaItems = ref([
-		{ id: 1, question: '你理想中的另一半是什么样的', answer: '' },
-		{ id: 2, question: '喜欢什么运动', answer: '' },
-		{ id: 3, question: '你期待的爱情是什么样子的', answer: '' }
+		{ id: 1, question: '你理想中的另一半是什么样的', answer: '', mediaId: 0, mediaUrl: '' },
+		{ id: 2, question: '喜欢什么运动', answer: '', mediaId: 0, mediaUrl: '' },
+		{ id: 3, question: '你期待的爱情是什么样子的', answer: '', mediaId: 0, mediaUrl: '' }
 	])
 	const qaSheetVisible = ref(false)
 	const qaEditingIndex = ref(-1)
 	const qaEditingQuestion = ref('')
 	const qaDraft = ref('')
+	const qaDraftMediaId = ref(0)
+	const qaDraftMediaUrl = ref('')
 	const qaSaving = ref(false)
 	const buildQaPayload = (editIndex: number, nextAnswer: string): any[] => {
 		const payload: any[] = []
 		for (let i = 0; i < qaItems.value.length; i++) {
 			const qa = qaItems.value[i]
-			payload.push({ question_id: qa.id, question: qa.question, answer: i == editIndex ? nextAnswer : textValue(qa.answer) })
+			const mediaId = i == editIndex ? qaDraftMediaId.value : Number(qa.mediaId)
+			const item: any = { question_id: qa.id, question: qa.question, answer: i == editIndex ? nextAnswer : textValue(qa.answer) }
+			item.media_ids = mediaId > 0 ? [mediaId] : []
+			payload.push(item)
 		}
 		return payload
 	}
@@ -1535,6 +1556,16 @@
 				if (row == null) continue
 				const qid = row.question_id != null ? Number(row.question_id) : (row.id != null ? Number(row.id) : 0)
 				if (qid == item.id && row.answer != null && textValue(row.answer) != '') item.answer = textValue(row.answer)
+				if (qid == item.id) {
+					const mediaIds = row.media_ids != null && Array.isArray(row.media_ids) ? row.media_ids as any[] : []
+					const mediaList = row.media != null && Array.isArray(row.media) ? row.media as any[] : []
+					if (mediaIds.length > 0) item.mediaId = Number(mediaIds[0])
+					if (mediaList.length > 0 && mediaList[0] != null) {
+						item.mediaId = Number(mediaList[0].id != null ? mediaList[0].id : item.mediaId)
+						const url = mediaList[0].file_url != null ? mediaList[0].file_url : mediaList[0].thumbnail_url
+						item.mediaUrl = url != null ? resolveMediaUrl('' + url) : ''
+					}
+				}
 			}
 		}
 	}
@@ -1554,7 +1585,25 @@
 		qaEditingIndex.value = index
 		qaEditingQuestion.value = item.question
 		qaDraft.value = textValue(item.answer)
+		qaDraftMediaId.value = Number(item.mediaId != null ? item.mediaId : 0)
+		qaDraftMediaUrl.value = item.mediaUrl != null ? '' + item.mediaUrl : ''
 		qaSheetVisible.value = true
+	}
+	const selectQaMedia = (photo: any) => {
+		if (photo == null) return
+		const id = Number(photo.id != null ? photo.id : 0)
+		if (id <= 0) return
+		if (qaDraftMediaId.value == id) {
+			qaDraftMediaId.value = 0
+			qaDraftMediaUrl.value = ''
+			return
+		}
+		qaDraftMediaId.value = id
+		qaDraftMediaUrl.value = photo.url != null ? '' + photo.url : ''
+	}
+	const clearQaMedia = () => {
+		qaDraftMediaId.value = 0
+		qaDraftMediaUrl.value = ''
 	}
 	const closeQaEditor = () => { qaSheetVisible.value = false }
 	const onQaDraftInput = (event: any) => { qaDraft.value = event != null && event.detail != null ? '' + event.detail.value : '' }
@@ -1570,14 +1619,20 @@
 			if (!res.success) throw new Error(res.message != null ? '' + res.message : 'save failed')
 			uni.setStorageSync(QA_STORAGE_KEY, payload)
 			qaItems.value[index].answer = nextAnswer
+			qaItems.value[index].mediaId = qaDraftMediaId.value
+			qaItems.value[index].mediaUrl = qaDraftMediaUrl.value
 			qaSheetVisible.value = false
 			uni.showToast({ title: '回答已保存', icon: 'success' })
 		} catch (e: any) {
 			// 云端失败时兜底存本地，返回资料页仍可回显
 			uni.setStorageSync(QA_STORAGE_KEY, payload)
 			qaItems.value[index].answer = nextAnswer
+			qaItems.value[index].mediaId = qaDraftMediaId.value
+			qaItems.value[index].mediaUrl = qaDraftMediaUrl.value
 			qaSheetVisible.value = false
-			uni.showToast({ title: '已本地保存，云端同步失败', icon: 'none' })
+			const errorText = e != null && e.message != null ? '' + e.message : ''
+			const tip = errorText.indexOf('QA_MEDIA') >= 0 ? '问答图片需为已通过审核的相册照片' : '已本地保存，云端同步失败'
+			uni.showToast({ title: tip, icon: 'none' })
 		} finally {
 			qaSaving.value = false
 		}
@@ -1893,6 +1948,15 @@
 .qa-sheet-question { font-size: 15px; font-weight: 600; color: var(--ink); line-height: 1.5; }
 .qa-sheet-textarea { width: 100%; flex: 1; min-height: 140px; height: auto; padding: 12px; border-radius: 12px; background: var(--warm); font-size: 14px; color: var(--ink); line-height: 1.6; box-sizing: border-box; }
 .qa-sheet-count { font-size: 12px; color: var(--muted); text-align: right; }
+.qa-media-title { margin-top: 14px; font-size: 13px; color: var(--ink2); }
+.qa-media-scroll { width: 100%; white-space: nowrap; margin-top: 8px; }
+.qa-media-list { display: flex; flex-direction: row; gap: 8px; }
+.qa-media-item { position: relative; width: 72px; height: 72px; border-radius: 10px; overflow: hidden; border: 2px solid transparent; flex-shrink: 0; }
+.qa-media-item.selected { border-color: var(--sage); }
+.qa-media-image { width: 100%; height: 100%; }
+.qa-media-check { position: absolute; right: 4px; bottom: 4px; width: 18px; height: 18px; border-radius: 9px; background: var(--sage); color: #FFFFFF; font-size: 12px; text-align: center; line-height: 18px; }
+.qa-media-hint { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.qa-media-clear { margin-top: 8px; font-size: 12px; color: var(--ink2); text-decoration: underline; }
 
 /* Bottom bar */
 .cancel-button { flex: 1; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; background: var(--warm); color: var(--ink2); font-size: 15px; font-weight: 600; }

@@ -641,11 +641,10 @@ async function run() {
   assert.strictEqual(discarded.status, 'discarded')
 
   const api = fs.readFileSync(apiPath, 'utf8')
-  // 2026-10-26：开关迁到 api/config.uts 集中管理（后端无 /emotion-lab 模块，
-  // 必须保持 true）。这里改判「从 config 引入」而非「本文件声明」。
+  // 2026-10-26：开关迁到 api/config.uts 集中管理；2026-11-10 后端就绪后切到真实接口。
   const apiConfig = fs.readFileSync(path.join(__dirname, '..', 'api', 'config.uts'), 'utf8')
   assert.ok(
-    apiConfig.includes('export const EMOTION_LAB_USE_MOCK = true'),
+    apiConfig.includes('export const EMOTION_LAB_USE_MOCK = false'),
     'config.uts should own the emotion-lab mock boundary'
   )
   assert.ok(

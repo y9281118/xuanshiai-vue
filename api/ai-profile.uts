@@ -254,6 +254,7 @@ export async function pollTaskUntilTerminal(taskId: string, maxAttempts: number 
 /** 映射后端错误码到用户可读文案 */
 export function mapProfileError(code: string, fallback: string): string {
   if (code == 'AI_FEATURE_DISABLED') return 'AI 画像功能当前不可用'
+  if (code == 'AI_OUTPUT_INVALID') return 'AI 返回格式异常，已自动重试；本次未扣次数，请稍后再试'
   if (code == 'AI_CONSENT_REQUIRED') return '需要授权后才能使用画像功能'
   if (code == 'AI_CONSENT_VERSION_CONFLICT') return '授权信息已更新,请重试'
   if (code == 'AI_INPUT_INVALID') return '输入内容有误,请检查后重试'
@@ -324,7 +325,10 @@ export async function polishPaperPlaneText(content: string, field: string, style
   })
   if (!res.success) {
     const code = res.code != null ? Number(res.code) : 0
-    const message = code == 401
+    const bizCode = res.businessCode != null ? '' + res.businessCode : ''
+    const message = bizCode == 'AI_OUTPUT_INVALID'
+      ? 'AI 返回格式异常，已自动重试；本次未扣次数，请稍后再试'
+      : code == 401
       ? '请先登录后再使用 AI 润色'
       : code == 402
         ? 'AI 润色次数已用完，请稍后再试'
@@ -337,7 +341,9 @@ export async function polishPaperPlaneText(content: string, field: string, style
   }
   const raw = res.data != null ? res.data : {}
   const polished = raw.polished != null && ('' + raw.polished).trim() != '' ? ('' + raw.polished).trim() : original
-  return { success: true, data: { original: original, polished: polished, field: field, style: raw.style != null ? raw.style : style, changedPoints: raw.changed_points != null ? raw.changed_points : [] }, code: 0, message: 'success' }
+  const fallback = raw.fallback != null ? '' + raw.fallback : ''
+  const changed = raw.changed != null ? raw.changed === true && polished != original : polished != original
+  return { success: true, data: { original: original, polished: polished, changed: changed, fallback: fallback, field: field, style: raw.style != null ? raw.style : style, changedPoints: raw.changed_points != null ? raw.changed_points : [] }, code: 0, message: 'success' }
 }
 
 /** AI 用心度评审待办条目 */

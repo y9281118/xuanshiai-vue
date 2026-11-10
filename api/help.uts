@@ -1,10 +1,15 @@
 /**
  * 客服与帮助 API。
- * 当前后端客服契约尚未接入，默认使用本地 Mock；真实接口明确后再替换非 Mock 分支。
+ * 帮助文档、意见反馈、转人工客服走真实接口；AI 客服无后端路由，保留本地降级。
  */
 
 import { USE_MOCK } from './config.uts'
+import { request } from './request.uts'
 import { mockHelpQuickActions, mockHelpCategories, getMockAiSupportReply, submitMockFeedback } from '@/mock/help'
+
+function supportKey(prefix: string): string {
+  return prefix + '-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36)
+}
 
 export interface HelpQuickAction {
   id: string
@@ -29,11 +34,32 @@ export interface HelpCenterData {
   categories: HelpCategory[]
 }
 
-export function getHelpCenter(): Promise<{ success: boolean, data: HelpCenterData | null, message?: string }> {
+export async function getHelpCenter(): Promise<{ success: boolean, data: HelpCenterData | null, message?: string }> {
   if (USE_MOCK) {
-    return Promise.resolve({ success: true, data: { categories: mockHelpCategories as HelpCategory[] } })
+    return { success: true, data: { categories: mockHelpCategories as HelpCategory[] } }
   }
-  return Promise.resolve({ success: false, data: null, message: '帮助内容暂未接入，请稍后重试' })
+  const res = await request({ url: '/support/help-docs', method: 'GET', data: { page: 1, page_size: 100 } })
+  if (res == null || !res.success || res.data == null || !Array.isArray(res.data.items)) {
+    return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '帮助内容加载失败，请稍后重试' }
+  }
+  const rows = res.data.items as any[]
+  const categories: HelpCategory[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    const title = row != null && row.category != null && '' + row.category != '' ? '' + row.category : '常见问题'
+    let categoryIndex = -1
+    for (let j = 0; j < categories.length; j++) {
+      if (categories[j].title == title) { categoryIndex = j; break }
+    }
+    if (categoryIndex < 0) {
+      categories.push({ id: 'doc-' + categories.length, title: title, icon: 'ic-bangzhu', items: [] })
+      categoryIndex = categories.length - 1
+    }
+    const question = row != null && row.title != null ? '' + row.title : ''
+    const answer = row != null && row.body != null ? '' + row.body : (row != null && row.subtitle != null ? '' + row.subtitle : '')
+    if (question != '') categories[categoryIndex].items.push({ id: 'doc-' + i, question: question, prompt: answer })
+  }
+  return { success: true, data: { categories: categories } }
 }
 
 export function getHelpQuickActions(): Promise<{ success: boolean, data: HelpQuickAction[], message?: string }> {
@@ -51,9 +77,38 @@ export function sendAiSupportMessage(content: string): Promise<{ success: boolea
   return Promise.resolve({ success: false, data: null, message: 'AI 客服服务暂未接入，请稍后重试' })
 }
 
-export function submitFeedback(content: string): Promise<{ success: boolean, data: any, message?: string }> {
+export async function submitFeedback(content: string): Promise<{ success: boolean, data: any, message?: string }> {
   if (USE_MOCK) {
-    return Promise.resolve(submitMockFeedback(content))
+    return submitMockFeedback(content)
   }
-  return Promise.resolve({ success: false, data: null, message: '意见箱服务暂未接入，请稍后重试' })
+  const text = content != null ? ('' + content).trim() : ''
+  if (text == '') return { success: false, data: null, message: '请输入反馈内容' }
+  const res = await request({
+    url: '/support/feedback',
+    method: 'POST',
+    data: { category: '建议', content: text },
+    headers: { 'Idempotency-Key': supportKey('support-feedback') }
+  })
+  if (res != null && res.success) return { success: true, data: res.data }
+  if (res != null && Number(res.code) == 429) return { success: false, data: null, message: '今日反馈次数已达上限，请明天再试' }
+  return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '提交失败，请稍后重试' }
+}
+
+/** 转人工客服：落 user_feedback（category=咨询）。 */
+export async function contactSupport(content: string, contactPhone: string = ''): Promise<{ success: boolean, data: any, message?: string }> {
+  if (USE_MOCK) {
+    return { success: true, data: { id: 0, category: '咨询', content: content } }
+  }
+  const text = content != null ? ('' + content).trim() : ''
+  if (text == '') return { success: false, data: null, message: '请输入咨询内容' }
+  const body: any = { content: text }
+  if (contactPhone != '') body.contact_phone = contactPhone
+  const res = await request({
+    url: '/support/contact',
+    method: 'POST',
+    data: body,
+    headers: { 'Idempotency-Key': supportKey('support-contact') }
+  })
+  if (res != null && res.success) return { success: true, data: res.data }
+  return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '客服请求提交失败，请稍后重试' }
 }

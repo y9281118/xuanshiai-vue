@@ -319,6 +319,13 @@
           }
         },
         {
+          "path": "unlock-history",
+          "style": {
+            "navigationBarTitleText": "解锁记录",
+            "navigationStyle": "custom"
+          }
+        },
+        {
           "path": "vip",
           "style": {
             "navigationBarTitleText": "会员中心"

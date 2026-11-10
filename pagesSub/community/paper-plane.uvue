@@ -42,11 +42,11 @@
 
 		<view class="quota-bar">
 			<view class="quota-copy">
-				<!-- 「可扔」以服务端 remain 为准；「已捡」是本地记录（服务端暂未下发该计数），
-				     两者不再相加混算，避免出现"服务器额度 + 本地自增"的怪异数字。 -->
+				<!-- 「可扔」以服务端 remain 为准；「已捡」读服务端 catches/summary。 -->
 				<text class="q-label">今日可扔：{{ remain }} 次</text>
 				<text class="q-label">今日已捡：{{ catchCount }} 次</text>
 			</view>
+			<button class="quota-badge" @click="openUnlockHistory"><text>解锁记录</text></button>
 			<button class="quota-badge" @click="openPlaneQuota"><text>获取纸飞机</text></button>
 		</view>
 
@@ -209,7 +209,14 @@
 					<button class="plane-quota-tab" :class="{ active: planeQuotaTab == 'catch' }" @click="selectPlaneQuotaTab('catch')">捡纸飞机次数</button>
 				</view>
 				<view class="plane-quota-panel">
-					<text class="plane-quota-copy">{{ planeQuotaTab == 'throw' ? '补充一次今日可扔纸飞机次数' : '补充一次捡纸飞机次数' }}</text>
+					<text class="plane-quota-copy">{{ planeQuotaTab == 'throw' ? '补充今日可扔纸飞机次数' : '补充捡纸飞机次数' }}</text>
+					<view class="plane-quota-quantity-row" style="display: flex; align-items: center; justify-content: space-between; padding: 12rpx 0;">
+						<text>兑换数量</text>
+						<picker mode="selector" :range="planeQuotaCountOptions" :value="planeQuotaCount - 1" @change="onPlaneQuotaCountChange">
+							<text>{{ planeQuotaCount }} 次</text>
+						</picker>
+					</view>
+					<text v-if="paperPlaneChancePrice > 0" class="plane-quota-hint">合计 {{ paperPlaneChancePrice * planeQuotaCount }} 积分</text>
 					<button class="plane-quota-buy" :disabled="planeQuotaPurchasing" @click="purchasePaperPlaneTimes">{{ planeQuotaPurchasing ? '获取中...' : (paperPlaneChancePrice > 0 ? paperPlaneChancePrice + '积分/次' : '积分兑换') }}</button>
 					<text v-if="planeQuotaTab == 'catch'" class="plane-quota-hint">每日免费刷新3次捡飞机次数</text>
 				</view>
@@ -308,7 +315,7 @@
 
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
-	import { sendPaperPlane, getPaperPlanes, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia, getPointProducts } from '@/api'
+	import { sendPaperPlane, getPaperPlanes, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia, getPointProducts, getPaperPlaneCatchSummary, catchPaperPlane } from '@/api'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 
 	// 纸飞机身份必须按账号分键：旧版用全局 key，切换账号后会串出上一个账号的
@@ -350,6 +357,8 @@
 	const planeQuotaVisible = ref(false)
 	const planeQuotaTab = ref('throw')
 	const paperPlaneChancePrice = ref(0)
+	const planeQuotaCount = ref(1)
+	const planeQuotaCountOptions = ['1 次', '2 次', '3 次', '4 次', '5 次', '6 次', '7 次', '8 次', '9 次', '10 次']
 	const planeQuotaPurchasing = ref(false)
 	const paperPlaneUnreadCount = ref(0)
 	const menuVisible = ref(false)
@@ -519,10 +528,12 @@
 		loadQuota()
 		loadPaperPlaneChancePrice()
 		loadPaperPlaneUnreadCount()
+		loadCatchSummary()
 	})
 
 	onShow(() => {
 		loadPaperPlaneUnreadCount()
+		loadCatchSummary()
 	})
 
 	onUnload(() => {
@@ -567,6 +578,17 @@
 					? Math.max(0, Number(res.data.paperPlaneDaily.purchasedCatch))
 					: 0
 				catchCount.value = Math.max(catchCount.value, purchasedCatch)
+			}
+		} catch (e) {
+			console.error(e)
+		}
+	}
+
+	const loadCatchSummary = async () => {
+		try {
+			const res = await getPaperPlaneCatchSummary()
+			if (res != null && res.success && res.data != null && res.data.picked_today != null) {
+				catchCount.value = Math.max(0, Number(res.data.picked_today))
 			}
 		} catch (e) {
 			console.error(e)
@@ -620,14 +642,17 @@
 		catchMenuVisible.value = false
 	}
 
-	const recordCatch = () => {
-		catchCount.value += 1
-	}
-
 	const openPlaneQuota = () => {
 		if (!ensurePaperPlaneProfile()) return
 		planeQuotaTab.value = 'throw'
 		planeQuotaVisible.value = true
+	}
+
+	const openUnlockHistory = () => {
+		uni.navigateTo({
+			url: '/pagesSub/profileExtra/unlock-history',
+			fail: () => uni.showToast({ title: '解锁记录打开失败，请重试', icon: 'none' })
+		})
 	}
 
 	const closePlaneQuota = () => {
@@ -640,16 +665,22 @@
 		planeQuotaTab.value = tab
 	}
 
+	const onPlaneQuotaCountChange = (event: any) => {
+		if (planeQuotaPurchasing.value) return
+		const index = Number(event != null && event.detail != null ? event.detail.value : 0)
+		planeQuotaCount.value = Math.max(1, Math.min(10, index + 1))
+	}
+
 	const purchasePaperPlaneTimes = async () => {
 		if (planeQuotaPurchasing.value) return
 		planeQuotaPurchasing.value = true
 		try {
-			const res = await purchasePaperPlaneChance(planeQuotaTab.value)
+			const res = await purchasePaperPlaneChance(planeQuotaTab.value, planeQuotaCount.value)
 			if (res != null && res.success == true) {
 				const balance = res.data != null && res.data.balance != null ? Number(res.data.balance) : 0
 				uni.showModal({
 					title: '已获取纸飞机次数',
-					content: '兑换成功，当前剩余 ' + balance + ' 积分',
+					content: '已兑换 ' + planeQuotaCount.value + ' 次，当前剩余 ' + balance + ' 积分',
 					showCancel: false,
 					confirmText: '知道了'
 				})
@@ -695,7 +726,10 @@
 				voiceDurationSec: voiceSec,
 				images: picked.images != null && Array.isArray(picked.images) ? picked.images as string[] : []
 			}
-			recordCatch()
+			const catchRes = await catchPaperPlane(Number(picked.id))
+			if (catchRes != null && catchRes.success && catchRes.data != null && catchRes.data.picked_today != null) {
+				catchCount.value = Math.max(0, Number(catchRes.data.picked_today))
+			}
 			normalReportVisible.value = false
 			normalReplyDraft.value = ''
 			stopNormalVoice()
@@ -823,7 +857,6 @@
 		if (!ensurePaperPlaneProfile()) return
 		menuVisible.value = false
 		catchMenuVisible.value = false
-		recordCatch()
 		uni.navigateTo({ url: '/pagesSub/community/dating-plane' })
 	}
 

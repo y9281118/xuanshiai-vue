@@ -30,8 +30,9 @@
 				</view>
 				<view class="cert-item">
 					<view class="cert-icon-wrap" :class="{ 'cert-done': avatarUploaded }"><text class="cert-icon-text">头像</text></view>
-					<view class="cert-text-wrap"><text class="cert-label">头像认证</text><text class="cert-desc">{{ avatarUploaded ? '本人真实照片已上传' : '上传本人真实照片' }}</text></view>
-					<text v-if="avatarUploaded" class="status uploaded">已上传</text><view v-else class="action-pill" :class="{ disabled: avatarUploading }" @tap="openStep('avatar')"><text>{{ avatarUploading ? '上传中…' : '上传图片' }}</text></view>
+					<view class="cert-text-wrap"><text class="cert-label">头像认证</text><text class="cert-desc">{{ faceVerified ? '人脸核验已通过' : (avatarUploaded ? '本人真实照片已上传，待人脸核验' : '上传本人真实照片') }}</text></view>
+					<text v-if="faceVerified" class="status uploaded">已认证</text>
+					<text v-else-if="avatarUploaded" class="status uploaded">待核验</text><view v-else class="action-pill" :class="{ disabled: avatarUploading }" @tap="openStep('avatar')"><text>{{ avatarUploading ? '上传中…' : '上传图片' }}</text></view>
 				</view>
 				<view class="cert-item" @tap="openStep('single_pledge')">
 					<view class="cert-icon-wrap" :class="{ 'cert-done': pledgeStatus == 2 }"><text class="cert-icon-text">承诺</text></view>
@@ -90,7 +91,7 @@
 
 <script setup lang="uts">
 import { getCurrentInstance, nextTick } from 'vue'
-import { bindPhone, getAgreementVersions, getMeProfile, getUserCertifications, sendSms, submitEducationCertification, submitRealname, submitSinglePledgeCertification, uploadUserProfileMedia } from '@/api'
+import { bindPhone, getAgreementVersions, getMeProfile, getUserCertifications, sendSms, submitEducationCertification, submitRealname, submitSinglePledgeCertification, uploadUserProfileMedia, verifyFace } from '@/api'
 import { resolveMediaUrl } from '@/api/config.uts'
 
 const pageInstance = getCurrentInstance()
@@ -107,6 +108,7 @@ const educationExistingImage = ref('')
 const educationSubmitted = ref(false)
 const educationReviewing = computed(() => educationStatus.value == 1 && educationSubmitted.value)
 const avatarUploaded = ref(false)
+const faceVerified = ref(false)
 const pledgeStatus = ref(0)
 const pledgeFailReason = ref('')
 const pledgeMaterial = ref('')
@@ -180,6 +182,7 @@ const refreshStatus = async () => {
 		phoneMasked.value = profile.phone_masked != null ? String(profile.phone_masked) : ''
 		realnameStatus.value = profile.realname_status != null ? Number(profile.realname_status) : (profile.realNameStatus == 'passed' ? 2 : (profile.realNameStatus == 'reviewing' ? 1 : 0))
 		avatarUploaded.value = profile.avatar != null && String(profile.avatar).trim() != ''
+		faceVerified.value = profile.face_verified != null && Number(profile.face_verified) == 1
 		meNickname.value = profile.nickname != null && String(profile.nickname).trim() != '' ? String(profile.nickname) : '用户'
 		meId.value = profile.id != null ? Number(profile.id) : (profile.user_id != null ? Number(profile.user_id) : 0)
 	}
@@ -218,7 +221,26 @@ const chooseAvatarForCertification = () => {
 		const filePath = res != null && res.tempFilePaths != null && res.tempFilePaths.length > 0 ? String(res.tempFilePaths[0]) : ''
 		if (filePath == '') return
 		avatarUploading.value = true
-		try { const uploadRes = await uploadUserProfileMedia(filePath, 'avatar'); if (!uploadRes.success) { uni.showToast({ title: messageOf(uploadRes, '头像上传失败'), icon: 'none' }); return }; avatarUploaded.value = true; uni.showToast({ title: '头像已上传', icon: 'success' }) } finally { avatarUploading.value = false }
+		try {
+			const uploadRes = await uploadUserProfileMedia(filePath, 'avatar')
+			if (!uploadRes.success) { uni.showToast({ title: messageOf(uploadRes, '头像上传失败'), icon: 'none' }); return }
+			avatarUploaded.value = true
+			// 核验必须以服务端保存的头像 URL 为准，不能拿本地临时路径。
+			const profileRes = await getMeProfile()
+			const avatarUrl = profileRes != null && profileRes.success && profileRes.data != null && profileRes.data.avatar != null ? '' + profileRes.data.avatar : ''
+			if (avatarUrl == '') { uni.showToast({ title: '头像已上传，请稍后重试核验', icon: 'none' }); return }
+			const verifyRes = await verifyFace(avatarUrl)
+			if (verifyRes != null && verifyRes.success) {
+				faceVerified.value = true
+				uni.showToast({ title: '人脸核验通过', icon: 'success' })
+				return
+			}
+			const code = verifyRes != null ? Number(verifyRes.code) : 0
+			if (code == 503) uni.showToast({ title: '人脸核验暂未开通', icon: 'none' })
+			else if (code == 429) uni.showToast({ title: '今日人脸核验次数已用完', icon: 'none' })
+			else if (code == 422) uni.showToast({ title: '人脸与实名信息不匹配，请更换照片后重试', icon: 'none' })
+			else uni.showToast({ title: verifyRes != null && verifyRes.message != null ? '' + verifyRes.message : '人脸核验失败，请稍后重试', icon: 'none' })
+		} finally { avatarUploading.value = false }
 	} })
 }
 const openStep = (step: string) => {

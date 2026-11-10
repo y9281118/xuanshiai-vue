@@ -1077,7 +1077,7 @@ import {
 	submitMatchmakerApplication
 } from '@/api'
 import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
-import { resolveMediaUrl } from '@/api/config.uts'
+import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import { nextTick } from 'vue'
 import { savePosterToPhotos } from '@/utils/moxiang-poster-drawer.uts'
 import { PLATFORM_HOME_URL } from '@/utils/matchmaker-promo-poster.uts'
@@ -3701,6 +3701,11 @@ const removeCaseImage = (caseIndex: number, imgIndex: number) => {
 // ===== 提交申请 =====
 const submitApplication = async () => {
 	if (submitting.value) return
+	if (getAccessToken() == '') {
+		showToast('登录状态已失效，请重新登录')
+		uni.navigateTo({ url: '/pages/auth/login' })
+		return
+	}
 
 	// 基本信息校验
 	if (realName.value.trim().length < 2 || realName.value.trim().length > 64) {
