@@ -102,6 +102,14 @@ components:
 
 > 历史镜像。当前入口为 [版本化权威设计快照](docs/authoritative/DESIGN.md)，来源及摘要见 [manifest.json](docs/authoritative/manifest.json)。保留本文作为历史资料。
 
+## 2026-11-09 画像报告与独立角色扮演
+
+新增内嵌 `MoxiangReportSheet`、`MoxiangMetricsSheet`、`MoxiangRoleplaySheet`。继承上级档案/聊天页 `--canvas / --paper / --surface / --ink / --ink2 / --line / --accent2 / --accent-bg`，不新增 Token 或图片。卡片圆角 12px、页签与按钮圆角 8px、最小触摸高度 44px、左右留白 16px。报告以分节标题、确认版本与字段表分层。
+
+角色扮演是**独立功能**：每个预设角色有独立名字、专属 Token 色圆形字形徽标（`--accent / --navy / --sage / --brown`）与主动开场白，界面不出现「知遇」名称、不复用 `XsaZhiyuMark` 小猫形象、不新增吉祥物或外部图片资源。此决策覆盖本节历史条款与 §知遇 IP 中「统一复用小猫形象、不另造人物立绘」对**独立角色扮演**的限制；知遇本身的视觉规范不变。角色扮演不显示好感度、章节进度、评分或数值指标。
+
+Canvas 唯一色源为 `utils/portrait-chart-theme.uts`，只镜像 uni.scss；图线 2px，点直径 8px并带背景环，网格 1px。单色图以完整表格和编号轴补充，不靠颜色区分六维。空数据留白、不闭合未知雷达维度、不补零历史点；移动端点选版本读数。分享长图采用公开白名单，不是私密报告截图。实现边界见 [实施记录](docs/知遇报告与角色扮演实现.md)。
+
 ## Overview
 
 宣誓爱是一款以移动端小程序为第一目标的认真婚恋产品。视觉设计不是装饰层，而是帮助用户完成三件事：先通过**真实故事**产生理解，再通过**可信档案**降低不确定性，最后用**清晰行动**表达喜欢、申请认识或暂不继续。
