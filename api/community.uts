@@ -1917,7 +1917,69 @@ export async function getCommunityNotifications() {
   return okRes(list)
 }
 
-/** 服务端官方活动筛选契约；普通通知页仍获取全量后按标准分类。 */
+/** 通知分页 + 服务端分类：category 取 like/comment/follow/message/match/activity/system。 */
+export async function getCommunityNotificationPage(params: any = {}) {
+  const page = params.page != null ? Number(params.page) : 1
+  const pageSize = params.pageSize != null ? Number(params.pageSize) : 20
+  const category = params.category != null ? '' + params.category : ''
+  if (USE_MOCK) {
+    const raw = cloneList(mockCommunityNotifications as any[])
+    const mapped: any[] = []
+    for (let i = 0; i < raw.length; i++) {
+      const item = mapNotification(raw[i])
+      if (category != '' && '' + item.category != category && '' + item.type != category) continue
+      mapped.push(item)
+    }
+    const start = (page - 1) * pageSize
+    const items = start < mapped.length ? mapped.slice(start, start + pageSize) : []
+    let unreadCount = 0
+    for (let i = 0; i < mapped.length; i++) {
+      if (mapped[i].read != true) unreadCount += 1
+    }
+    return okRes({ items: items, page: page, pageSize: pageSize, total: mapped.length, unreadCount: unreadCount })
+  }
+  const data: any = { page: page, page_size: pageSize }
+  if (category != '') data.category = category
+  const res = await request({ url: '/notifications', method: 'GET', data: data })
+  if (!res.success) return res
+  const pageData: any = res.data != null ? res.data : {}
+  const rawItems = pageData.items != null ? (pageData.items as any[]) : []
+  const items: any[] = []
+  for (let i = 0; i < rawItems.length; i++) items.push(mapNotification(rawItems[i]))
+  return okRes({
+    items: items,
+    page: pageData.page != null ? Number(pageData.page) : page,
+    pageSize: pageData.page_size != null ? Number(pageData.page_size) : pageSize,
+    total: pageData.total != null ? Number(pageData.total) : items.length,
+    unreadCount: pageData.unread_count != null ? Number(pageData.unread_count) : 0
+  })
+}
+
+/** 分类未读汇总：by_category 用于通知页 Tab 角标。 */
+export async function getNotificationUnreadSummary() {
+  if (USE_MOCK) {
+    const raw = mockCommunityNotifications as any[]
+    const byCategory: any = {}
+    let total = 0
+    for (let i = 0; i < raw.length; i++) {
+      if (raw[i].read == true) continue
+      const item = mapNotification(raw[i])
+      const key = '' + item.type
+      byCategory[key] = (byCategory[key] != null ? Number(byCategory[key]) : 0) + 1
+      total += 1
+    }
+    return okRes({ total: total, byCategory: byCategory })
+  }
+  const res = await request({ url: '/notifications/unread-summary', method: 'GET' })
+  if (!res.success) return res
+  const data: any = res.data != null ? res.data : {}
+  return okRes({
+    total: data.total != null ? Number(data.total) : 0,
+    byCategory: data.by_category != null ? data.by_category : {}
+  })
+}
+
+/** 服务端官方活动筛选契约。 */
 export async function getOfficialCommunityActivities() {
   return await request({ url: '/notifications', method: 'GET', data: { page: 1, page_size: 50, ...OFFICIAL_ACTIVITY_QUERY } })
 }
