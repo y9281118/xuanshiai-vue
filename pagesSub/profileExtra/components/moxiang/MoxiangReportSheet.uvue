@@ -2,13 +2,13 @@
 	<XsaSheet :visible="visible" title="我的画像档案" :tall="true" @close="close">
 		<scroll-view scroll-y class="prt-scroll" :show-scrollbar="false">
 			<view class="prt-content">
-				<view class="prt-segments">
-					<button class="prt-segment" :class="{ active: subject == 'personal' }" @tap="chooseSubject('personal')">我的真实画像</button>
-					<button class="prt-segment" :class="{ active: subject == 'ideal_partner' }" @tap="chooseSubject('ideal_partner')">期待的长期关系</button>
+				<view class="prt-switcher">
+					<button class="prt-subject" :class="{ active: subject == 'personal' }" @tap="chooseSubject('personal')"><text class="prt-switch-label">个人画像</text><text class="prt-switch-caption">我的真实画像</text></button>
+					<button class="prt-subject" :class="{ active: subject == 'ideal_partner' }" @tap="chooseSubject('ideal_partner')"><text class="prt-switch-label">关系期待</text><text class="prt-switch-caption">期待的长期关系</text></button>
 				</view>
-				<view class="prt-segments">
-					<button class="prt-segment" :class="{ active: tab == 'report' }" @tap="tab = 'report'">画像报告</button>
-					<button class="prt-segment" :class="{ active: tab == 'metrics' }" @tap="tab = 'metrics'">数据报表</button>
+				<view class="prt-tabs">
+					<button class="prt-tab" :class="{ active: tab == 'report' }" @tap="tab = 'report'">画像报告</button>
+					<button class="prt-tab" :class="{ active: tab == 'metrics' }" @tap="tab = 'metrics'">数据报表</button>
 				</view>
 				<view v-if="loading" class="prt-state"><view class="prt-skeleton" /><view class="prt-skeleton prt-short" /><text>正在读取已确认版本…</text></view>
 				<view v-else-if="errorText != ''" class="prt-state">
@@ -118,10 +118,15 @@ onBeforeUnmount(() => { alive = false; clearPrivate() })
 </script>
 <style scoped>
 .prt-scroll { height: 76vh; }
-.prt-content { padding: 8px 16px 40px; display: flex; flex-direction: column; gap: 20px; color: var(--ink); }
-.prt-segments { display: flex; flex-direction: row; gap: 8px; }
-.prt-segment { margin: 0; padding: 0 8px; min-height: 44px; flex: 1; font-size: 13px; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-.prt-segment.active { background: var(--accent-bg); color: var(--accent2); border-color: var(--accent2); }
+.prt-content { padding: 8px 16px 40px; display: flex; flex-direction: column; gap: 16px; color: var(--ink); }
+.prt-switcher { display: flex; flex-direction: row; gap: 8px; }
+.prt-subject { margin: 0; padding: 9px 10px; min-height: 58px; flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; text-align: left; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+.prt-subject.active { background: var(--accent-bg); border-color: var(--accent2); }
+.prt-switch-label { color: var(--ink); font-size: 13px; font-weight: 600; }
+.prt-switch-caption { color: var(--ink2); font-size: 10px; }
+.prt-tabs { display: flex; flex-direction: row; gap: 4px; padding: 4px; background: var(--paper); border-radius: 8px; }
+.prt-tab { margin: 0; min-height: 40px; flex: 1; color: var(--ink2); font-size: 13px; background: transparent; border: 1px solid transparent; border-radius: 6px; }
+.prt-tab.active { color: var(--accent2); background: var(--surface); border-color: var(--line); font-weight: 600; }
 .prt-state { padding: 40px 8px; display: flex; flex-direction: column; align-items: stretch; gap: 16px; color: var(--ink2); text-align: center; font-size: 14px; }
 .prt-skeleton { height: 18px; background: var(--warm); border-radius: 4px; }
 .prt-short { width: 65%; }
@@ -140,7 +145,7 @@ onBeforeUnmount(() => { alive = false; clearPrivate() })
 .prt-footer { display: flex; flex-direction: column; gap: 16px; }
 .prt-button { margin: 0; min-height: 44px; padding: 0 16px; border-radius: 8px; font-size: 14px; background: var(--accent2); color: var(--text-invert); }
 .prt-secondary { background: var(--surface); color: var(--ink2); border: 1px solid var(--line); }
-.prt-button::after, .prt-segment::after { border: none; }
+.prt-button::after, .prt-tab::after, .prt-subject::after { border: none; }
 .prt-export { width: 100%; border-radius: 12px; }
 .prt-export-canvas { width: 600px; height: 1600px; position: fixed; left: -9999px; top: -9999px; pointer-events: none; }
 </style>

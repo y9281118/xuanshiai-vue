@@ -22,9 +22,12 @@
 				<view class="mpa-btn" @tap="goMaster('personal')"><text class="mpa-btn-text">继续自然聊天</text></view>
 				<view class="mpa-btn mpa-btn-ghost" @tap="openMemorySheet"><text class="mpa-btn-ghost-text">数据管理</text></view>
 			</view>
-			<view v-if="continuousState != null && continuousState.consent_granted" class="mpa-report-actions">
-				<view class="mpa-legacy-entry" @tap="openReport('report')"><text class="mpa-legacy-text">查看画像报告</text><text class="mpa-legacy-arrow">›</text></view>
-				<view class="mpa-legacy-entry" @tap="openReport('metrics')"><text class="mpa-legacy-text">查看数据报表</text><text class="mpa-legacy-arrow">›</text></view>
+			<view v-if="continuousState != null && continuousState.consent_granted" class="mpa-report-section">
+				<view class="mpa-section-heading"><text class="mpa-section-title">画像资料</text><text class="mpa-section-sub">已确认内容与历史数据</text></view>
+				<view class="mpa-report-actions">
+					<view class="mpa-report-item" @tap="openReport('report')"><view class="mpa-report-icon mpa-icon-report"><text>文</text></view><view class="mpa-report-copy"><text class="mpa-report-title">画像报告</text><text class="mpa-report-hint">阅读当前已确认版本</text></view><text class="mpa-legacy-arrow">›</text></view>
+					<view class="mpa-report-item" @tap="openReport('metrics')"><view class="mpa-report-icon mpa-icon-metrics"><text>数</text></view><view class="mpa-report-copy"><text class="mpa-report-title">数据报表</text><text class="mpa-report-hint">查看六维覆盖与版本变化</text></view><text class="mpa-legacy-arrow">›</text></view>
+				</view>
 			</view>
 			<view v-if="archive.personal.currentRevision || archive.personal.history.length > 0" class="mpa-legacy-entry" @tap="goLegacy('personal')"><text class="mpa-legacy-text">查看旧版画像记录</text><text class="mpa-legacy-arrow">›</text></view>
 			<view v-if="archive.idealPartner.currentRevision || archive.idealPartner.history.length > 0" class="mpa-legacy-entry" @tap="goLegacy('ideal_partner')"><text class="mpa-legacy-text">查看旧版伴侣画像记录</text><text class="mpa-legacy-arrow">›</text></view>
@@ -243,11 +246,22 @@ export default {
 .mpa-consent-title { font-family: var(--serif); font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
 .mpa-consent-copy { max-width: 320px; margin-bottom: 24px; }
 .mpa-consent-state .mpa-btn { width: 100%; max-width: 320px; }
-.mpa-actions { display: flex; gap: 12px; padding: 16px; }
+.mpa-actions { display: flex; gap: 10px; padding: 16px; }
 .mpa-actions .mpa-btn { flex: 1; }
 .mpa-btn-ghost { background: var(--surface); border: 1px solid var(--line); }
 .mpa-btn-ghost-text { color: var(--ink); font-size: 14px; font-weight: 600; }
-.mpa-legacy-entry { min-height: 44px; margin: 4px 16px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-.mpa-legacy-text { font-size: 13px; color: var(--muted); }
+.mpa-report-section { margin-top: 12px; padding: 18px 16px 20px; background: var(--paper); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.mpa-section-heading { display: flex; flex-direction: column; gap: 3px; margin-bottom: 12px; }
+.mpa-section-title { color: var(--ink); font-size: 16px; font-weight: 700; }
+.mpa-section-sub, .mpa-report-hint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.mpa-report-actions { display: flex; flex-direction: column; }
+.mpa-report-item { min-height: 66px; display: flex; flex-direction: row; align-items: center; gap: 12px; border-top: 1px solid var(--line); }
+.mpa-report-icon { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 15px; font-weight: 700; }
+.mpa-icon-report { color: var(--accent2); background: var(--accent-bg); }
+.mpa-icon-metrics { color: var(--navy); background: var(--surface-subtle, var(--paper)); }
+.mpa-report-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mpa-report-title { color: var(--ink); font-size: 14px; font-weight: 600; }
+.mpa-legacy-entry { min-height: 48px; margin: 6px 16px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.mpa-legacy-text { font-size: 12px; color: var(--muted); }
 .mpa-legacy-arrow { font-size: 22px; color: var(--accent); }
 </style>

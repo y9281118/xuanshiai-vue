@@ -1,6 +1,6 @@
 <template>
 	<view class="pmt-root">
-		<text class="pmt-copy">只展示当前已确认版本的冻结指标，不使用聊天中的待确认进度。</text>
+		<view class="pmt-intro"><text class="pmt-intro-title">画像数据概览</text><text class="pmt-copy">仅统计已确认版本。覆盖度表示信息完整情况，不代表人格评分。</text></view>
 		<view v-if="loading" class="pmt-state"><text>正在读取历史指标…</text></view>
 		<view v-else-if="errorText != ''" class="pmt-state">
 			<text>{{ errorText }}</text><button v-if="retryable" class="pmt-button" @tap="load">重新读取</button>
@@ -10,21 +10,24 @@
 				<button v-for="tab in tabs" :key="tab.key" class="pmt-tab" :class="{ active: chart == tab.key }" @tap="setChart(tab.key)">{{ tab.label }}</button>
 			</view>
 			<view class="pmt-plot">
-				<text class="pmt-heading">{{ chartTitle }}</text>
+				<view class="pmt-plot-heading"><text class="pmt-heading">{{ chartTitle }}</text><text class="pmt-plot-meta">已确认 · v{{ report.revisionNo }}</text></view>
 				<text v-if="chart == 'history' && metrics.series.length < 2" class="pmt-copy">{{ metrics.series.length == 0 ? '还没有可对比的历史版本；旧版本没有快照时不会补零。' : '目前只有一个指标版本，再确认一个版本后便可对比变化。' }}</text>
 				<text v-else-if="chart != 'history' && metrics.coveragePercent == null" class="pmt-copy">当前正式版本没有冻结指标。保留空白，不使用新对话的进度替代。</text>
 				<canvas v-else id="portraitMetricsCanvas" type="2d" class="pmt-canvas" :style="{ width: canvasWidth + 'px', height: canvasHeight + 'px' }" @tap="selectHistoryPoint" />
 				<text v-if="drawError != ''" class="pmt-copy">{{ drawError }}；下方表格仍可查看全部数值。</text>
 				<view v-if="chart == 'history' && selectedPoint != null" class="pmt-readout"><text>v{{ selectedPoint.revision_no }} · {{ selectedPoint.published_at != null ? selectedPoint.published_at.slice(0, 10) : '日期未提供' }} · {{ percentText(selectedPoint.overall_percent) }}</text></view>
 			</view>
-			<text class="pmt-copy">理解覆盖度只反映已确认信息的覆盖情况，不是人格分、关系质量或完成任务的分数。六维中每个维度按不同高置信证据数计为 0% / 50% / 100%，总值取平均。</text>
-			<view class="pmt-table">
-				<view class="pmt-row pmt-head"><text class="pmt-cell-name">当前版本 v{{ report.revisionNo }}</text><text class="pmt-cell">覆盖度</text><text class="pmt-cell">证据数</text></view>
-				<view v-for="(dim, index) in metrics.dimensions" :key="dim.key" class="pmt-row"><text class="pmt-cell-name">{{ index + 1 }} {{ dim.label }}</text><text class="pmt-cell">{{ percentText(dim.percent) }}</text><text class="pmt-cell">{{ dim.evidenceCount == null ? '未提供' : dim.evidenceCount }}</text></view>
-				<view class="pmt-row"><text class="pmt-cell-name">六维平均覆盖度</text><text class="pmt-cell">{{ percentText(metrics.coveragePercent) }}</text></view>
-				<view class="pmt-row"><text class="pmt-cell-name">已确认结构化字段 / 条目</text><text>{{ metrics.confirmedFieldCount == null ? '未提供' : metrics.confirmedFieldCount }} / {{ metrics.entryCount == null ? '未提供' : metrics.entryCount }}</text></view>
+			<view class="pmt-data-section">
+				<view class="pmt-section-heading"><text class="pmt-heading">六维数据</text><text class="pmt-section-sub">证据数按高置信信息统计</text></view>
+				<view class="pmt-table">
+					<view class="pmt-row pmt-head"><text class="pmt-cell-name">维度</text><text class="pmt-cell">覆盖度</text><text class="pmt-cell pmt-cell-evidence">证据数</text></view>
+					<view v-for="(dim, index) in metrics.dimensions" :key="dim.key" class="pmt-row"><text class="pmt-cell-name"><text class="pmt-index">{{ index + 1 }}</text>{{ dim.label }}</text><text class="pmt-cell pmt-value-strong">{{ percentText(dim.percent) }}</text><text class="pmt-cell pmt-cell-evidence">{{ dim.evidenceCount == null ? '—' : dim.evidenceCount }}</text></view>
+					<view class="pmt-row pmt-total"><text class="pmt-cell-name">六维平均</text><text class="pmt-cell pmt-value-strong">{{ percentText(metrics.coveragePercent) }}</text><text class="pmt-cell pmt-cell-evidence">—</text></view>
+				</view>
+				<view class="pmt-summary-row"><text>已确认字段</text><text>{{ metrics.confirmedFieldCount == null ? '未提供' : metrics.confirmedFieldCount }}</text></view>
+				<view class="pmt-summary-row"><text>画像条目</text><text>{{ metrics.entryCount == null ? '未提供' : metrics.entryCount }}</text></view>
 			</view>
-			<text class="pmt-heading">版本明细</text>
+			<view class="pmt-section-heading"><text class="pmt-heading">历史版本</text><text class="pmt-section-sub">选择版本查看当时覆盖度</text></view>
 			<text v-if="metrics.series.length == 0" class="pmt-copy">暂无历史指标。继续聊天并确认新的成稿后，将记录新的版本点。</text>
 			<button v-for="(point, index) in metrics.series" :key="point.revision_id" class="pmt-history" @tap="pickPoint(index)"><text>v{{ point.revision_no }} · {{ point.published_at != null ? point.published_at.slice(0, 10) : '日期未提供' }}</text><text>{{ percentText(point.overall_percent) }}</text></button>
 			<text v-if="hasMore" class="pmt-copy">仅展示最近 {{ historyLimit }} 个指标版本。</text>
@@ -88,22 +91,32 @@ onBeforeUnmount(() => { alive = false; requestSeq++; drawSeq++; metrics.value = 
 </script>
 <style scoped>
 .pmt-root { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.pmt-copy { font-size: 12px; line-height: 1.8; color: var(--ink2); }
-.pmt-heading { font-size: 15px; font-weight: 600; color: var(--ink); }
+.pmt-intro, .pmt-section-heading { display: flex; flex-direction: column; gap: 4px; }
+.pmt-intro-title { font-size: 19px; font-weight: 700; color: var(--ink); }
+.pmt-copy { font-size: 12px; line-height: 1.7; color: var(--ink2); }
+.pmt-heading { font-size: 15px; font-weight: 700; color: var(--ink); }
+.pmt-section-sub, .pmt-plot-meta { font-size: 11px; color: var(--ink2); }
 .pmt-state { padding: 32px 12px; text-align: center; color: var(--ink2); font-size: 14px; }
-.pmt-tabs { display: flex; flex-direction: row; gap: 6px; }
-.pmt-tab, .pmt-button { margin: 0; padding: 0 10px; min-height: 44px; border-radius: 8px; font-size: 13px; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); }
+.pmt-tabs { display: flex; flex-direction: row; gap: 6px; padding: 4px; background: var(--paper); border-radius: 8px; }
+.pmt-tab, .pmt-button { margin: 0; padding: 0 10px; min-height: 44px; border-radius: 6px; font-size: 13px; color: var(--ink2); background: transparent; border: 1px solid transparent; }
 .pmt-tab { flex: 1; }
-.pmt-tab.active { color: var(--accent2); background: var(--accent-bg); border-color: var(--accent2); }
-.pmt-plot { padding: 16px 0; display: flex; flex-direction: column; gap: 12px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
-.pmt-plot > .pmt-copy { padding: 0 16px; }
+.pmt-tab.active { color: var(--accent2); background: var(--surface); border-color: var(--line); font-weight: 600; }
+.pmt-plot { padding: 16px 8px; display: flex; flex-direction: column; gap: 12px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+.pmt-plot-heading { width: 100%; padding: 0 8px; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.pmt-plot > .pmt-copy { padding: 0 8px; }
 .pmt-canvas { max-width: 100%; }
-.pmt-readout { padding: 8px 12px; font-size: 12px; color: var(--ink); background: var(--warm); border-radius: 6px; }
-.pmt-table { border-top: 1px solid var(--line); }
-.pmt-row { display: flex; flex-direction: row; align-items: center; gap: 8px; min-height: 48px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink2); }
-.pmt-head { color: var(--ink); font-weight: 600; }
-.pmt-cell-name { flex: 1; min-width: 0; }
-.pmt-cell { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
-.pmt-history { margin: 0; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink2); font-size: 12px; display: flex; flex-direction: row; justify-content: space-between; }
+.pmt-readout { padding: 8px 12px; font-size: 12px; color: var(--ink); background: var(--accent-bg); border-radius: 6px; }
+.pmt-data-section { padding: 14px 12px 8px; background: var(--paper); border-radius: 8px; }
+.pmt-table { margin-top: 12px; border-top: 1px solid var(--line); }
+.pmt-row { display: flex; flex-direction: row; align-items: center; gap: 6px; min-height: 46px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink2); }
+.pmt-head { min-height: 38px; color: var(--ink2); font-size: 11px; font-weight: 600; }
+.pmt-cell-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.pmt-cell { width: 58px; flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.pmt-cell-evidence { width: 42px; }
+.pmt-index { width: 20px; height: 20px; line-height: 20px; text-align: center; flex-shrink: 0; color: var(--ink2); background: var(--surface); border-radius: 4px; font-size: 10px; }
+.pmt-value-strong { color: var(--ink); font-weight: 600; }
+.pmt-total { color: var(--ink); font-weight: 700; }
+.pmt-summary-row { min-height: 38px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); color: var(--ink2); font-size: 12px; }
+.pmt-history { margin: 0; padding: 10px 12px; min-height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink2); font-size: 12px; display: flex; flex-direction: row; justify-content: space-between; }
 .pmt-tab::after, .pmt-button::after, .pmt-history::after { border: none; }
 </style>
