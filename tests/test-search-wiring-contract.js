@@ -112,9 +112,11 @@ check('新增测试已纳入 npm test 运行器', () => {
   assert.ok(runTests.includes('test-search-wiring-contract.js'), 'search wiring contract must run in core')
 })
 
-check('后端不支持的筛选保持禁用/隐藏', () => {
-  assert.ok(page.includes('暂不支持：筛选接口暂无认证字段'), 'certification toggle disabled with reason')
-  assert.ok(page.includes('暂不支持：筛选接口暂无家乡字段'), 'hometown filter disabled with reason')
+check('Q20 认证与家乡筛选已接通', () => {
+  assert.ok(page.includes('仅展示实名认证通过的用户'), 'certification toggle is enabled with clear copy')
+  assert.ok(page.includes('hometownColumns') && page.includes('hometownCityCode'), 'hometown filter uses the 6-digit code tree')
+  assert.ok(mapping.includes('params.certified_only = true'), 'certified_only must be sent to discovery')
+  assert.ok(mapping.includes("params.hometown_city_code = '' + input.hometownCityCode"), 'hometown city code must be sent to discovery')
   assert.ok(!page.includes("'小学'"), '小学 not representable in storage domain')
   assert.ok(!page.includes("'技校'"), '技校 not representable in storage domain')
   assert.ok(page.includes('按所选学历及以上筛选'), 'education semantics stated in UI')

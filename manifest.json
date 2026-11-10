@@ -18,6 +18,9 @@
 		},
 		"usingComponents": true,
 		"lazyCodeLoading": "requiredComponents",
+		"requiredPrivateInfos": [
+			"chooseLocation"
+		],
 		"permission": {
 			"scope.userLocation": {
 				"desc": "用于推荐附近的用户"

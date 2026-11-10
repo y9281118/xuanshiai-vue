@@ -1076,7 +1076,8 @@ export async function sendMessage(
   type: string = 'text',
   clientMessageId: string = '',
   subject: MessageSubject | null = null,
-  mediaId: number | null = null
+  mediaId: number | null = null,
+  quoteMessageId: number | null = null
 ) {
   const subjectContext = resolveMessageSubject(subject)
   if (subjectContext.valid != true) return messageSubjectFailure(subjectContext)
@@ -1111,7 +1112,12 @@ export async function sendMessage(
   const response = normalizeBusinessResponse(await messageRequest({
     url: '/chat/sessions/' + sessionId + '/messages',
     method: 'POST',
-    data: { type: 1, content: content.trim(), client_message_id: resolvedClientMessageId }
+    data: {
+      type: 1,
+      content: content.trim(),
+      client_message_id: resolvedClientMessageId,
+      quote_message_id: quoteMessageId != null && quoteMessageId > 0 ? quoteMessageId : null
+    }
   }))
   if (response == null || response.success != true) {
     if (response != null && Number(response.code) == 409) {
@@ -1181,6 +1187,20 @@ export async function uploadChatMedia(
     return failResponse('聊天媒体暂未接入真实服务，请先发送文字消息', 'CHAT_MEDIA_NOT_AVAILABLE')
   }
   return failResponse('聊天媒体上传契约尚未开放', 'CHAT_MEDIA_NOT_AVAILABLE')
+}
+
+/** 仅自己隐藏一条消息；对方不受影响。 */
+export async function hideMessageForMe(messageId: number, subject: MessageSubject | null = null) {
+  const subjectContext = resolveMessageSubject(subject)
+  if (subjectContext.valid != true) return messageSubjectFailure(subjectContext)
+  const parentBackendFailure = parentBackendUnavailable(subjectContext)
+  if (parentBackendFailure != null) return parentBackendFailure
+  if (!isPositiveInteger(messageId)) return failResponse('无效的消息', 'INVALID_MESSAGE')
+  const response = normalizeBusinessResponse(await messageRequest({
+    url: '/chat/messages/' + messageId + '/for-me',
+    method: 'DELETE'
+  }))
+  return protectSubjectResponse(response, subjectContext)
 }
 
 export async function revokeMessage(

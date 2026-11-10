@@ -299,10 +299,7 @@ export async function discardEmotionLabSession(sessionId: string) {
   })
 }
 
-/**
- * 「合拍的人」推荐列表。
- * 后端 /emotion-lab/matches 尚未就绪，当前走 Mock；联调完成后去掉 EMOTION_LAB_USE_MOCK 短路即可。
- */
+/** 「合拍的人」推荐列表：后端 /emotion-lab/matches 已就绪，失败时回退本地数据。 */
 export async function getEmotionLabMatches(mbtiType: string = '') {
   if (EMOTION_LAB_USE_MOCK) {
     try {

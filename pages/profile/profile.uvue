@@ -52,6 +52,7 @@
 						</view>
 						<text class="progress-percent">{{ completionLoaded ? profileCompletion + '%' : '—' }}</text>
 					</view>
+					<text v-if="completionRulesVersion != ''" class="progress-rule">规则版本 {{ completionRulesVersion }}</text>
 				</view>
 				<view class="edit-profile-btn" @tap="onEditProfile">
 					<text class="edit-profile-text">编辑资料</text>
@@ -255,6 +256,7 @@ const overviewError = ref('')
 // 与 VIP 无关；读取失败显示「—」而不是 0%。
 const profileCompletion = ref(0)
 const completionLoaded = ref(false)
+const completionRulesVersion = ref('')
 const aiPersonaTitle = ref('')
 const aiPersonaTags = ref([] as string[])
 const aiAttachmentStyle = ref('')
@@ -424,6 +426,7 @@ const loadOverview = async () => {
 			if (completion != null && completion.success && completion.data != null) {
 				const completionData = completion.data as any
 				const score = completionData.score
+				completionRulesVersion.value = completionData.rules_version != null ? '' + completionData.rules_version : ''
 				if (score != null && !isNaN(Number(score))) {
 					profileCompletion.value = Math.round(Number(score))
 					completionLoaded.value = true
@@ -1023,6 +1026,13 @@ page {
 .progress-percent {
 	font-size: 12px;
 	color: var(--profile-accent);
+}
+
+.progress-rule {
+	display: block;
+	margin-top: 4px;
+	font-size: 10px;
+	color: var(--muted);
 }
 
 .overview-error-bar {

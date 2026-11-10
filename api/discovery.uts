@@ -27,7 +27,14 @@ export function mapCard(row: any, fallbackName: string = '用户'): any {
     if (item == null) continue
     const answer = item.answer != null ? ('' + item.answer).trim() : ''
     if (answer == '') continue
-    qaAnswers.push({ question: item.question != null ? '' + item.question : '关于我', answer: answer })
+    let mediaUrl = ''
+    const mediaList = item.media != null && Array.isArray(item.media) ? item.media as any[] : []
+    if (mediaList.length > 0 && mediaList[0] != null) {
+      const media = mediaList[0]
+      const url = media.file_url != null ? media.file_url : media.thumbnail_url
+      if (url != null) mediaUrl = resolveMediaUrl('' + url)
+    }
+    qaAnswers.push({ question: item.question != null ? '' + item.question : '关于我', answer: answer, mediaUrl: mediaUrl })
   }
   const onlineText = card.online != null ? '' + card.online : ''
   return {

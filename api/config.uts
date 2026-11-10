@@ -27,12 +27,9 @@ export const PAPER_PLANE_CHANCE_USE_MOCK = true
 // 红娘喜讯：服务端消费端接口尚未部署，默认关闭演示数据；仅本地预览/测试可打开。
 export const GOOD_NEWS_USE_MOCK = false
 
-// 情感实验室（MBTI）开关集中在此管理。
-// 后端 app/api/router.py 目前没有任何 /emotion-lab/* 路由，真实调用一律 404
-// （服务器实测返回 {"detail":"Not Found"}，表现为整页「暂时无法加载」）。
-// 除非后端补齐 summary/sessions/answers/submit/profile-source/discard/matches，
-// 否则必须保持 true。tests/test-emotion-lab-offline.js 会守住这一行。
-export const EMOTION_LAB_USE_MOCK = true
+// 情感实验室（MBTI）开关集中在此管理。后端 /emotion-lab/* 已就绪，走真实接口；
+// 失败时页面保留本地题库降级，不整页白屏。
+export const EMOTION_LAB_USE_MOCK = false
 export const LAN_API_BASE_URL = API_BASE_URL == LOCAL_API_BASE_URL ? LOCAL_LAN_API_BASE_URL : API_BASE_URL
 
 // FastAPI mounts its router directly at /api/v1.

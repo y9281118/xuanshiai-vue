@@ -385,6 +385,16 @@ function profileMediaPath(kind: string): string {
   return '/users/me/photos'
 }
 
+/** 头像人脸核验：仅能核验本人当前头像；Provider 未配置时返回 503。 */
+export async function verifyFace(avatarUrl: string) {
+  return request({
+    url: '/users/me/face-verify',
+    method: 'POST',
+    data: { avatar_url: avatarUrl },
+    mockData: { verified: true, provider: 'mock', score: 1, remaining_attempts: 2 }
+  })
+}
+
 export async function uploadUserProfileMedia(filePath: string, kind: string) {
   const normalizedKind = kind == 'avatar' || kind == 'background' ? kind : 'photo'
   if (USE_MOCK) {

@@ -17,6 +17,13 @@
 			</view>
 			<view
 				class="tab"
+				:class="{ active: currentTab === 'match' }"
+				@click="switchTab('match')"
+			>
+				<text class="tab-text">匹配</text>
+			</view>
+			<view
+				class="tab"
 				:class="{ active: currentTab === 'activity' }"
 				@click="switchTab('activity')"
 			>
@@ -86,6 +93,7 @@
 			const t = n.type != null ? ('' + n.type) : ''
 			if (currentTab.value == 'comment' && t == 'comment') out.push(n)
 			else if (currentTab.value == 'like' && t == 'like') out.push(n)
+			else if (currentTab.value == 'match' && t == 'match') out.push(n)
 			else if (
 				currentTab.value == 'activity' &&
 				t == 'activity' &&
@@ -100,6 +108,7 @@
 	const emptyText = computed(() => {
 		if (currentTab.value == 'comment') return '暂无评论'
 		if (currentTab.value == 'like') return '暂无点赞'
+		if (currentTab.value == 'match') return '暂无匹配通知'
 		if (currentTab.value == 'activity') return '暂无活动通知'
 		return '暂无通知'
 	})
@@ -107,6 +116,7 @@
 	const emptyDesc = computed(() => {
 		if (currentTab.value == 'comment') return '收到的评论会出现在这里'
 		if (currentTab.value == 'like') return '收到的点赞会出现在这里'
+		if (currentTab.value == 'match') return '匹配成功与合拍提醒会出现在这里'
 		return '官方活动报名、审核与签到进展会出现在这里'
 	})
 

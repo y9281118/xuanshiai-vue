@@ -124,7 +124,7 @@
 						</view>
 						<view class="mm-bubble mm-bubble-master">
 							<text class="mm-bubble-text">{{ msg.text }}</text>
-							<view v-if="msg.canListen && msg.text != ''" class="mm-listen" @tap="playTTS(msg.text)">
+							<view v-if="msg.canListen && voiceEnabled && msg.text != ''" class="mm-listen" @tap="playTTS(msg.text)">
 								<text class="mm-listen-text">听它读</text>
 							</view>
 						</view>
@@ -257,7 +257,7 @@
 						<text class="mm-voice-btn-text">{{ voiceActionLabel }}</text>
 					</view>
 					<view
-						v-if="masterState == 'idle' && lastReplyText != ''"
+						v-if="voiceEnabled && masterState == 'idle' && lastReplyText != ''"
 						class="mm-listen-btn"
 						@tap="requestTTS"
 					>
@@ -288,6 +288,7 @@ import { displayFieldValue } from '@/utils/profile-field-display.uts'
 import { categoryLabel } from '@/utils/moxiang-dimension.uts'
 import { loadMoxiangTrace } from '@/utils/moxiangTrace.uts'
 import { PcmPlayer } from '@/utils/pcm-player.uts'
+import { getAiCapabilities } from '@/api/ai-capabilities.uts'
 
 // ===== 导航与安全区域 =====
 const systemInfo = uni.getSystemInfoSync()
@@ -295,6 +296,15 @@ const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBa
 const menuButtonInfo = uni.getMenuButtonBoundingClientRect()
 const navPadTop = menuButtonInfo != null && menuButtonInfo.top > statusBarHeight ? menuButtonInfo.top : statusBarHeight + 6
 const menuButtonSpacing = menuButtonInfo != null ? (systemInfo.windowWidth - menuButtonInfo.left) : 8
+
+onMounted(async () => {
+	try {
+		const res = await getAiCapabilities()
+		voiceEnabled.value = res != null && res.success == true && res.data != null && res.data.voice == true
+	} catch (e) {
+		voiceEnabled.value = false
+	}
+})
 
 // ===== 状态 =====
 // 产品能力仍叫“墨相”，对话中的 AI 角色使用独立身份名，避免把 LLM
@@ -305,6 +315,7 @@ const connectError = ref('')
 const sessionStartFailed = ref(false)
 const masterState = ref('idle')  // idle / thinking / listening / speaking
 const inputMode = ref('text')    // text / voice
+const voiceEnabled = ref(false)
 const inputText = ref('')
 const partialText = ref('')
 const transcriptPreview = ref<{ transcriptId: string, clientTurnId: string, sessionId: string, text: string }>({ transcriptId: '', clientTurnId: '', sessionId: '', text: '' })
