@@ -110,7 +110,41 @@ async function main() {
     console.log('SKIP test-personal-tags.js 后端目录不可访问（设置 XSA_BACKEND_ROOT 可启用同步校验）')
     process.exit(0)
   }
-  require('node:child_process').execFileSync('python', [path.join(root, 'scripts/sync-profile-tags.py'), '--check', '--backend-root', backendRoot], { stdio: 'inherit' })
+  // 解释器解析：本机 `python` 可能指向 Windows Store 存根（执行返回 9009），
+  // `py` 也可能「找不到默认 Python」，直接写死 'python' 会让这条用例在没装
+  // Store 版解释器的机器上恒失败。优先用后端仓库自己的 venv——同步脚本读的
+  // 就是后端常量，用它的解释器最贴近；其余候选兜底；都不可用时显式 SKIP，
+  // 但脚本自身校验失败仍然抛错（不能把「目录不一致」当成「解释器缺失」）。
+  const venvPython = process.platform === 'win32'
+    ? path.join(backendRoot, '.venv', 'Scripts', 'python.exe')
+    : path.join(backendRoot, '.venv', 'bin', 'python')
+  const pythonCandidates = [
+    process.env.XSA_PYTHON,
+    fs.existsSync(venvPython) ? venvPython : null,
+    'python',
+    'python3',
+    'py'
+  ].filter(Boolean)
+  let catalogChecked = false
+  for (const python of pythonCandidates) {
+    try {
+      require('node:child_process').execFileSync(
+        python,
+        [path.join(root, 'scripts/sync-profile-tags.py'), '--check', '--backend-root', backendRoot],
+        { stdio: 'inherit' }
+      )
+      catalogChecked = true
+      break
+    } catch (error) {
+      // 9009 = 该候选不可用（Store 存根）；ENOENT = 命令不存在。换下一个候选。
+      if (error.code === 'ENOENT' || error.status === 9009) continue
+      throw error
+    }
+  }
+  if (!catalogChecked) {
+    console.log('SKIP test-personal-tags.js 未找到可用的 Python 解释器（设置 XSA_PYTHON=<解释器路径> 可启用同步校验）')
+    process.exit(0)
+  }
   assert.equal(catalog.categories.length, 17)
   assert.deepEqual(catalog.categories.map(category => category.label), ['性格特质', '运动', '阅读', '影视综', '音乐', '文艺创作', '二次元', '旅行户外', '美食', '咖啡茶酒', '游戏', '休闲娱乐', '宠物', '植物园艺', '汽车文化', '生活习惯', '知识成长'])
   assert.equal(catalog.categories.reduce((count, category) => count + category.options.length, 0), 323)
