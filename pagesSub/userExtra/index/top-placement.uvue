@@ -11,6 +11,7 @@
 				<view v-else class="remaining-card"><text class="remaining-label">置顶权益</text><text class="remaining-days">开通中</text><text class="remaining-copy">权益生效后自动刷新</text></view>
 				<view class="success-order"><text>套餐 · {{ successOrder.planName }}</text><text>¥{{ successOrder.amount }}</text></view>
 				<view class="success-order"><text>订单号</text><text>{{ successOrder.orderNo }}</text></view>
+				<view v-if="paymentPending" class="panel-action" @tap="refreshPlacementStatus"><text>{{ refreshingStatus ? '刷新中…' : '刷新开通状态' }}</text></view>
 				<view class="success-action" @tap="goBack"><text>返回广场</text></view>
 			</view>
 
@@ -23,62 +24,75 @@
 						<view class="nav-placeholder"></view>
 					</view>
 					<text class="hero-title">置顶尊享特权</text>
-					<text class="hero-copy">优先曝光 · 提升脱单成功率</text>
+					<text class="hero-copy">优先曝光 · 让更多人看到你的资料</text>
 				</view>
 
-				<!-- 2. 状态提示卡片（奶白风，叠压 Banner） -->
-				<view class="active-status">
+				<!-- 2. 状态提示卡片（奶白风，叠压 Banner）。读取失败时不展示，
+				     否则会把「不知道」说成「您当前还未置顶」。 -->
+				<view class="active-status" v-if="loadError == ''">
 					<text class="active-title">{{ activeStatus.active ? '您当前正在置顶' : '您当前还未置顶' }}</text>
-					<text class="active-copy">{{ activeStatus.active ? '继续购买会在现有有效期基础上延长' : '置顶曝光，让更多优质用户看见你' }}</text>
+					<text class="active-copy">{{ activeStatus.active ? '继续购买会在现有有效期基础上延长' : '置顶期间，你的资料会在广场靠前展示' }}</text>
 				</view>
 
-				<!-- 3. 置顶推荐模块：有推荐头像才展示，避免整块空白看起来像加载失败 -->
-				<view class="recommend-module" v-if="recommendImages.length > 0">
-					<view class="module-head">
-						<text class="module-title">置顶推荐</text>
-						<view class="recommend-btn" @tap="openPayment"><text>立即置顶</text></view>
-					</view>
-					<view class="recommend-avatars">
-						<image v-for="(img, index) in recommendImages" :key="index" class="recommend-avatar" :src="img" mode="aspectFill"></image>
-					</view>
+				<!-- 读取失败 / 目录为空都必须成态并给重试：原先两种情况都只剩 Banner，
+				     底部支付栏又因 plans 为空而隐藏，用户没有任何可操作入口。 -->
+				<view v-if="loadError != ''" class="state-panel">
+					<text>{{ loadError }}</text>
+					<view class="panel-action" @tap="loadStatus"><text>重新加载</text></view>
 				</view>
-
-				<!-- 4. 置顶套餐选择区 -->
-				<view class="plans-section">
-					<text class="section-title">选择置顶套餐</text>
-					<view class="plans-wrap">
-						<view v-for="(plan, index) in plans" :key="plan.id" class="plan-card" :class="{ selected: selectedPlanIndex === index }" @tap="selectPlan(index)">
-							<view v-if="plan.tag != '' || plan.recommended" class="plan-tag">{{ plan.tag != '' ? plan.tag : '推荐' }}</view>
-							<text class="plan-name">{{ plan.name }}</text>
-							<text class="plan-duration">有效期 {{ plan.days }} 天</text>
-							<!-- 卡片内直接给价格，用户才能横向比价；原先只在底部合计出现 -->
-							<text class="plan-price">¥{{ plan.price }}</text>
+				<view v-else-if="plans.length == 0" class="state-panel">
+					<text>置顶套餐暂未上架，请稍后再来</text>
+					<view class="panel-action" @tap="loadStatus"><text>重新加载</text></view>
+				</view>
+				<view v-else class="purchase-body">
+					<!-- 3. 置顶推荐模块：有推荐头像才展示，避免整块空白看起来像加载失败 -->
+					<view class="recommend-module" v-if="recommendImages.length > 0">
+						<view class="module-head">
+							<text class="module-title">置顶推荐</text>
+							<view class="recommend-btn" @tap="openPayment"><text>立即置顶</text></view>
+						</view>
+						<view class="recommend-avatars">
+							<image v-for="(img, index) in recommendImages" :key="index" class="recommend-avatar" :src="img" mode="aspectFill" @error="onRecommendImageError(index)"></image>
 						</view>
 					</view>
-				</view>
 
-				<!-- 5. 置顶专属权益（潮流图标风） -->
-				<view class="benefits-section">
-					<text class="benefit-heading">置顶专属权益</text>
-					<view class="benefit-icons">
-						<view v-for="item in benefits" :key="item.title" class="benefit-item">
-							<view class="benefit-icon"><text>{{ item.icon }}</text></view>
-							<text class="benefit-title">{{ item.title }}</text>
-							<text class="benefit-desc">{{ item.desc }}</text>
+					<!-- 4. 置顶套餐选择区 -->
+					<view class="plans-section">
+						<text class="section-title">选择置顶套餐</text>
+						<view class="plans-wrap">
+							<view v-for="(plan, index) in plans" :key="plan.id" class="plan-card" :class="{ selected: selectedPlanIndex === index }" @tap="selectPlan(index)">
+								<view v-if="plan.tag != '' || plan.recommended" class="plan-tag">{{ plan.tag != '' ? plan.tag : '推荐' }}</view>
+								<text class="plan-name">{{ plan.name }}</text>
+								<text class="plan-duration">有效期 {{ plan.days }} 天</text>
+								<!-- 卡片内直接给价格，用户才能横向比价；原先只在底部合计出现 -->
+								<text class="plan-price">¥{{ plan.price }}</text>
+							</view>
 						</view>
 					</view>
-				</view>
 
-				<!-- 6. 底部温馨提示（轻量悬浮式） -->
-				<view class="notice-card">
-					<text class="notice-copy">置顶服务为虚拟商品，购买成功后不支持退款。置顶期间系统将优先向匹配用户展示你的资料。</text>
+					<!-- 5. 置顶专属权益（潮流图标风） -->
+					<view class="benefits-section">
+						<text class="benefit-heading">置顶专属权益</text>
+						<view class="benefit-icons">
+							<view v-for="item in benefits" :key="item.title" class="benefit-item">
+								<view class="benefit-icon"><text>{{ item.icon }}</text></view>
+								<text class="benefit-title">{{ item.title }}</text>
+								<text class="benefit-desc">{{ item.desc }}</text>
+							</view>
+						</view>
+					</view>
+
+					<!-- 6. 底部温馨提示（轻量悬浮式） -->
+					<view class="notice-card">
+						<text class="notice-copy">置顶服务为虚拟商品，购买成功后不支持退款。置顶期间系统将优先向匹配用户展示你的资料。</text>
+					</view>
 				</view>
 
 				<view class="bottom-space"></view>
 			</view>
 		</scroll-view>
 
-		<view v-if="!loading && !paymentSuccess && plans.length > 0" class="footer-safe">
+		<view v-if="!loading && !paymentSuccess && loadError == '' && plans.length > 0" class="footer-safe">
 			<view class="total-row"><text>合计：</text><text class="total-price">¥{{ selectedPlan.price }}</text></view>
 			<view class="pay-button" :class="{ disabled: paying }" @tap="openPayment"><text>{{ paying ? '支付确认中…' : '确认支付' }}</text></view>
 		</view>
@@ -95,12 +109,14 @@ import XsaPaymentSheet from '@/pagesSub/userExtra/components/XsaPaymentSheet.uvu
 const plans = ref<TopPlacementPlan[]>([])
 const benefits = [
 	{ icon: '↑', title: '优先展示', desc: '首页靠前' },
-	{ icon: '◎', title: '精准触达', desc: '同城优质' },
-	{ icon: '♡', title: '更多匹配', desc: '喜欢翻倍' }
+	{ icon: '◎', title: '同城曝光', desc: '同城用户优先看到' },
+	{ icon: '♡', title: '更多曝光', desc: '展示位次靠前' }
 ]
 const selectedPlanIndex = ref(0)
 const activeStatus = ref<any>({ active: false, remainingDays: 0, expiresAt: 0 })
 const loading = ref(true)
+const loadError = ref('')
+const refreshingStatus = ref(false)
 const paymentVisible = ref(false)
 const paying = ref(false)
 const paymentSuccess = ref(false)
@@ -112,12 +128,19 @@ const selectedPlan = computed(() => plans.value.length > selectedPlanIndex.value
 
 const loadStatus = async () => {
 	loading.value = true
+	loadError.value = ''
 	try {
 		const [statusResult, packageResult] = await Promise.all([getTopPlacementStatus(), getTopPlacementPackages()])
 		activeStatus.value = statusResult.success && statusResult.data != null ? statusResult.data : { active: false, remainingDays: 0, expiresAt: 0 }
 		if (packageResult.success && packageResult.data != null) {
 			plans.value = packageResult.data as TopPlacementPlan[]
 			if (selectedPlanIndex.value >= plans.value.length) selectedPlanIndex.value = 0
+		} else {
+			// 目录拉不到就必须成错误态：留着空 plans 会让页面只剩 Banner，
+			// 底部支付栏同时被 plans.length > 0 隐藏，用户没有任何重试入口。
+			plans.value = []
+			loadError.value = packageResult.message != null && '' + packageResult.message != '' ? '' + packageResult.message : '置顶套餐加载失败，请重新加载'
+			return
 		}
 		const plazaResult = await getDiscoveryPlaza({ page: 1, page_size: 4 })
 		if (plazaResult.success && plazaResult.data != null) {
@@ -132,10 +155,51 @@ const loadStatus = async () => {
 		}
 	} catch (e) {
 		activeStatus.value = { active: false, remainingDays: 0, expiresAt: 0 }
+		plans.value = []
+		loadError.value = '网络异常，置顶状态加载失败，请重新加载'
 	} finally { loading.value = false }
 }
 const selectPlan = (index: number) => { if (!paying.value) selectedPlanIndex.value = index }
-const openPayment = () => { if (!paying.value && selectedPlan.value.id != '') paymentVisible.value = true }
+const openPayment = () => {
+	if (paying.value) return
+	if (plans.value.length == 0 || selectedPlan.value.id == '') {
+		uni.showToast({ title: loadError.value != '' ? loadError.value : '置顶套餐暂未上架，请稍后再来', icon: 'none' })
+		return
+	}
+	paymentVisible.value = true
+}
+const onRecommendImageError = (index: number) => {
+	if (index < 0 || index >= recommendImages.value.length) return
+	const rest = recommendImages.value.slice()
+	rest.splice(index, 1)
+	recommendImages.value = rest
+}
+// 到账中态原先只能靠返回再进来刷新，这里给一个就地重读状态的入口。
+const refreshPlacementStatus = async () => {
+	if (refreshingStatus.value) return
+	refreshingStatus.value = true
+	try {
+		const res = await getTopPlacementStatus()
+		if (!res.success || res.data == null) {
+			uni.showToast({ title: res.message != null && '' + res.message != '' ? '' + res.message : '开通状态读取失败，请稍后重试', icon: 'none' })
+			return
+		}
+		if (res.data.active != true) {
+			uni.showToast({ title: '权益还在开通中，请稍后再刷新', icon: 'none' })
+			return
+		}
+		activeStatus.value = res.data
+		const order = successOrder.value
+		if (order != null) {
+			order.remainingDays = Number(res.data.remainingDays != null ? res.data.remainingDays : order.remainingDays)
+			order.expiresAt = Number(res.data.expiresAt != null && Number(res.data.expiresAt) > 0 ? res.data.expiresAt : order.expiresAt)
+		}
+		paymentPending.value = false
+		successNotice.value = '置顶已生效，你的资料会在广场靠前展示。'
+	} catch (e) {
+		uni.showToast({ title: '网络异常，开通状态读取失败', icon: 'none' })
+	} finally { refreshingStatus.value = false }
+}
 const closePayment = () => { if (!paying.value) paymentVisible.value = false }
 const confirmPayment = async () => {
 	if (paying.value) return
@@ -168,6 +232,7 @@ onMounted(() => { loadStatus() })
 .top-page { min-height: 100vh; background: #FFFFFF; color: #111111; }
 .top-scroll { height: 100vh; }
 .purchase-content { display: flex; flex-direction: column; padding-bottom: 150px; }
+.purchase-body { display: flex; flex-direction: column; }
 
 /* 1. Banner */
 .hero-banner { position: relative; display: flex; flex-direction: column; align-items: center; padding: 0 20px 60px; background: linear-gradient(152deg, #6BA88A 0%, #8EC3AD 52%, #AFD6C4 100%); border-radius: 0 0 30px 30px; overflow: hidden; }
@@ -239,5 +304,5 @@ onMounted(() => { loadStatus() })
 .remaining-copy { color: #3A4552; font-size: 11px; }
 .success-order { width: 100%; padding: 12px 0; border-top: 1px solid #DCE8D8; display: flex; justify-content: space-between; gap: 12px; color: #3A4552; font-size: 12px; text-align: left; }
 .success-order text:last-child { color: #111111; }
-.success-action { width: 100%; height: 50px; border-radius: 20px; background: linear-gradient(90deg, #E6EBD8, #E8CFA5); color: #111111; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; }
+.success-action, .panel-action { width: 100%; height: 50px; border-radius: 20px; background: linear-gradient(90deg, #E6EBD8, #E8CFA5); color: #111111; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; }
 </style>
