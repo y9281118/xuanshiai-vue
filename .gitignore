@@ -8,6 +8,9 @@ unpackage/
 最终版分页面拆分的相关需求/
 docs/*
 !docs/authoritative/
+# 架构契约文档：后端 tests/test_memory_docs_contract.py 会直接读取
+# docs/architecture/ai-memory-kernel-core-v1.md，不随仓库发布则该契约在干净 clone 上读不到
+!docs/architecture/
 .playwright-mcp/
 .zcode/
 graphify-out/
@@ -36,3 +39,10 @@ project.private.config.json.bobibak
 
 no upload
 reports
+.codebuddy/plans/知遇AI角色扮演与兴趣画像V1_9a372d88(未完成).md
+.codebuddy/plans/独立角色扮演V2-与知遇解耦_86143a75.md
+知遇AI报告与数据报表-改动计划.md
+后端一期改动计划-知遇AI报告与数据报表.md
+config.uts
+# sourcemap 排查时留的备份（*.js.map.roleplay-debug-backup），不进仓库
+*.roleplay-debug-backup

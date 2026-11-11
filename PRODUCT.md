@@ -532,3 +532,51 @@ AI 分身问答不是双方聊天，不会进入真人消息列表、触发对�
 - 自定义标签只能描述本人兴趣、生活偏好或性格，不得填写联系方式、择偶条件、关系期待、敏感属性或纯数字；后端执行格式校验、全局去重、分区校验与内容审核，通过后参与展示、推荐和完善度计算。
 
 - 择偶标准中原「未来规划」的只展示控件改为可保存的「关系期待」：复用 dating_goal、meeting_pace、children_intention，按后端枚举提交与回显；null 表示尚未填写，不能默认代选。
+
+## 记忆内核核心 v1
+
+本节对应后端交付说明 `docs/ai-memory-core-rollout-20260905.md` 自 2026-09-05 起即引用的
+「`PRODUCT.md` §记忆内核核心 v1」。该章节与此处引用的架构契约
+`docs/architecture/ai-memory-kernel-core-v1.md` 当时只存在于已废弃的工作区副本，未随任何
+仓库落盘，导致后端的两条文档契约测试长期无从校验。现补齐产品侧口径：本节只写用户可感
+知的承诺与边界，字段白名单、来源优先级与安全细节以
+`docs/ai/AI_PRODUCT_SECURITY_DECISIONS.md` 为定版权威。
+
+### 本期定位：只记录，不出声
+
+- 记忆内核本期只做 **影子写入（Shadow Write）**：知遇抽取、草稿确认、纠正与删除等既有动作
+  在原链路跑完之后，额外追加一条记忆账本事件。旧链路行为完全不变，**不自动发布**任何新
+  结果——记忆里的内容不会自己变成公开资料、推荐位或匹配分。
+- 记忆区分 `personal`（我的真实画像）与 `ideal_partner`（期待的长期关系）两个主体，与知遇
+  双画像同源同口径；同一句话可以为两个主体各留一组证据，但不建立任何第三方画像。
+- 用户**确认**是记忆进入下游消费的唯一入口；**删除**（含撤回授权）生成墓碑事件，让读取端
+  立即失效，而不是把账本行抹掉——因果链必须可回溯。
+- 对用户可见的承诺：本人可见的心理推断、对方私密偏好与原始对话不进入公开资料；日志只记
+  异常类型与标识，不写用户原话。
+
+### 延期范围（本期明确不做，另立项）
+
+- 前端 **Memory View**：用户暂不能在页面上逐条浏览或编辑记忆，只能通过既有的画像确认、
+  纠正与删除入口间接影响它。
+- **AI 军师**（`counselor_context`）与 **AI 分身**（`persona_context`）的真实消费：本期只登记
+  输入边界与隐私门槛，任何调用一律返回 `FEATURE_NOT_ENABLED` 且零副作用。
+- 投影授权（Projection / ProjectionGrant）的生产者与 granular consent 产品流程：读路径已就绪，
+  但当前没有任何生产方授予 grant，因此即使把读开关切到 memory 也会 100% 回退旧投影。
+- 真实用户行为学习：`behavior` 来源本期不自动产生，只保留来源优先级中的位置。
+- Search / Compatibility / Recommend 切换读取记忆投影：**不切换**，默认仍走 `legacy`（详见
+  架构文档的模式矩阵）。
+
+### AI 画像与对外契约（安全决策镜像）
+
+知遇提供的 **AI 画像、搜索与资料合拍参考** 只在用户授权且经确认的范围内生效。政策修订
+`ai-policy-2026-08-20-v2` 取代 `ai-policy-2026-08-07-v1`；v1 的 text-only + Mock +
+M06 shadow-only 边界已由 ADR `ai-full-feature-baseline` D1–D4 解冻。
+
+- 可见性：`who_can_see_me=2 表示查看者 realname_status=2`；查看者认证状态缺失或无法判定时拒绝访问（fail-closed）。
+- 发布：AI 输出经用户确认后才能发布；认证事实只能来自认证系统。
+- 字段 allowlist：`age`、`city_code`、`marriage_status`、`education_level`、`height_cm`、`income_band`、`occupation_group`、`interest_tags`、`lifestyle_tags`、`relationship_goal`。
+- consent scope：`profile_text_extract`、`search_parse`、`compatibility_shadow`；语音启用后新增 `voice_transcribe`，M06 外显后新增 `compatibility_display`。
+- M06 匹配度：shadow 阶段不外显（`display_eligible=false`），算法名 `compatibility-rule-v2`；外显前旧口径 `match_score`/`legacy-rule-v1` 保持不变。
+- 生产启用是功能门禁：必须同时具备 `ai_policy_approved`、`ai_provider_approved` 与有效的 `ai_retention_policy_version`，且 provider 非 mock、已取得合规与 Provider 批准。
+- 任一门禁未满足或未获批准：返回 `HTTP 503 AI_FEATURE_DISABLED`（`retryable=false`），不降级为静默失败。
+- 日志纪律：普通日志不得写入手机号、身份证、精确位置、原始 IP、原始 prompt、原始 Provider 响应、隐藏资料或凭据。
