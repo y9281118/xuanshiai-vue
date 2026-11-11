@@ -43,12 +43,21 @@ const checks = [
   ['help page has horizontal FAQ tabs', help.includes('category-chips') && help.includes('category-chips-inner') && help.includes('category-chip') && help.includes('chipsInnerWidth')],
   ['help page has FAQ list and numbering', help.includes('faq-panel') && help.includes('faq-badge') && help.includes('activeCategoryId')],
   ['help page has no bottom fixed action bar', !help.includes('class="help-footer"') && !help.includes('class="footer-action"')],
-  // Q54：后端没有任何 AI 客服路由，FAQ 必须就地展开 help-doc.body，而不是把答案当提问
-  // 发给一个不存在的接口（旧实现点任意 FAQ 都只能看到「回复失败」）。
+  // Q54：FAQ 就地展开 help-doc.body，而不是把答案当提问发给后端（旧实现点任意 FAQ
+  // 都只能看到「回复失败」）。
   ['help FAQ expands answer in place', help.includes('toggleFaq') && help.includes('expandedFaqId') && help.includes('answerOf')],
-  ['help page no longer calls unimplemented AI route', !help.includes('sendAiSupportMessage') && !help.includes('回复失败')],
+  ['help page has no dead AI failure copy', !help.includes('回复失败') && !help.includes('AI 客服服务暂未接入')],
   ['legacy support page redirects to help', read('pagesSub/profileExtra/support.uvue').includes('redirectTo') && read('pagesSub/profileExtra/support.uvue').includes("'/pagesSub/profileExtra/help'")],
   ['help api retains message and feedback', helpApi.includes('sendAiSupportMessage') && helpApi.includes('submitFeedback')],
+  // Q54：AI 客服简单版——真接口 /support/ai-chat，按后端 status 分流，
+  // 无关内容由后端拒答，前端不做本地关键词判断（否则两边口径会漂）。
+  ['help ai chat hits support ai-chat api', helpApi.includes("url: '/support/ai-chat'") && helpApi.includes('AiSupportReply')],
+  ['help ai chat surfaces backend status', helpApi.includes("'' + row.status") && helpApi.includes('escalate: row.escalate == true')],
+  ['help ai chat keeps no_answer and off_topic copy', !helpApi.includes('if (status ==') && help.includes('转人工')],
+  ['help ai sheet renders thread and sends', help.includes('ai-thread') && help.includes('sendAiQuestion') && help.includes('aiMessages')],
+  ['help ai sheet offers contact fallback', help.includes('openContactFromAi') && help.includes('没解决？转人工客服')],
+  ['help ai entry is the first quick card', help.indexOf('@tap="openAi"') > 0 && help.indexOf('@tap="openAi"') < help.indexOf('@tap="openContact"')],
+  ['help ai deep link opens ai sheet', help.includes("openOnLoad == 'ai'") && help.includes('setTimeout(() => { openAi() }, 100)')],
   // 转人工是唯一有后端落点的咨询通道，必须真调 /support/contact 并复用幂等键。
   ['help contact form hits support contact api', help.includes('contactSupport') && helpApi.includes("url: '/support/contact'")],
   ['help contact reuses one idempotency key', help.includes('contactKey') && helpApi.includes('idempotencyKey')],

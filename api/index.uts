@@ -305,6 +305,7 @@ export {
 export {
   getHelpQuickActions,
   sendAiSupportMessage,
+  contactSupport,
   submitFeedback
 } from './help.uts'
 

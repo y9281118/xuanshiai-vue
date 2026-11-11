@@ -30,12 +30,20 @@
         <text class="section-caption">先看常见问题，再找人工</text>
       </view>
       <view class="quick-row">
-        <view class="quick-card primary" @tap="openContact">
+        <view class="quick-card primary" @tap="openAi">
           <text class="quick-arrow">›</text>
-          <view class="quick-icon ai"><text>客服</text></view>
-          <text class="quick-title">联系客服</text>
-          <text class="quick-desc">描述你遇到的问题，客服在工作时间回复</text>
-          <view class="quick-note"><text>涉及举报时，客服会引导你前往相关卡片上方的举报入口。</text></view>
+          <view class="quick-icon ai"><text>AI</text></view>
+          <text class="quick-title">AI 客服</text>
+          <text class="quick-desc">先问一句，答不上来马上转人工</text>
+          <view class="quick-note"><text>只回答本平台使用相关的问题（账号、资料、匹配、聊天、会员、举报），无关内容会直接说明不适用范围。</text></view>
+        </view>
+        <view class="quick-card plain" @tap="openContact">
+          <view class="quick-icon call"><text>客服</text></view>
+          <view class="quick-copy-plain">
+            <text class="quick-title">联系客服</text>
+            <text class="quick-desc">描述你遇到的问题，客服在工作时间回复</text>
+          </view>
+          <text class="quick-arrow">›</text>
         </view>
         <view class="quick-card plain" @tap="openFeedback">
           <view class="quick-icon feedback"><text>✎</text></view>
@@ -91,6 +99,33 @@
     </scroll-view>
   </view>
 
+  <XsaSheet :visible="aiVisible" title="AI 客服" :tall="true" @close="closeAi">
+    <view class="ai-hint">
+      <text class="ai-hint-text">只回答本平台使用相关的问题。答不上来会告诉你，并引导转人工。</text>
+    </view>
+    <scroll-view class="ai-thread" scroll-y="true" :scroll-top="aiScrollTop" show-scrollbar="false">
+      <view v-for="message in aiMessages" :key="message.id" class="ai-row" :class="message.role">
+        <view class="ai-bubble" :class="message.role">
+          <text class="ai-bubble-text">{{ message.content }}</text>
+        </view>
+      </view>
+      <view v-if="aiSending" class="ai-row assistant">
+        <view class="ai-bubble assistant"><text class="ai-bubble-text">正在查找帮助中心…</text></view>
+      </view>
+    </scroll-view>
+    <view class="ai-quick-row">
+      <view v-for="chip in aiQuickChips" :key="chip" class="ai-quick-chip" @tap="askQuick(chip)">
+        <text class="ai-quick-chip-text">{{ chip }}</text>
+      </view>
+    </view>
+    <view class="ai-input-row">
+      <input class="ai-input" :value="aiDraft" maxlength="200" placeholder="例如：怎么修改头像" @input="onAiInput" @confirm="sendAiQuestion" />
+      <button class="ai-send" :disabled="aiSending" @click="sendAiQuestion">发送</button>
+    </view>
+    <text class="feedback-error" v-if="aiError != ''">{{ aiError }}</text>
+    <XsaButton variant="secondary" size="large" @click="openContactFromAi">没解决？转人工客服</XsaButton>
+  </XsaSheet>
+
   <XsaSheet :visible="contactVisible" title="联系客服" :tall="true" @close="closeContact">
     <view class="sheet-intro">
       <text class="sheet-intro-title">描述你遇到的问题</text>
@@ -118,7 +153,7 @@
 <script setup lang="uts">
 import XsaButton from '@/components/XsaButton.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
-import { getHelpCenter, contactSupport, submitFeedback, HelpCategory, HelpFaqItem } from '@/api/help'
+import { getHelpCenter, sendAiSupportMessage, contactSupport, submitFeedback, HelpCategory, HelpFaqItem, AiSupportReply } from '@/api/help'
 
 let categories = ref([] as HelpCategory[])
 let activeCategoryId = ref('common')
@@ -126,6 +161,14 @@ let loading = ref(false)
 let error = ref('')
 // 当前展开答案的 FAQ id，空串表示全部收起（一次只展开一条，避免长列表滚不完）
 let expandedFaqId = ref('')
+// AI 客服对话：后端是「帮助文档检索」，不是大模型，所以这里只做气泡展示，
+// 不做任何本地关键词判断——本地复算会让两边口径漂移。
+let aiVisible = ref(false)
+let aiMessages = ref([] as any[])
+let aiDraft = ref('')
+let aiSending = ref(false)
+let aiError = ref('')
+let aiScrollTop = ref(0)
 let contactVisible = ref(false)
 let contactDraft = ref('')
 let contactPhone = ref('')
@@ -187,9 +230,11 @@ onLoad((options) => {
   openOnLoad = options?.open ?? ''
   if (openOnLoad == 'feedback') {
     setTimeout(() => { openFeedback() }, 100)
-  } else if (openOnLoad == 'contact' || openOnLoad == 'ai') {
-    // open=ai 是历史深链（security.uvue、旧分享路径都还带着它）。AI 客服后端从未实现，
-    // 这里把它当别名落到人工入口，避免老链接打不开或打开一个必然失败的对话框。
+  } else if (openOnLoad == 'ai') {
+    // 历史深链，security.uvue 与旧分享路径都带 open=ai。AI 客服现在真的有后端了，
+    // 直接落到 AI 问答；答不上来时页面上有转人工入口。
+    setTimeout(() => { openAi() }, 100)
+  } else if (openOnLoad == 'contact') {
     setTimeout(() => { openContact() }, 100)
   }
 })
@@ -208,6 +253,77 @@ const answerOf = (item: HelpFaqItem): string => {
 
 const toggleFaq = (id: string) => {
   expandedFaqId.value = expandedFaqId.value == id ? '' : id
+}
+
+// ===== AI 客服 =====
+// 快捷问题只放「后端一定有答案」或「一定会转人工」的三条，避免首屏就踩坑。
+const aiQuickChips = ['怎么修改头像', '充值没到账', '怎么撤回消息']
+
+const newTurnId = (): string => 'ai-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36)
+
+const pushTurn = (role: string, content: string) => {
+  const list = aiMessages.value as any[]
+  list.push({ id: newTurnId(), role: role, content: content })
+  aiMessages.value = list
+  // scroll-view 的 scroll-top 必须是「变化的值」才会滚；给一个远大于内容高度的数，
+  // 平台侧会自己钳到最底部。
+  aiScrollTop.value = 1000000 + list.length
+}
+
+const openAi = () => {
+  aiVisible.value = true
+  aiError.value = ''
+  if ((aiMessages.value as any[]).length == 0) {
+    pushTurn('assistant', '你好，我是 AI 客服。说说你遇到的问题，我先帮你查帮助中心；查不到我会直接告诉你，并给你转人工的入口。')
+  }
+}
+
+const closeAi = () => {
+  aiVisible.value = false
+}
+
+const onAiInput = (e: any) => {
+  aiDraft.value = e.detail.value
+  aiError.value = ''
+}
+
+const askQuick = (question: string) => {
+  aiDraft.value = question
+  sendAiQuestion()
+}
+
+const sendAiQuestion = async () => {
+  const content = aiDraft.value.trim()
+  if (content.length == 0) {
+    aiError.value = '请先说说你遇到的问题'
+    return
+  }
+  if (aiSending.value) return
+  aiDraft.value = ''
+  aiError.value = ''
+  pushTurn('user', content)
+  aiSending.value = true
+  let failure = ''
+  let reply: any = null
+  try {
+    const res = await sendAiSupportMessage(content)
+    if (res.success && res.data != null) reply = res.data
+    else failure = res.message != null && '' + res.message != '' ? '' + res.message : 'AI 客服暂时不可用，请转人工客服'
+  } catch (e) {
+    failure = '网络异常，请稍后重试'
+  }
+  aiSending.value = false
+  if (failure != '' || reply == null) {
+    aiError.value = failure
+    return
+  }
+  const answer: string = reply.answer != null ? '' + reply.answer : ''
+  pushTurn('assistant', answer)
+}
+
+const openContactFromAi = () => {
+  closeAi()
+  openContact()
 }
 
 const newContactKey = (): string => 'support-contact-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36)
@@ -333,6 +449,7 @@ const submitFeedbackForm = async () => {
 .quick-icon { border-radius: 14px; display: flex; align-items: center; justify-content: center; }
 .quick-icon.ai { width: 34px; height: 34px; border-radius: 10px; margin-bottom: 8px; background-image: linear-gradient(135deg, #3E9187 0%, var(--accent2) 100%); color: var(--text-invert); font-size: 11px; font-weight: 800; }
 .quick-icon.feedback { width: 30px; height: 30px; border-radius: 10px; margin-bottom: 0; background: var(--accent-bg); color: var(--accent2); font-size: 14px; }
+.quick-icon.call { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; background: var(--accent-bg); color: var(--accent2); font-size: 11px; font-weight: 800; }
 .quick-title { display: block; color: var(--ink); font-size: 14px; font-weight: 800; }
 .quick-desc { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 15px; }
 .quick-card.plain .quick-title { font-size: 13px; }
@@ -377,6 +494,27 @@ const submitFeedbackForm = async () => {
 .sheet-intro { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
 .sheet-intro-title { color: var(--ink); font-size: 15px; font-weight: 800; }
 .sheet-intro-desc { color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+/* ===== AI 客服 ===== */
+.ai-hint { margin-bottom: 10px; padding: 8px 10px; border-radius: 10px; background: var(--warm); }
+.ai-hint-text { display: block; color: var(--muted); font-size: 11px; line-height: 16px; }
+.ai-thread { height: 300px; }
+.ai-row { display: flex; flex-direction: row; margin-bottom: 10px; }
+.ai-row.user { justify-content: flex-end; }
+.ai-row.assistant { justify-content: flex-start; }
+.ai-bubble { max-width: 82%; padding: 9px 12px; border-radius: 13px; }
+.ai-bubble.assistant { background: var(--surface); border: 1px solid var(--line); border-top-left-radius: 4px; }
+.ai-bubble.user { background: var(--accent); border-top-right-radius: 4px; }
+.ai-bubble-text { display: block; font-size: 13px; line-height: 20px; }
+.ai-bubble.assistant .ai-bubble-text { color: var(--ink2); }
+.ai-bubble.user .ai-bubble-text { color: var(--text-invert); }
+.ai-quick-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.ai-quick-chip { height: 28px; padding: 0 11px; border-radius: 14px; background: var(--canvas); border: 1px solid var(--line); display: flex; flex-direction: row; align-items: center; }
+.ai-quick-chip-text { color: var(--muted); font-size: 11px; }
+.ai-input-row { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ai-input { flex: 1; min-width: 0; height: 42px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.ai-send { flex-shrink: 0; height: 42px; padding: 0 16px; border-radius: 10px; background: var(--accent); color: var(--text-invert); font-size: 13px; font-weight: 700; line-height: 42px; border: none; }
+.ai-send[disabled] { opacity: 0.6; }
 .contact-phone { width: 100%; height: 44px; margin-top: 10px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; }
 .feedback-input { width: 100%; min-height: 150px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; line-height: 1.6; }
 .feedback-meta { color: var(--muted); font-size: 11px; text-align: right; margin: 6px 0 10px; }

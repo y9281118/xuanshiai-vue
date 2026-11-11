@@ -1,15 +1,17 @@
 /**
  * 客服与帮助 API。
  *
- * 后端（app/api/routes/support.py）只提供四个路由，没有任何 AI 客服能力：
+ * 后端（app/api/routes/support.py）提供五个路由：
  * - `GET  /support/help-docs`     帮助文档（title / subtitle / body 三段）
- * - `POST /support/feedback`      意见箱（幂等 + 每日上限）
  * - `GET  /support/feedback/mine` 我的反馈
+ * - `POST /support/feedback`      意见箱（幂等 + 每日上限）
  * - `POST /support/contact`       转人工，落 user_feedback(category=咨询)
+ * - `POST /support/ai-chat`       AI 客服（简单版：帮助文档检索 + 无关内容拒答）
  *
- * 因此端侧的策略是「自助答案 + 转人工」：常见问题直接展开 `help-docs` 的 body，
- * 拿不到答案再走 `/support/contact` 落库给人工处理。`sendAiSupportMessage` 在非 mock
- * 下恒返回「暂未接入」，仅保留给 mock 演示与后续后端能力落地时复用。
+ * 三层兜底顺序：AI 客服先答 → 答不上来引导人工 → 人工落库成工单。
+ *
+ * AI 客服目前是**确定性**实现（后端 `services/support_ai.py` 做词条检索，不调大模型），
+ * 所以不会出现「AI 域开关没开导致点了永远失败」的老问题（Q54 原症状）。
  */
 
 import { USE_MOCK } from './config.uts'
@@ -29,7 +31,7 @@ export interface HelpQuickAction {
 export interface HelpFaqItem {
   id: string
   question: string
-  /** 提问用的短句（标题去噪后），保留给 AI 问答场景复用。 */
+  /** 提问用的短句（标题去噪后），点一下就把这句发给 AI 客服。 */
   prompt: string
   /** 后端 `help-doc.body` 的答案正文；后台未维护答案时为空串，端侧要能降级。 */
   answer?: string
@@ -46,12 +48,23 @@ export interface HelpCenterData {
   categories: HelpCategory[]
 }
 
-/** AI 客服单条消息。后端暂无该路由，仅 mock 会产出。 */
-export interface AiSupportMessage {
-  id: string
-  role: string
-  content: string
+/**
+ * AI 客服回复。
+ *
+ * `status` 只有三种：
+ * - `answered`  命中帮助词条，`answer` 是词条正文；
+ * - `no_answer` 问的是平台的事但知识库没有答案，后端口径是「暂时无法帮助您」；
+ * - `off_topic` 与本平台无关，后端直接拒答。
+ *
+ * `escalate` 为 true 时页面必须显示「联系客服」按钮——别让用户卡在一句拒答里。
+ */
+export interface AiSupportReply {
+  status: string
+  answer: string
+  matchedTitle: string
+  escalate: boolean
 }
+
 
 export async function getHelpCenter(): Promise<{ success: boolean, data: HelpCenterData | null, message?: string }> {
   if (USE_MOCK) {
@@ -93,17 +106,45 @@ export function getHelpQuickActions(): Promise<{ success: boolean, data: HelpQui
 }
 
 /**
- * AI 客服问答。**后端没有这个路由**（support.py 只有 4 个接口），非 mock 恒失败。
+ * AI 客服问答：`POST /support/ai-chat`。
  *
- * 保留的原因只有一个：本地 mock 演示 + 后端能力落地时直接接上。
- * 页面不要再把它当主路径，否则用户点任何 FAQ 都只能看到「回复失败」。
+ * 后端做的是「帮助文档检索 + 无关内容拒答」，不调大模型，所以：
+ * - 命中词条 → 返回词条正文，和帮助中心看到的完全一致；
+ * - 域内没答案 → `no_answer` + 「暂时无法帮助您，等待升级」；
+ * - 无关内容（写诗、编程、股票…）→ `off_topic` 拒答。
+ *
+ * 前端不做任何本地判断，一律以后端 `status` 为准——本地复算会让两边口径漂移。
  */
-export function sendAiSupportMessage(content: string): Promise<{ success: boolean, data: AiSupportMessage | null, message?: string }> {
+export async function sendAiSupportMessage(content: string): Promise<{ success: boolean, data: AiSupportReply | null, message?: string }> {
+  const text = content != null ? ('' + content).trim() : ''
+  if (text == '') return { success: false, data: null, message: '请先说说你遇到的问题' }
   if (USE_MOCK) {
-    const reply = getMockAiSupportReply(content)
-    return Promise.resolve({ success: true, data: reply as AiSupportMessage })
+    const mock: any = getMockAiSupportReply(text)
+    const answer = mock != null && mock.content != null ? '' + mock.content : ''
+    return { success: true, data: { status: 'answered', answer: answer, matchedTitle: '', escalate: false } }
   }
-  return Promise.resolve({ success: false, data: null, message: 'AI 客服服务暂未接入，请使用「联系客服」提交咨询' })
+  const res = await request({ url: '/support/ai-chat', method: 'POST', data: { content: text } })
+  if (res == null || !res.success || res.data == null) {
+    return {
+      success: false,
+      data: null,
+      message: res != null && res.message != null && '' + res.message != '' ? '' + res.message : 'AI 客服暂时不可用，请用「联系客服」提交咨询'
+    }
+  }
+  const row = res.data
+  const answer = row.answer != null ? '' + row.answer : ''
+  if (answer == '') {
+    return { success: false, data: null, message: 'AI 客服暂时不可用，请用「联系客服」提交咨询' }
+  }
+  return {
+    success: true,
+    data: {
+      status: row.status != null ? '' + row.status : 'answered',
+      answer: answer,
+      matchedTitle: row.matched_title != null ? '' + row.matched_title : '',
+      escalate: row.escalate == true
+    }
+  }
 }
 
 export async function submitFeedback(content: string): Promise<{ success: boolean, data: any, message?: string }> {
