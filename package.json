@@ -9,6 +9,7 @@
     "build:mp-weixin": "uni build -p mp-weixin",
     "verify:mp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-mp-weixin.ps1 -MainPackageLimitBytes 2097152 -SubpackageLimitBytes 2097152 -MediaLimitBytes 204800",
     "verify:mp:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-mp-weixin.ps1 -MainPackageLimitBytes 3145728 -SubpackageLimitBytes 3145728 -MediaLimitBytes 307200",
+    "fix:sourcemap": "node scripts/fix-sourcemap.cjs",
     "test": "node tests/run-tests.cjs",
     "test:core": "node tests/run-tests.cjs",
     "test:artifact": "node tests/run-tests.cjs --artifact",
