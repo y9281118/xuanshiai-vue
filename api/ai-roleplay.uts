@@ -1,5 +1,5 @@
 import { request } from './request.uts'
-import { USE_MOCK } from './config.uts'
+import { USE_MOCK, AI_LLM_TIMEOUT } from './config.uts'
 
 export interface RoleplayScene { key: string, label: string, description: string, role_name: string, avatar_token: string, avatar_glyph: string, opening_line: string }
 export interface RoleplayTurn { turn_id: string, role: string, answer_text: string, created_at: string }
@@ -44,7 +44,7 @@ export async function getRoleplayTurns(sceneKey: string): Promise<RoleplayTurn[]
 }
 export async function submitRoleplayTurn(payload: RoleplaySubmit, key: string): Promise<RoleplaySubmitResult> {
 	if (USE_MOCK) return unavailableMock()
-	const data = unwrapRoleplay(await request({ url: '/ai/roleplay/submit', method: 'POST', data: payload, headers: { 'Idempotency-Key': key } }))
+	const data = unwrapRoleplay(await request({ url: '/ai/roleplay/submit', method: 'POST', timeout: AI_LLM_TIMEOUT, data: payload, headers: { 'Idempotency-Key': key } }))
 	if (data.turn_id == null || data.assistant_reply == null) throw new Error('回复数据格式错误，请重试')
 	return data as RoleplaySubmitResult
 }

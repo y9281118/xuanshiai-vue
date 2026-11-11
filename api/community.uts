@@ -918,6 +918,33 @@ function mapNotification(row: any): any {
   return normalizeCommunityNotification(row)
 }
 
+/**
+ * 事件类型 → 语义分类，与后端 NOTIFICATION_CATEGORY_BY_TYPE 同源。
+ * 仅用于「服务端没下发 category」的兜底（旧后端、mock）；对等性由
+ * tests/test-notification-category-paging.js 跨仓校验，改动需同步后端。
+ * 未登记类型一律 system，与后端「system 用 NOT IN 排除式」口径一致。
+ */
+export function notificationCategoryOfType(t: string): string {
+  if (t == 'like' || t == 'superlike') return 'like'
+  if (t == 'comment' || t == 'reply') return 'comment'
+  if (t == 'follow') return 'follow'
+  if (t == 'message' || t == 'message_recalled' || t == 'chat_session_request' || t == 'chat_session_request_result') return 'message'
+  if (t == 'match' || t == 'match_application' || t == 'match_application_accepted' || t == 'match_application_rejected' || t == 'apply') return 'match'
+  if (t == 'activity' || t == 'community_post_remind') return 'activity'
+  return 'system'
+}
+
+/** 取一条通知的分类：优先用服务端 category，缺失时按原始 type 兜底。 */
+export function notificationCategoryOf(row: any): string {
+  if (row == null) return 'system'
+  const cat = row.category != null && row.category != '' ? '' + row.category : ''
+  if (cat != '') return cat
+  const raw = row.rawType != null && row.rawType != ''
+    ? '' + row.rawType
+    : (row.notification_type != null ? '' + row.notification_type : (row.type != null ? '' + row.type : ''))
+  return notificationCategoryOfType(raw)
+}
+
 function feedModeFromTab(tab: string, filter: string): any {
   // 返回 { mode, filter, sort, mergeLiked? }
   // mergeLiked 恒 false：并集走 BE mode=following_and_liked，禁止客户端假分页
@@ -1889,94 +1916,77 @@ export async function getCommunityBanners() {
   return okRes(ensureCommunityBanners(list))
 }
 
-export async function getCommunityNotifications() {
+/** 把 `/notifications` 的分页响应归一成前端使用的页对象。 */
+function normalizeNotificationPage(raw: any, page: number, pageSize: number): any {
+  const src = raw != null && typeof raw === 'object' ? raw : {}
+  const rawItems = src.items != null ? (src.items as any[]) : []
+  const items: any[] = []
+  for (let i = 0; i < rawItems.length; i++) {
+    const item = mapNotification(rawItems[i])
+    if (item != null) items.push(item)
+  }
+  const total = Number(src.total != null ? src.total : items.length)
+  const current = Number(src.page != null ? src.page : page)
+  const size = Number(src.page_size != null ? src.page_size : pageSize)
+  return {
+    items: items,
+    page: current,
+    pageSize: size,
+    total: total,
+    unreadCount: Number(src.unread_count != null ? src.unread_count : 0),
+    hasMore: current * size < total
+  }
+}
+
+/**
+ * 通知列表（服务端分类 + 真分页）。
+ *
+ * 旧实现固定 `page=1&page_size=50` 后在本地按 type 过滤：超过 50 条的账号，
+ * 较旧的匹配通知永远进不了那一页，于是「已匹配但在列表里看不到」。分类口径
+ * 服务端已有（`app/services/notifications.py` 的 `NOTIFICATION_CATEGORY_BY_TYPE`），
+ * 这里必须把 category 透传下去，让筛选与分页都在库内完成。
+ *
+ * @param category 语义分类 like/comment/follow/message/match/activity/system，空串表示全部
+ */
+export async function getCommunityNotifications(
+  page: number = 1,
+  pageSize: number = 20,
+  category: string = ''
+) {
   if (USE_MOCK) {
     const raw = cloneList(mockCommunityNotifications as any[])
-    const list: any[] = []
-    for (let i = 0; i < raw.length; i++) list.push(mapNotification(raw[i]))
-    return request({
-      url: '/community/notifications',
-      cloudFunctionName: 'community',
-      action: 'getNotifications',
-      method: 'GET',
-      mockData: list
+    const matched: any[] = []
+    for (let i = 0; i < raw.length; i++) {
+      const item = mapNotification(raw[i])
+      if (item == null) continue
+      // mock 数据只有 type、没有 category；与真接口共用同一份分类兜底。
+      const cat = notificationCategoryOf(item)
+      if (category != '' && cat != category) continue
+      matched.push(item)
+    }
+    const start = (page - 1) * pageSize
+    const end = start + pageSize
+    const items: any[] = []
+    for (let i = start; i < matched.length && i < end; i++) items.push(matched[i])
+    let unread = 0
+    for (let i = 0; i < matched.length; i++) {
+      if (matched[i].read != true) unread += 1
+    }
+    return okRes({
+      items: items,
+      page: page,
+      pageSize: pageSize,
+      total: matched.length,
+      unreadCount: unread,
+      hasMore: end < matched.length
     })
   }
 
-  const res = await request({
-    url: '/notifications',
-    method: 'GET',
-    data: { page: 1, page_size: 50 }
-  })
+  const query: any = { page: page, page_size: pageSize }
+  if (category != '') query.category = category
+  const res = await request({ url: '/notifications', method: 'GET', data: query })
   if (!res.success) return res
-  const items = res.data != null && res.data.items != null ? (res.data.items as any[]) : []
-  const list: any[] = []
-  for (let i = 0; i < items.length; i++) {
-    list.push(mapNotification(items[i]))
-  }
-  return okRes(list)
-}
-
-/** 通知分页 + 服务端分类：category 取 like/comment/follow/message/match/activity/system。 */
-export async function getCommunityNotificationPage(params: any = {}) {
-  const page = params.page != null ? Number(params.page) : 1
-  const pageSize = params.pageSize != null ? Number(params.pageSize) : 20
-  const category = params.category != null ? '' + params.category : ''
-  if (USE_MOCK) {
-    const raw = cloneList(mockCommunityNotifications as any[])
-    const mapped: any[] = []
-    for (let i = 0; i < raw.length; i++) {
-      const item = mapNotification(raw[i])
-      if (category != '' && '' + item.category != category && '' + item.type != category) continue
-      mapped.push(item)
-    }
-    const start = (page - 1) * pageSize
-    const items = start < mapped.length ? mapped.slice(start, start + pageSize) : []
-    let unreadCount = 0
-    for (let i = 0; i < mapped.length; i++) {
-      if (mapped[i].read != true) unreadCount += 1
-    }
-    return okRes({ items: items, page: page, pageSize: pageSize, total: mapped.length, unreadCount: unreadCount })
-  }
-  const data: any = { page: page, page_size: pageSize }
-  if (category != '') data.category = category
-  const res = await request({ url: '/notifications', method: 'GET', data: data })
-  if (!res.success) return res
-  const pageData: any = res.data != null ? res.data : {}
-  const rawItems = pageData.items != null ? (pageData.items as any[]) : []
-  const items: any[] = []
-  for (let i = 0; i < rawItems.length; i++) items.push(mapNotification(rawItems[i]))
-  return okRes({
-    items: items,
-    page: pageData.page != null ? Number(pageData.page) : page,
-    pageSize: pageData.page_size != null ? Number(pageData.page_size) : pageSize,
-    total: pageData.total != null ? Number(pageData.total) : items.length,
-    unreadCount: pageData.unread_count != null ? Number(pageData.unread_count) : 0
-  })
-}
-
-/** 分类未读汇总：by_category 用于通知页 Tab 角标。 */
-export async function getNotificationUnreadSummary() {
-  if (USE_MOCK) {
-    const raw = mockCommunityNotifications as any[]
-    const byCategory: any = {}
-    let total = 0
-    for (let i = 0; i < raw.length; i++) {
-      if (raw[i].read == true) continue
-      const item = mapNotification(raw[i])
-      const key = '' + item.type
-      byCategory[key] = (byCategory[key] != null ? Number(byCategory[key]) : 0) + 1
-      total += 1
-    }
-    return okRes({ total: total, byCategory: byCategory })
-  }
-  const res = await request({ url: '/notifications/unread-summary', method: 'GET' })
-  if (!res.success) return res
-  const data: any = res.data != null ? res.data : {}
-  return okRes({
-    total: data.total != null ? Number(data.total) : 0,
-    byCategory: data.by_category != null ? data.by_category : {}
-  })
+  return okRes(normalizeNotificationPage(res.data, page, pageSize))
 }
 
 /** 服务端官方活动筛选契约。 */
@@ -1984,29 +1994,60 @@ export async function getOfficialCommunityActivities() {
   return await request({ url: '/notifications', method: 'GET', data: { page: 1, page_size: 50, ...OFFICIAL_ACTIVITY_QUERY } })
 }
 
-export async function getUnreadNotificationCount() {
+/**
+ * 分类未读汇总（`GET /notifications/unread-summary`）。
+ *
+ * 服务端按 `NOTIFICATION_CATEGORY_BY_TYPE` 聚合，同一份映射也用于列表筛选，
+ * 因此「Tab 角标」与「Tab 里的条目」不会各算一套。旧实现只能拿到总未读数，
+ * 分类角标无从校验。
+ */
+export async function getUnreadNotificationSummary() {
   if (USE_MOCK) {
-    const list = mockCommunityNotifications as any[]
-    let count = 0
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].read != true) count += 1
+    const raw = cloneList(mockCommunityNotifications as any[])
+    const byCategory: any = {}
+    let total = 0
+    for (let i = 0; i < raw.length; i++) {
+      const item = mapNotification(raw[i])
+      if (item == null || item.read == true) continue
+      total += 1
+      const key = notificationCategoryOf(item)
+      byCategory[key] = (byCategory[key] != null ? (byCategory[key] as number) : 0) + 1
     }
-    return request({
-      url: '/community/notifications/unread',
-      cloudFunctionName: 'community',
-      action: 'getUnreadCount',
-      method: 'GET',
-      mockData: { count }
-    })
+    return okRes({ total: total, categories: byCategory, byCategory: byCategory })
   }
 
-  const res = await request({
+  const res = await request({ url: '/notifications/unread-summary', method: 'GET' })
+  if (!res.success) return res
+  const src = res.data != null && typeof res.data === 'object' ? res.data : {}
+  const rawByCategory = src.by_category != null && typeof src.by_category === 'object' ? src.by_category : {}
+  const byCategory: any = {}
+  const keys = Object.keys(rawByCategory)
+  for (let i = 0; i < keys.length; i++) {
+    byCategory[keys[i]] = Number(rawByCategory[keys[i]])
+  }
+  return okRes({
+    total: Number(src.total != null ? src.total : 0),
+    categories: src.categories != null ? src.categories : {},
+    byCategory: byCategory
+  })
+}
+
+export async function getUnreadNotificationCount() {
+  // 优先走汇总接口：少一次列表查询，且与分类角标同源。
+  const res = await getUnreadNotificationSummary()
+  if (res.success && res.data != null) {
+    const total = res.data.total != null ? res.data.total : 0
+    return okRes({ count: total })
+  }
+  // 兜底：后端若尚未部署 unread-summary（旧版本返回 404），仍用列表接口取总
+  // unread_count，避免首页红点静默消失。部署到位后此分支自然不再命中。
+  const legacy = await request({
     url: '/notifications',
     method: 'GET',
     data: { page: 1, page_size: 1 }
   })
-  if (!res.success) return res
-  const count = res.data != null && res.data.unread_count != null ? res.data.unread_count : 0
+  if (!legacy.success) return legacy
+  const count = legacy.data != null && legacy.data.unread_count != null ? legacy.data.unread_count : 0
   return okRes({ count: count })
 }
 
@@ -3836,7 +3877,7 @@ export async function getMyPosts(query: any = null) {
 }
 
 export async function getCommunityPrivacy() {
-  if (USE_MOCK) return okRes({ hide_online_status: false, notify_like: true, notify_comment: true, notify_follow: true, notify_message: true, notify_match: true, notify_activity: true })
+  if (USE_MOCK) return okRes({ hide_online_status: false, notify_like: true, notify_comment: true, notify_follow: true, notify_message: true, notify_match: true, notify_apply: true, notify_system: true, notify_activity: true })
   return request({ url: '/users/me/privacy', method: 'GET' })
 }
 

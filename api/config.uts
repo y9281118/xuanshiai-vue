@@ -55,6 +55,19 @@ export const API_CONFIG = {
   loadingText: '加载中...'
 }
 
+/**
+ * 同步等待大模型的接口专用超时。
+ *
+ * 后端 `ai_timeout_seconds` 默认 30 秒（ai_provider 调网关的上限），客户端默认
+ * 15 秒会先于后端放弃：用户在界面上看到 request:fail timeout，而后端仍在跑，
+ * 模型结果白生成、额度已扣。凡是「请求返回的就是模型产物」（润色、用心度、
+ * 顾问建议、角色扮演一轮）都必须用这个值覆盖默认超时。
+ *
+ * 注意：不要给 DB 读接口（如 /ai/profiles/{subject}/narrative，实测 32~51ms）
+ * 套用本值——那只会让真正的网络故障多卡 30 秒。
+ */
+export const AI_LLM_TIMEOUT = 45000
+
 export const MOCK_DELAY = 300
 
 export function getAccessToken(): string {

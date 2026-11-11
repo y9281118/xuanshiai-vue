@@ -64,7 +64,7 @@ assert(page.includes('aiAnalysisStartedAt'), '分析失败也必须保留最短 
 assert(page.includes('await sleep(remaining)'), '分析失败不能在同一帧立即结束 loading')
 assert(page.includes('await sleep(80)'), '请求前应先让 loading 视图完成渲染')
 assert(api.includes('code == 429'), '接口应给请求频繁提供明确提示')
-assert(api.includes('timeout: 45000'), 'AI 用心度分析应有独立的长请求超时')
+assert(api.includes('timeout: AI_LLM_TIMEOUT'), 'AI 用心度分析应有独立的长请求超时')
 assert(api.includes('analysis_run_id'), '每次重新分析应携带新的模型运行标识')
 assert(api.includes('analysis_run_id: genIdempotencyKey()'), '运行标识应使用小程序兼容的幂等键生成器')
 assert(!api.includes('.toString(36)'), '分析请求不能调用 UTS 不稳定的 radix toString')

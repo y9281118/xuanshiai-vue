@@ -140,9 +140,22 @@
 				</view>
 				<view class="text-wrap">
 					<text class="label">接收匹配通知</text>
-					<text class="desc">有人申请认识你时通知</text>
+					<text class="desc">匹配成功、互相喜欢时通知</text>
 				</view>
 				<switch :checked="receiveMatch" @change="onMatchNotifyChange" color="#7EC8A0" />
+			</view>
+			<!-- notify_apply 与 notify_match 在后端是两个独立偏好：
+			     match 事件归 notify_match，认识/约见申请及其结果归 notify_apply。
+			     此前只暴露 notify_match，申请类通知永远无法关闭。 -->
+			<view class="item">
+				<view class="icon-wrap">
+					<text class="icon-text ic ic-home ic-hello"></text>
+				</view>
+				<view class="text-wrap">
+					<text class="label">接收认识申请通知</text>
+					<text class="desc">有人申请认识你及申请结果通知</text>
+				</view>
+				<switch :checked="receiveApply" @change="onApplyNotifyChange" color="#7EC8A0" />
 			</view>
 			<view class="item">
 				<view class="icon-wrap">
@@ -153,6 +166,19 @@
 					<text class="desc">平台活动、牵线活动等提醒</text>
 				</view>
 				<switch :checked="receiveActivity" @change="onActivityNotifyChange" color="#7EC8A0" />
+			</view>
+			<!-- notify_system 只挡非强制事件（system / 服务开通 / 动态提醒）；
+			     举报结果、申诉结果、社区审核结论属 _MANDATORY_EVENT_TYPES，
+			     后端不查偏好、始终送达，所以这里可以安全放开。 -->
+			<view class="item">
+				<view class="icon-wrap">
+					<text class="icon-text ic ic-me ic-shezhi"></text>
+				</view>
+				<view class="text-wrap">
+					<text class="label">接收系统通知</text>
+					<text class="desc">服务开通、系统维护等提醒；举报与审核结果始终送达</text>
+				</view>
+				<switch :checked="receiveSystem" @change="onSystemNotifyChange" color="#7EC8A0" />
 			</view>
 		</view>
 
@@ -337,7 +363,9 @@ let showOnlineStatus = ref(true)
 let anonymousBrowse = ref(false)
 let receiveMessage = ref(true)
 let receiveMatch = ref(true)
+let receiveApply = ref(true)
 let receiveActivity = ref(false)
+let receiveSystem = ref(true)
 let receiveLike = ref(true)
 let receiveComment = ref(true)
 let receiveFollow = ref(true)
@@ -438,7 +466,9 @@ const loadPrivacy = async () => {
 		receiveFollow.value = p.notify_follow != false
 		receiveMessage.value = p.notify_message != false
 		receiveMatch.value = p.notify_match != false
+		receiveApply.value = p.notify_apply != false
 		receiveActivity.value = p.notify_activity == true
+		receiveSystem.value = p.notify_system != false
 		const profileValue = p.profile_visibility != null ? '' + p.profile_visibility : ''
 		const messageValue = p.message_privacy != null ? '' + p.message_privacy : ''
 		profilePrivacy.value = profileValue
@@ -491,11 +521,25 @@ const onMatchNotifyChange = (e: SwitchChangeEvent) => {
 	savePrivacy('notify_match', e.detail.value, () => { receiveMatch.value = previous })
 }
 
+// 认识申请通知开关（后端偏好名 notify_apply，与 notify_match 分离）
+const onApplyNotifyChange = (e: SwitchChangeEvent) => {
+	const previous = receiveApply.value
+	receiveApply.value = e.detail.value
+	savePrivacy('notify_apply', e.detail.value, () => { receiveApply.value = previous })
+}
+
 // 活动通知开关
 const onActivityNotifyChange = (e: SwitchChangeEvent) => {
 	const previous = receiveActivity.value
 	receiveActivity.value = e.detail.value
 	savePrivacy('notify_activity', e.detail.value, () => { receiveActivity.value = previous })
+}
+
+// 系统通知开关：只影响非强制事件，举报/申诉/审核结果由后端强制送达。
+const onSystemNotifyChange = (e: SwitchChangeEvent) => {
+	const previous = receiveSystem.value
+	receiveSystem.value = e.detail.value
+	savePrivacy('notify_system', e.detail.value, () => { receiveSystem.value = previous })
 }
 
 const onLikeNotifyChange = (e: SwitchChangeEvent) => {

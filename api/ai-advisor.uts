@@ -1,5 +1,5 @@
 ﻿import { request } from './request.uts'
-import { USE_MOCK } from './config.uts'
+import { USE_MOCK, AI_LLM_TIMEOUT } from './config.uts'
 import { mockAdvisorSession, mockAdvisorAdvice, mockAdvisorFeedback } from '@/mock/ai-advisor.uts'
 
 export type AdvisorScenario = 'opening' | 'reply' | 'topic_extension' | 'rescue' | 'care' | 'compliment' | 'values' | 'intimacy' | 'closing' | 'analyze'
@@ -66,6 +66,8 @@ export async function getAdvisorAdvice(sessionId: number, payload: any, idempote
   return request({
     url: '/ai/advisor/sessions/' + sessionId + '/advice',
     method: 'POST',
+    // 建议正文由后端同步调模型生成，默认 15 秒会先于后端 30 秒上限失效。
+    timeout: AI_LLM_TIMEOUT,
     headers: headers,
     data: payload,
     mockData: USE_MOCK ? mockAdvisorAdvice : null

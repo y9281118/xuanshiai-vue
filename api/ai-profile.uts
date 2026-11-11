@@ -6,7 +6,7 @@
  */
 
 	import { request } from './request.uts'
-	import { getAccessToken, buildApiUrl, resolveMediaUrl } from './config.uts'
+	import { getAccessToken, buildApiUrl, resolveMediaUrl, AI_LLM_TIMEOUT } from './config.uts'
 	import { sleep } from '@/utils/sleep.uts'
 	import { entryFieldLabel } from '@/utils/moxiang-dimension.uts'
 /** 画像主体:关于我 / 关于对方 */
@@ -318,6 +318,8 @@ export async function polishPaperPlaneText(content: string, field: string, style
   const res = await request({
     url: '/ai/profile/polish',
     method: 'POST',
+    // 后端同步等模型，默认 15 秒会先于其后 30 秒上限失效。
+    timeout: AI_LLM_TIMEOUT,
     // field 之前被函数签名接收却从未发送，后端若按场景分 prompt 就拿不到上下文，
     // 表现为"润色前后没差别"。这里一并提交（后端不认识时会被忽略，不构成破坏性变更）。
     data: { content: original, field: field != null ? '' + field : '', style: style != '' ? style : 'natural', max_length: normalizedMaxLength },
@@ -458,7 +460,7 @@ export async function analyzeProfileThoughtfulness(trigger: string, editedKeys: 
     url: '/ai/profile/thoughtfulness',
     method: 'POST',
 		// 后端会同步等待 DeepSeek；默认 15 秒不足以覆盖其 30 秒服务超时。
-		timeout: 45000,
+		timeout: AI_LLM_TIMEOUT,
     headers: { 'Idempotency-Key': genIdempotencyKey() },
     data: {
       trigger: normalizedTrigger,
@@ -625,7 +627,11 @@ export async function synthesizeSpeech(text: string): Promise<any> {
 export async function getPortraitNarrative(subject: string): Promise<any> {
   return request({
     url: '/ai/profiles/' + subject + '/narrative',
-    method: 'GET'
+    method: 'GET',
+    // 该接口只读 worker 预生成的成稿，不触发模型（测试服实测 32~51ms）。
+    // 调用方（用户详情页）是串行 await 的装饰性请求，用默认 15 秒一旦超时
+    // 会让整页 loading 多停 15 秒，所以显式压到 8 秒：读不到就当作没有画像。
+    timeout: 8000
   })
 }
 

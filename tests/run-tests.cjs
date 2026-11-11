@@ -41,6 +41,7 @@ const core = [
   'test-master-ws-error-contract.js',
   'test-moxiang-ws-ticket-contract.js',
   'test-ai-profile-page.js',
+  'test-ai-llm-timeout.js',
   'test-console-hygiene.js',
   'test-role-copy-consistency.js',
   'test-profile-card-tag-consistency.js',
@@ -78,6 +79,10 @@ const core = [
   'test-profile-completion-model.js',
   'test-moxiang-continuous-crosspage.js',
   'test-ci-gates.js',
+  // 通知页：服务端分类筛选 + 真分页 + 分类未读角标（修「>50 条后旧匹配通知被挤掉」）。
+  'test-notification-category-paging.js',
+  // 通知偏好：后端事件→偏好映射必须都能在设置页读写（修 notify_apply 无入口）。
+  'test-notification-preference-parity.js',
   // 支付链路：预支付/requestPayment/权益轮询契约。
   'test-payment-flow-contract.js',
   'test-top-placement-payment-flow.js',

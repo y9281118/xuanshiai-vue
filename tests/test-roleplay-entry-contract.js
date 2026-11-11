@@ -62,7 +62,7 @@ let js = api.replace(/^import .*$/gm, '')
 js += '\nthis.adapter = { getRoleplayScenes, getRoleplayTurns, submitRoleplayTurn, confirmRoleplayInterest, ROLEPLAY_PRESET_SCENES }'
 let calls = []
 let response = { success: true, data: { scenes: [{ key: 'coffee_chat', label: '咖啡馆闲聊' }] } }
-const context = { USE_MOCK: false, request: async opts => { calls.push(opts); return response }, Error, encodeURIComponent, Array }
+const context = { USE_MOCK: false, AI_LLM_TIMEOUT: 45000, request: async opts => { calls.push(opts); return response }, Error, encodeURIComponent, Array }
 vm.runInNewContext(js, context)
 
 ;(async () => {
@@ -79,6 +79,8 @@ vm.runInNewContext(js, context)
   const reply = await submitRoleplayTurn(payload, 'idem-key-01')
   assert.equal(reply.assistant_reply, '你好')
   assert.equal(calls[2].headers['Idempotency-Key'], 'idem-key-01')
+  // 一轮回复由后端同步调模型生成，必须走长超时，否则 15 秒先于后端 30 秒放弃。
+  assert.equal(calls[2].timeout, 45000, 'submit must use the long model timeout')
 
   response = { success: true, data: { accepted: true, notice: '已记录' } }
   const confirmed = await confirmRoleplayInterest({ turn_id: '1', tag: '阅读', confirm: true }, 'idem-key-02')
