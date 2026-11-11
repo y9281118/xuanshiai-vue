@@ -800,6 +800,14 @@
 		uni.setStorageSync('xsa_login_agreed', true)
 		uni.removeStorageSync('xsa_skip_welcome_once')
 		welcomeAgreementVisible.value = false; welcomeVisible.value = false
+		if (getAccessToken() != '') {
+			needLogin.value = false
+			authExpired.value = false
+			loadHomeDiscovery()
+			loadMembershipPlans()
+			syncViewerVipStatus()
+			return
+		}
 		uni.navigateTo({ url: '/pages/auth/login' })
 	}
 
@@ -1616,9 +1624,8 @@
 		const pages = getCurrentPages()
 		const currentPage = pages[pages.length - 1]
 		const options = currentPage.options
-		const skipWelcomeOnce = uni.getStorageSync('xsa_skip_welcome_once') == true
-		if (skipWelcomeOnce) uni.removeStorageSync('xsa_skip_welcome_once')
-		welcomeVisible.value = !skipWelcomeOnce && (options.tab == null || options.tab == '')
+		// 跳过标记仅由 onShow 单点消费；这里只按 tab 参数抑制欢迎层，避免双消费把欢迎页复活
+		if (options.tab != null && options.tab != '') welcomeVisible.value = false
 		if (options.tab != null && options.tab != '') {
 			const parsedTab = Number(options.tab)
 			if (!isNaN(parsedTab) && parsedTab >= 0 && parsedTab < navTabs.length) {
