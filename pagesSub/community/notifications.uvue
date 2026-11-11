@@ -300,6 +300,12 @@
 			uni.navigateTo({ url: '/pagesSub/profileExtra/settings' })
 		} else if (item.targetType == 'message') {
 			uni.switchTab({ url: '/pages/message/message' })
+		} else if (item.targetType == 'chat_session' || item.targetType == 'chat_session_request' || item.targetType == 'chat_session_request_result') {
+			// 撤回通知（message_recalled，target_type=chat_session）与会话请求类通知
+			// 只带 session_id，不带对方 userId，没法直接进 /pagesSub/chat/detail。
+			// 以前这一支落到「该通知关联内容已不可查看」；现在统一回消息列表——
+			// 会话预览已按撤回态重算（显示「消息已撤回」，不露原文）。
+			uni.switchTab({ url: '/pages/message/message' })
 		} else {
 			uni.showToast({ title: '该通知关联内容已不可查看', icon: 'none' })
 		}

@@ -27,14 +27,14 @@
           <view class="title-dot"></view>
           <text class="section-title">快速入口</text>
         </view>
-        <text class="section-caption">AI 辅助，不替代人工判断</text>
+        <text class="section-caption">先看常见问题，再找人工</text>
       </view>
       <view class="quick-row">
-        <view class="quick-card primary" @tap="openAiSupport">
+        <view class="quick-card primary" @tap="openContact">
           <text class="quick-arrow">›</text>
-          <view class="quick-icon ai"><text>AI</text></view>
+          <view class="quick-icon ai"><text>客服</text></view>
           <text class="quick-title">联系客服</text>
-          <text class="quick-desc">咨询平台功能、举报和安全操作</text>
+          <text class="quick-desc">描述你遇到的问题，客服在工作时间回复</text>
           <view class="quick-note"><text>涉及举报时，客服会引导你前往相关卡片上方的举报入口。</text></view>
         </view>
         <view class="quick-card plain" @tap="openFeedback">
@@ -70,10 +70,16 @@
         <view v-else-if="error != ''" class="state-panel error" @tap="loadHelpCenter"><text>{{ error }}，点击重试</text></view>
         <view v-else-if="activeItems.length == 0" class="state-panel"><text>暂无相关问题</text></view>
         <view v-else class="faq-card">
-          <view v-for="(item, index) in activeItems" :key="item.id" class="faq-row" @tap="openFaq(item.prompt)">
-            <text class="faq-badge">Q{{ index + 1 }}</text>
-            <text class="faq-question">{{ item.question }}</text>
-            <view class="faq-chev"><text>›</text></view>
+          <view v-for="(item, index) in activeItems" :key="item.id" class="faq-item">
+            <view class="faq-row" @tap="toggleFaq(item.id)">
+              <text class="faq-badge">Q{{ index + 1 }}</text>
+              <text class="faq-question">{{ item.question }}</text>
+              <view class="faq-chev"><text>{{ expandedFaqId == item.id ? '︿' : '›' }}</text></view>
+            </view>
+            <view v-if="expandedFaqId == item.id" class="faq-answer">
+              <text class="faq-answer-text">{{ answerOf(item) }}</text>
+              <view class="faq-answer-cta" @tap="openContact"><text>仍然没解决？联系客服</text></view>
+            </view>
           </view>
         </view>
       </view>
@@ -85,22 +91,16 @@
     </scroll-view>
   </view>
 
-  <XsaSheet :visible="aiVisible" title="AI 客服" :tall="true" @close="closeAiSupport">
+  <XsaSheet :visible="contactVisible" title="联系客服" :tall="true" @close="closeContact">
     <view class="sheet-intro">
-      <text class="sheet-intro-title">先描述你想了解的事情</text>
-      <text class="sheet-intro-desc">AI 回复仅供参考；涉及举报时，请按提示前往对应卡片操作。</text>
+      <text class="sheet-intro-title">描述你遇到的问题</text>
+      <text class="sheet-intro-desc">提交后会生成一条咨询工单，客服在工作时间回复。涉及举报时，请按提示前往对应卡片操作。</text>
     </view>
-    <scroll-view class="message-list" scroll-y="true" :scroll-into-view="lastMessageId">
-      <view v-for="message in messages" :key="message.id" :id="message.id" class="message-row" :class="message.role">
-        <view class="message-bubble"><text>{{ message.content }}</text></view>
-      </view>
-      <view class="message-loading" v-if="aiSending"><text>正在整理回复...</text></view>
-      <view class="message-error" v-if="aiError != ''" @tap="retryLastMessage">{{ aiError }}，点击重试</view>
-    </scroll-view>
-    <view class="sheet-input-row">
-      <input class="question-input" :value="draft" maxlength="200" placeholder="请输入想咨询的问题" @input="onDraftInput" @confirm="sendDraft" />
-      <XsaButton variant="primary" size="small" :loading="aiSending" :disabled="aiSending" @click="sendDraft">发送</XsaButton>
-    </view>
+    <textarea class="feedback-input" :value="contactDraft" maxlength="500" placeholder="请输入咨询内容" @input="onContactInput"></textarea>
+    <view class="feedback-meta"><text>{{ contactDraft.length }}/500</text></view>
+    <input class="contact-phone" :value="contactPhone" maxlength="20" placeholder="联系手机号（选填，便于回复）" @input="onPhoneInput" />
+    <text class="feedback-error" v-if="contactError != ''">{{ contactError }}</text>
+    <XsaButton variant="primary" size="large" :loading="contactSubmitting" :disabled="contactSubmitting" @click="submitContact">提交咨询</XsaButton>
   </XsaSheet>
 
   <XsaSheet :visible="feedbackVisible" title="意见箱" @close="closeFeedback">
@@ -118,25 +118,22 @@
 <script setup lang="uts">
 import XsaButton from '@/components/XsaButton.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
-import { getHelpCenter, sendAiSupportMessage, submitFeedback, HelpCategory, HelpFaqItem } from '@/api/help'
-
-interface SupportMessage {
-  id: string
-  role: string
-  content: string
-}
+import { getHelpCenter, contactSupport, submitFeedback, HelpCategory, HelpFaqItem } from '@/api/help'
 
 let categories = ref([] as HelpCategory[])
 let activeCategoryId = ref('common')
 let loading = ref(false)
 let error = ref('')
-let aiVisible = ref(false)
+// 当前展开答案的 FAQ id，空串表示全部收起（一次只展开一条，避免长列表滚不完）
+let expandedFaqId = ref('')
+let contactVisible = ref(false)
+let contactDraft = ref('')
+let contactPhone = ref('')
+// 幂等键在「打开表单」时生成、整个提交过程复用：重试不会把同一条咨询推成两张工单
+let contactKey = ref('')
+let contactSubmitting = ref(false)
+let contactError = ref('')
 let feedbackVisible = ref(false)
-let messages = ref([] as SupportMessage[])
-let draft = ref('')
-let lastQuestion = ref('')
-let aiSending = ref(false)
-let aiError = ref('')
 let feedbackDraft = ref('')
 let feedbackSubmitting = ref(false)
 let feedbackError = ref('')
@@ -148,12 +145,6 @@ const activeItems = computed(() => {
     if (list[i].id == activeCategoryId.value) return list[i].items
   }
   return [] as HelpFaqItem[]
-})
-
-const lastMessageId = computed(() => {
-  const list = messages.value as SupportMessage[]
-  if (list.length == 0) return ''
-  return list[list.length - 1].id
 })
 
 // 分类胶囊横滑：给内层容器一个确定的、大于屏宽的宽度，确保 scroll-view 能滚动
@@ -196,8 +187,10 @@ onLoad((options) => {
   openOnLoad = options?.open ?? ''
   if (openOnLoad == 'feedback') {
     setTimeout(() => { openFeedback() }, 100)
-  } else if (openOnLoad == 'ai') {
-    setTimeout(() => { openAiSupport() }, 100)
+  } else if (openOnLoad == 'contact' || openOnLoad == 'ai') {
+    // open=ai 是历史深链（security.uvue、旧分享路径都还带着它）。AI 客服后端从未实现，
+    // 这里把它当别名落到人工入口，避免老链接打不开或打开一个必然失败的对话框。
+    setTimeout(() => { openContact() }, 100)
   }
 })
 
@@ -205,22 +198,28 @@ const selectCategory = (id: string) => {
   activeCategoryId.value = id
 }
 
-const openFaq = (question: string) => {
-  openAiSupport()
-  draft.value = question
-  sendDraft()
+// 答案来自 /support/help-docs 的 body；后台没维护答案时显式说明并引导人工，
+// 不能把标题当答案回显（旧实现就是把 body 当提问发给不存在的 AI 接口）。
+const answerOf = (item: HelpFaqItem): string => {
+  const answer = item.answer
+  if (answer != null && answer != '') return answer
+  return '这个问题还没有配置说明。可以直接提交咨询，客服会在工作时间回复你。'
 }
 
-const openAiSupport = () => {
-  aiVisible.value = true
-  aiError.value = ''
-  if (messages.value.length == 0) {
-    messages.value.push({ id: 'welcome', role: 'assistant', content: '你好，我是宣誓爱的 AI 客服。你可以从常见问题中选择，也可以直接输入问题。' })
-  }
+const toggleFaq = (id: string) => {
+  expandedFaqId.value = expandedFaqId.value == id ? '' : id
 }
 
-const closeAiSupport = () => {
-  aiVisible.value = false
+const newContactKey = (): string => 'support-contact-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36)
+
+const openContact = () => {
+  contactVisible.value = true
+  contactError.value = ''
+  contactKey.value = newContactKey()
+}
+
+const closeContact = () => {
+  contactVisible.value = false
 }
 
 const openFeedback = () => {
@@ -232,8 +231,13 @@ const closeFeedback = () => {
   feedbackVisible.value = false
 }
 
-const onDraftInput = (e: any) => {
-  draft.value = e.detail.value
+const onContactInput = (e: any) => {
+  contactDraft.value = e.detail.value
+  contactError.value = ''
+}
+
+const onPhoneInput = (e: any) => {
+  contactPhone.value = e.detail.value
 }
 
 const onFeedbackInput = (e: any) => {
@@ -241,34 +245,34 @@ const onFeedbackInput = (e: any) => {
   feedbackError.value = ''
 }
 
-const sendDraft = async () => {
-  const question = draft.value.trim()
-  if (question.length == 0) {
-    uni.showToast({ title: '请输入想咨询的问题', icon: 'none' })
+const submitContact = async () => {
+  const content = contactDraft.value.trim()
+  if (content.length == 0) {
+    contactError.value = '请描述你遇到的问题'
     return
   }
-  if (aiSending.value) return
-  lastQuestion.value = question
-  draft.value = ''
-  aiError.value = ''
-  messages.value.push({ id: 'user-' + Date.now(), role: 'user', content: question })
-  aiSending.value = true
+  if (contactSubmitting.value) return
+  contactSubmitting.value = true
+  contactError.value = ''
+  let failure = ''
   try {
-    const res = await sendAiSupportMessage(question)
-    if (!res.success || res.data == null) throw new Error('ai unavailable')
-    messages.value.push(res.data as SupportMessage)
+    const res = await contactSupport(content, contactPhone.value.trim(), contactKey.value)
+    if (!res.success) {
+      failure = res.message != null && '' + res.message != '' ? '' + res.message : '提交失败，请重试'
+    }
   } catch (e) {
-    aiError.value = '回复失败'
-  } finally {
-    aiSending.value = false
+    failure = '网络异常，请稍后重试'
   }
-}
-
-const retryLastMessage = () => {
-  if (lastQuestion.value != '') {
-    draft.value = lastQuestion.value
-    sendDraft()
+  contactSubmitting.value = false
+  if (failure != '') {
+    contactError.value = failure
+    return
   }
+  contactDraft.value = ''
+  contactPhone.value = ''
+  contactKey.value = ''
+  contactVisible.value = false
+  uni.showToast({ title: '已提交，客服会在工作时间回复你', icon: 'none' })
 }
 
 const submitFeedbackForm = async () => {
@@ -320,7 +324,7 @@ const submitFeedbackForm = async () => {
 .section-caption { color: var(--soft); font-size: 11px; }
 
 /* ===== 快速入口：并排双卡 ===== */
-/* AI 客服为主卡（上下排布、占满整行，尺寸收敛），意见箱同宽紧凑小卡 */
+/* 联系客服为主卡（上下排布、占满整行，尺寸收敛），意见箱同宽紧凑小卡 */
 .quick-row { display: flex; flex-direction: column; gap: 10px; padding: 0 20px; }
 .quick-card { position: relative; box-sizing: border-box; border-radius: 16px; overflow: hidden; }
 .quick-card.primary { width: 100%; padding: 12px 14px 12px; background-image: linear-gradient(160deg, #FFFFFF 0%, #E9F4F1 100%); box-shadow: 0 5px 14px rgba(45, 124, 114, 0.1); }
@@ -352,8 +356,13 @@ const submitFeedbackForm = async () => {
 .faq-panel { margin: 6px 20px 0; }
 .faq-card { background: var(--surface); border-radius: 20px; box-shadow: var(--shadow-sm); overflow: hidden; }
 .faq-row { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 15px 16px; }
-.faq-row + .faq-row { border-top: 1px solid var(--warm); }
+/* FAQ 行现在包在 .faq-item 里，相邻行分割线要按 item 层判断 */
+.faq-item + .faq-item .faq-row { border-top: 1px solid var(--warm); }
 .faq-row:active { background: var(--bg-hover); }
+.faq-answer { padding: 0 16px 14px 52px; }
+.faq-answer-text { display: block; color: var(--muted); font-size: 12px; line-height: 19px; }
+.faq-answer-cta { display: flex; flex-direction: row; align-items: center; justify-content: center; margin-top: 10px; height: 32px; border-radius: 9px; background: var(--accent-bg); }
+.faq-answer-cta text { color: var(--accent2); font-size: 12px; font-weight: 700; }
 .faq-badge { flex-shrink: 0; width: 26px; height: 26px; border-radius: 9px; background: var(--accent-glow); color: var(--accent2); font-size: 10px; font-weight: 800; text-align: center; line-height: 26px; }
 .faq-question { flex: 1; min-width: 0; color: var(--ink2); font-size: 13px; line-height: 20px; }
 .faq-chev { flex-shrink: 0; width: 22px; height: 22px; border-radius: 11px; background: var(--canvas); display: flex; align-items: center; justify-content: center; }
@@ -368,15 +377,7 @@ const submitFeedbackForm = async () => {
 .sheet-intro { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
 .sheet-intro-title { color: var(--ink); font-size: 15px; font-weight: 800; }
 .sheet-intro-desc { color: var(--muted); font-size: 12px; line-height: 1.6; }
-.message-list { height: 430px; padding: 4px 0; }
-.message-row { display: flex; flex-direction: row; margin: 8px 0; }
-.message-row.user { justify-content: flex-end; }
-.message-bubble { max-width: 82%; padding: 10px 12px; border-radius: 12px; background: var(--warm); color: var(--ink2); font-size: 13px; line-height: 1.6; }
-.message-row.user .message-bubble { background: var(--accent); color: var(--text-invert); }
-.message-loading { color: var(--muted); font-size: 12px; padding: 8px 0; }
-.message-error { padding: 12px; color: var(--accent2); font-size: 12px; text-align: center; }
-.sheet-input-row { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-top: 12px; }
-.question-input { flex: 1; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.contact-phone { width: 100%; height: 44px; margin-top: 10px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; }
 .feedback-input { width: 100%; min-height: 150px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; line-height: 1.6; }
 .feedback-meta { color: var(--muted); font-size: 11px; text-align: right; margin: 6px 0 10px; }
 .feedback-error { display: block; color: var(--accent2); font-size: 12px; margin-bottom: 10px; }

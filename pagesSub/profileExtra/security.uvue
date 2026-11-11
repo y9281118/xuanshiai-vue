@@ -38,7 +38,7 @@
         </view>
       </XsaCard>
 
-      <view class="ai-entry" @tap="openAiSupport"><text class="ai-entry-title">{{ securityData != null ? securityData.aiSupportTitle : '需要操作指引？打开 AI 客服' }}</text><text class="ai-entry-desc">{{ securityData != null ? securityData.aiSupportDescription : 'AI 仅提供入口说明' }}</text><text class="row-arrow">›</text></view>
+      <view class="ai-entry" @tap="openSupport"><text class="ai-entry-title">{{ securityData != null ? securityData.aiSupportTitle : '需要操作指引？联系客服' }}</text><text class="ai-entry-desc">{{ securityData != null ? securityData.aiSupportDescription : '客服只提供入口说明，不会代替你提交举报' }}</text><text class="row-arrow">›</text></view>
 
       <view class="section-heading section-gap"><text class="section-title">反诈宣传</text><text class="section-caption">保持警惕 · 先核实再行动</text></view>
       <view class="article-list"><view v-for="article in fraudArticles" :key="article.type" class="article-card" @tap="openArticle(article.type)"><view class="article-mark" :class="article.tone"><text>{{ article.mark }}</text></view><view class="article-copy"><text class="article-title">{{ article.title }}</text><text class="article-desc">{{ article.description }}</text></view><text class="row-arrow">›</text></view></view>
@@ -87,7 +87,7 @@ const startAppeal = (id: number) => { uni.showToast({ title: '请在设置中提
 const appealStatusText = (status: number) => status == 1 ? '处理中' : status == 2 ? '已通过' : status == 3 ? '已驳回' : '待处理'
 const openArticle = (type: string) => { uni.navigateTo({ url: '/pagesSub/about/article?type=' + type, fail: () => { uni.showToast({ title: '文章打开失败，请重试', icon: 'none' }) } }) }
 const openGovernance = () => openArticle('governance_notice')
-const openAiSupport = () => { uni.navigateTo({ url: '/pagesSub/profileExtra/help?open=ai', fail: () => { uni.showToast({ title: 'AI 客服打开失败，请重试', icon: 'none' }) } }) }
+const openSupport = () => { uni.navigateTo({ url: '/pagesSub/profileExtra/help?open=contact', fail: () => { uni.showToast({ title: '联系客服打开失败，请重试', icon: 'none' }) } }) }
 onMounted(() => { loadSecurityCenter(); loadBlockedUsers() })
 </script>
 <style>

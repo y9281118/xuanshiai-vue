@@ -698,7 +698,7 @@ const mainMenuItems = [
 ]
 
 const bottomMenuItems = [
-	{ iconClass: 'ic ic-me ic-kefu', iconBg: '#FEF3E4', label: '客服与帮助', subtitle: 'AI客服 . 意见反馈', action: onHelp },
+	{ iconClass: 'ic ic-me ic-kefu', iconBg: '#FEF3E4', label: '客服与帮助', subtitle: '联系客服 . 意见反馈', action: onHelp },
 	{ iconClass: 'ic ic-me ic-bangzhu', iconBg: '#FEF3E4', label: '关于我们', subtitle: '版本 1.0.0', action: onAbout },
 	{ iconClass: 'ic ic-sys ic-shiming', iconBg: '#FEF3E4', label: '安全中心', url: '/pagesSub/profileExtra/security', action: onSecurity },
 ]

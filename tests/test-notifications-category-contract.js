@@ -72,4 +72,15 @@ assert.ok(
   'activity tab must not drop non-official rows; badge and list must share one filter'
 )
 
+// 撤回通知（message_recalled）与会话请求的 target_type 是 chat_session / chat_session_request，
+// 只带 session_id 不带对方 userId。以前没有对应分支，点进去必然落到「该通知关联内容已不可查看」。
+assert.ok(
+  page.includes("item.targetType == 'chat_session'"),
+  'chat_session notifications (message_recalled) must route to the message list'
+)
+assert.ok(
+  page.includes("item.targetType == 'chat_session_request'"),
+  'chat_session_request notifications must route to the message list'
+)
+
 console.log('通知分类与未读契约测试通过')

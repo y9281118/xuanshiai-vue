@@ -1,6 +1,15 @@
 /**
  * 客服与帮助 API。
- * 帮助文档、意见反馈、转人工客服走真实接口；AI 客服无后端路由，保留本地降级。
+ *
+ * 后端（app/api/routes/support.py）只提供四个路由，没有任何 AI 客服能力：
+ * - `GET  /support/help-docs`     帮助文档（title / subtitle / body 三段）
+ * - `POST /support/feedback`      意见箱（幂等 + 每日上限）
+ * - `GET  /support/feedback/mine` 我的反馈
+ * - `POST /support/contact`       转人工，落 user_feedback(category=咨询)
+ *
+ * 因此端侧的策略是「自助答案 + 转人工」：常见问题直接展开 `help-docs` 的 body，
+ * 拿不到答案再走 `/support/contact` 落库给人工处理。`sendAiSupportMessage` 在非 mock
+ * 下恒返回「暂未接入」，仅保留给 mock 演示与后续后端能力落地时复用。
  */
 
 import { USE_MOCK } from './config.uts'
@@ -20,7 +29,10 @@ export interface HelpQuickAction {
 export interface HelpFaqItem {
   id: string
   question: string
+  /** 提问用的短句（标题去噪后），保留给 AI 问答场景复用。 */
   prompt: string
+  /** 后端 `help-doc.body` 的答案正文；后台未维护答案时为空串，端侧要能降级。 */
+  answer?: string
 }
 
 export interface HelpCategory {
@@ -32,6 +44,13 @@ export interface HelpCategory {
 
 export interface HelpCenterData {
   categories: HelpCategory[]
+}
+
+/** AI 客服单条消息。后端暂无该路由，仅 mock 会产出。 */
+export interface AiSupportMessage {
+  id: string
+  role: string
+  content: string
 }
 
 export async function getHelpCenter(): Promise<{ success: boolean, data: HelpCenterData | null, message?: string }> {
@@ -56,8 +75,12 @@ export async function getHelpCenter(): Promise<{ success: boolean, data: HelpCen
       categoryIndex = categories.length - 1
     }
     const question = row != null && row.title != null ? '' + row.title : ''
-    const answer = row != null && row.body != null ? '' + row.body : (row != null && row.subtitle != null ? '' + row.subtitle : '')
-    if (question != '') categories[categoryIndex].items.push({ id: 'doc-' + i, question: question, prompt: answer })
+    // body 才是答案正文；subtitle 只是摘要兜底。空答案要原样保留空串，
+    // 让页面显式走「未配置说明 → 联系客服」的降级，而不是把标题当答案回显。
+    const body = row != null && row.body != null ? '' + row.body : ''
+    const subtitle = row != null && row.subtitle != null ? '' + row.subtitle : ''
+    const answer = body != '' ? body : subtitle
+    if (question != '') categories[categoryIndex].items.push({ id: 'doc-' + i, question: question, prompt: question, answer: answer })
   }
   return { success: true, data: { categories: categories } }
 }
@@ -69,12 +92,18 @@ export function getHelpQuickActions(): Promise<{ success: boolean, data: HelpQui
   return Promise.resolve({ success: false, data: [], message: '客服服务暂未接入，请稍后重试' })
 }
 
+/**
+ * AI 客服问答。**后端没有这个路由**（support.py 只有 4 个接口），非 mock 恒失败。
+ *
+ * 保留的原因只有一个：本地 mock 演示 + 后端能力落地时直接接上。
+ * 页面不要再把它当主路径，否则用户点任何 FAQ 都只能看到「回复失败」。
+ */
 export function sendAiSupportMessage(content: string): Promise<{ success: boolean, data: AiSupportMessage | null, message?: string }> {
   if (USE_MOCK) {
     const reply = getMockAiSupportReply(content)
-    return Promise.resolve({ success: true, data: reply })
+    return Promise.resolve({ success: true, data: reply as AiSupportMessage })
   }
-  return Promise.resolve({ success: false, data: null, message: 'AI 客服服务暂未接入，请稍后重试' })
+  return Promise.resolve({ success: false, data: null, message: 'AI 客服服务暂未接入，请使用「联系客服」提交咨询' })
 }
 
 export async function submitFeedback(content: string): Promise<{ success: boolean, data: any, message?: string }> {
@@ -94,8 +123,13 @@ export async function submitFeedback(content: string): Promise<{ success: boolea
   return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '提交失败，请稍后重试' }
 }
 
-/** 转人工客服：落 user_feedback（category=咨询）。 */
-export async function contactSupport(content: string, contactPhone: string = ''): Promise<{ success: boolean, data: any, message?: string }> {
+/**
+ * 转人工客服：落 user_feedback（category=咨询）。
+ *
+ * `idempotencyKey` 由调用方在「打开表单」时生成并复用整个提交过程，避免网络抖动后
+ * 用户重试把同一条咨询推成两条工单（后端按同键同载荷回放首次结果）。
+ */
+export async function contactSupport(content: string, contactPhone: string = '', idempotencyKey: string = ''): Promise<{ success: boolean, data: any, message?: string }> {
   if (USE_MOCK) {
     return { success: true, data: { id: 0, category: '咨询', content: content } }
   }
@@ -107,8 +141,10 @@ export async function contactSupport(content: string, contactPhone: string = '')
     url: '/support/contact',
     method: 'POST',
     data: body,
-    headers: { 'Idempotency-Key': supportKey('support-contact') }
+    headers: { 'Idempotency-Key': idempotencyKey != '' ? idempotencyKey : supportKey('support-contact') }
   })
   if (res != null && res.success) return { success: true, data: res.data }
+  // /support/contact 复用 create_feedback，与意见箱共享每人每日 10 条的额度。
+  if (res != null && Number(res.code) == 429) return { success: false, data: null, message: '今日咨询次数已达上限，请明天再试' }
   return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '客服请求提交失败，请稍后重试' }
 }
