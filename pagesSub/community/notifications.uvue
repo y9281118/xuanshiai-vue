@@ -7,6 +7,7 @@
 				@click="switchTab('comment')"
 			>
 				<text class="tab-text">评论</text>
+				<text v-if="tabUnread('comment') > 0" class="tab-badge">{{ tabBadge('comment') }}</text>
 			</view>
 			<view
 				class="tab"
@@ -14,6 +15,7 @@
 				@click="switchTab('like')"
 			>
 				<text class="tab-text">点赞</text>
+				<text v-if="tabUnread('like') > 0" class="tab-badge">{{ tabBadge('like') }}</text>
 			</view>
 			<view
 				class="tab"
@@ -21,6 +23,7 @@
 				@click="switchTab('match')"
 			>
 				<text class="tab-text">匹配</text>
+				<text v-if="tabUnread('match') > 0" class="tab-badge">{{ tabBadge('match') }}</text>
 			</view>
 			<view
 				class="tab"
@@ -28,12 +31,13 @@
 				@click="switchTab('activity')"
 			>
 				<text class="tab-text">活动通知</text>
+				<text v-if="tabUnread('activity') > 0" class="tab-badge">{{ tabBadge('activity') }}</text>
 			</view>
 		</view>
-		<view class="toolbar" v-if="list.length > 0">
+		<view class="toolbar" v-if="visibleList.length > 0">
 			<text class="mark-all text-accent" @click="markAll">全部已读</text>
 		</view>
-		<scroll-view class="list" scroll-y>
+		<scroll-view class="list" scroll-y @scrolltolower="loadMore">
 			<view class="state" v-if="loading"><text class="text-muted">通知加载中...</text></view>
 			<XsaEmpty
 				v-else-if="notificationError"
@@ -45,14 +49,14 @@
 				@action="load"
 			/>
 			<XsaEmpty
-				v-else-if="filteredList.length == 0"
+				v-else-if="visibleList.length == 0 && !loadingMore"
 				:text="emptyText"
 				:description="emptyDesc"
 			/>
 			<view
 				class="item"
 				:class="{ unread: !n.read }"
-				v-for="n in filteredList"
+				v-for="n in visibleList"
 				:key="n.id"
 				@click="open(n)"
 			>
@@ -63,6 +67,8 @@
 					<text class="time text-muted">{{ n.timeText }}</text>
 				</view>
 			</view>
+			<view class="state" v-if="loadingMore"><text class="text-muted">正在加载更多...</text></view>
+			<text class="list-end" v-else-if="visibleList.length > 0 && !hasMore">没有更多了</text>
 			<view class="pad"></view>
 		</scroll-view>
 	</view>
@@ -71,39 +77,48 @@
 <script setup lang="uts">
 	import XsaEmpty from '@/components/XsaEmpty.uvue'
 	import {
-		getCommunityNotifications,
+		getCommunityNotificationPage,
+		getNotificationUnreadSummary,
 		markNotificationRead,
 		markAllNotificationsRead
 	} from '@/api'
 
+	const CATEGORY_BY_TAB: any = { comment: 'comment', like: 'like', match: 'match', activity: 'activity' }
+	const PAGE_SIZE = 20
 	const list = ref([] as any[])
 	const loading = ref(false)
+	const loadingMore = ref(false)
 	const notificationError = ref(false)
 	const currentTab = ref('comment')
+	const pageNo = ref(1)
+	const total = ref(0)
+	const unreadByCategory = ref({} as any)
+	// 切换 Tab 即递增，用于丢弃旧分类的迟到响应。
+	let tabSeq = 0
 
-	const switchTab = (tab: string) => {
-		currentTab.value = tab
+	const hasMore = computed(() => (list.value as any[]).length < total.value)
+	// 服务端已按 category=activity 过滤；客户端只保留“官方活动”这一条产品约束。
+	const visibleList = computed(() => {
+		const all = list.value as any[]
+		if (currentTab.value != 'activity') return all
+		return all.filter((n: any) => n.isOfficialActivity == true)
+	})
+	const tabUnread = (tab: string): number => {
+		const key = CATEGORY_BY_TAB[tab]
+		if (key == null) return 0
+		const value = unreadByCategory.value[key]
+		return value != null ? Number(value) : 0
+	}
+	const tabBadge = (tab: string): string => {
+		const count = tabUnread(tab)
+		return count > 99 ? '99+' : '' + count
 	}
 
-	const filteredList = computed(() => {
-		const all = list.value as any[]
-		const out: any[] = []
-		for (let i = 0; i < all.length; i++) {
-			const n = all[i]
-			const t = n.type != null ? ('' + n.type) : ''
-			if (currentTab.value == 'comment' && t == 'comment') out.push(n)
-			else if (currentTab.value == 'like' && t == 'like') out.push(n)
-			else if (currentTab.value == 'match' && t == 'match') out.push(n)
-			else if (
-				currentTab.value == 'activity' &&
-				t == 'activity' &&
-				n.isOfficialActivity == true
-			) {
-				out.push(n)
-			}
-		}
-		return out
-	})
+	const switchTab = (tab: string) => {
+		if (currentTab.value == tab) return
+		currentTab.value = tab
+		load()
+	}
 
 	const emptyText = computed(() => {
 		if (currentTab.value == 'comment') return '暂无评论'
@@ -124,25 +139,88 @@
 		load()
 	})
 
+	const fetchPage = async (reset: boolean): Promise<boolean> => {
+		if (reset) {
+			pageNo.value = 1
+			total.value = 0
+			list.value = []
+		}
+		const seq = tabSeq
+		const res = await getCommunityNotificationPage({
+			category: CATEGORY_BY_TAB[currentTab.value],
+			page: pageNo.value,
+			pageSize: PAGE_SIZE
+		})
+		if (seq != tabSeq) return false
+		if (!res.success || res.data == null) return false
+		const data = res.data as any
+		const items = data.items != null ? (data.items as any[]) : []
+		list.value = reset ? items : (list.value as any[]).concat(items)
+		total.value = data.total != null ? Number(data.total) : (list.value as any[]).length
+		pageNo.value = pageNo.value + 1
+		return true
+	}
+
+	const loadUnreadSummary = async () => {
+		try {
+			const res = await getNotificationUnreadSummary()
+			unreadByCategory.value = res.success && res.data != null && res.data.byCategory != null ? res.data.byCategory : {}
+		} catch (e) {}
+	}
+
+	const loadMore = async () => {
+		if (loading.value || loadingMore.value || !hasMore.value) return
+		loadingMore.value = true
+		const seq = tabSeq
+		let rounds = 0
+		try {
+			while (hasMore.value && rounds < 3) {
+				rounds += 1
+				const before = visibleList.value.length
+				const ok = await fetchPage(false)
+				if (seq != tabSeq) break
+				if (!ok) { notificationError.value = true; break }
+				if (currentTab.value != 'activity' || visibleList.value.length > before) break
+			}
+		} catch (e) {
+			if (seq == tabSeq) uni.showToast({ title: '加载更多失败，请重试', icon: 'none' })
+		} finally {
+			loadingMore.value = false
+		}
+	}
+
 	const load = async () => {
+		tabSeq += 1
+		const seq = tabSeq
 		loading.value = true
 		notificationError.value = false
+		let ok = false
 		try {
-			const res = await getCommunityNotifications()
-			if (res.success) list.value = res.data as any[]
-			else notificationError.value = true
+			ok = await fetchPage(true)
+			if (!ok && seq == tabSeq) notificationError.value = true
 		} catch (e) {
-			notificationError.value = true
-			uni.showToast({ title: '通知加载失败', icon: 'none' })
+			if (seq == tabSeq) {
+				notificationError.value = true
+				uni.showToast({ title: '通知加载失败', icon: 'none' })
+			}
 		} finally {
-			loading.value = false
+			if (seq == tabSeq) loading.value = false
 		}
+		if (!ok || seq != tabSeq) return
+		await loadUnreadSummary()
+		if (seq != tabSeq) return
+		// 活动 Tab 可能连续几页都被官方标记过滤为空，自动续拉，最多 3 页。
+		if (currentTab.value == 'activity' && visibleList.value.length == 0 && hasMore.value) await loadMore()
 	}
 
 	const open = async (n: any) => {
 		const item = n
 		if (n.read != true) {
 			n.read = true
+			const categoryKey = n.category != null && '' + n.category != '' ? '' + n.category : (n.type != null ? '' + n.type : '')
+			if (categoryKey != '' && unreadByCategory.value[categoryKey] != null) {
+				unreadByCategory.value[categoryKey] = Math.max(0, Number(unreadByCategory.value[categoryKey]) - 1)
+			}
 			try {
 				await markNotificationRead(n.id as number)
 			} catch (e) {}
@@ -178,7 +256,9 @@
 				for (let i = 0; i < items.length; i++) {
 					items[i].read = true
 				}
+				unreadByCategory.value = {}
 				uni.showToast({ title: '已全部标为已读', icon: 'none' })
+				loadUnreadSummary()
 			}
 		} catch (e) {
 			uni.showToast({ title: '操作失败', icon: 'none' })
@@ -206,7 +286,20 @@
 		flex-direction: row;
 		align-items: center;
 		justify-content: center;
+		gap: 4px;
 		border-bottom: 2px solid transparent;
+	}
+	.tab-badge {
+		min-width: 16px;
+		height: 16px;
+		padding: 0 4px;
+		border-radius: 8px;
+		background: var(--accent);
+		color: var(--text-inverse);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 16px;
+		text-align: center;
 	}
 	.tab.active {
 		border-bottom-color: var(--accent);
@@ -274,6 +367,13 @@
 	}
 	.time {
 		font-size: 11px;
+	}
+	.list-end {
+		display: block;
+		padding: 14px 0;
+		font-size: 11px;
+		color: var(--muted);
+		text-align: center;
 	}
 	.pad {
 		height: 24px;

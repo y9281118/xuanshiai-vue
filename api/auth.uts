@@ -21,12 +21,33 @@ const mockCertifications: any = {
 
 export async function getProfileCompletion() {
   const tags = Array.isArray(mockMeProfile.personal_tags) ? mockMeProfile.personal_tags as string[] : []
-  const completed = tags.length >= 3
-  const score = completed ? 100 : 92
+  const tagsCompleted = tags.length >= 3
+  // Mock 也必须满足 score = Σ(已填项 weight)、Σ(全部 weight) = 100，
+  // 否则 H5 预览会出现 N% 与 +X% 对不上的假象。
+  const items = [
+    { key: 'avatar', label: '头像', weight: 15, completed: true },
+    { key: 'intro', label: '关于我', weight: 10, completed: true },
+    { key: 'album', label: '相册', weight: 8, completed: true },
+    { key: 'personal_tags', label: '兴趣标签', weight: 8, completed: tagsCompleted },
+    { key: 'education', label: '学历', weight: 8, completed: true },
+    { key: 'location', label: '所在地区', weight: 8, completed: true },
+    { key: 'occupation', label: '职业', weight: 8, completed: true },
+    { key: 'income', label: '收入', weight: 8, completed: true },
+    { key: 'height', label: '身高', weight: 5, completed: true },
+    { key: 'weight', label: '体重', weight: 5, completed: true },
+    { key: 'gender', label: '性别', weight: 5, completed: true },
+    { key: 'birthday', label: '出生日期', weight: 5, completed: true },
+    { key: 'marriage', label: '婚姻状况', weight: 3, completed: true },
+    { key: 'mbti', label: 'MBTI', weight: 4, completed: true }
+  ]
+  let score = 0
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].completed == true) score += items[i].weight
+  }
   return request({
     url: '/users/me/completion',
     method: 'GET',
-    mockData: { score: score, completion_score: score, items: [{ key: 'personal_tags', label: '兴趣标签', weight: 8, completed: completed }] }
+    mockData: { score: score, items: items }
   })
 }
 

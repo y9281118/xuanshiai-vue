@@ -33,7 +33,7 @@
 				<view class="progress-track"><view class="progress-fill" :style="{ width: (completionLoaded ? completeness : 0) + '%' }"></view></view>
 				<text class="progress-hint">资料越完整，推荐权重越高，更容易遇见对的人</text>
 				<text v-if="missingCompletionSummary != ''" class="progress-missing">待完善：{{ missingCompletionSummary }}</text>
-				<!-- 27 个计分项全部来自 /completion；深度问答、学历认证不计分。 -->
+				<!-- 计分项数量与权重全部来自 /completion，前端不写死；深度问答、学历认证不计分。 -->
 			</view>
 
 			<XsaProfileAiFirstAnalysis v-if="!isMemberEdit && aiFirstAnalysisVisible" :analyzing="aiAnalyzing" :error-message="aiError" @close="closeAiFirstAnalysis" @start="startAiFirstAnalysis" />
@@ -1027,6 +1027,7 @@
 		const item = completionItem(key)
 		return item != null && item.completed == true
 	}
+	// 接口未下发该 key 时返回 0：宁可少显示 +X%，也不得在前端补默认权重。
 	const completionWeight = (key: string): number => {
 		const item = completionItem(key)
 		if (item == null) return 0
@@ -1043,6 +1044,7 @@
 		const weight = completionWeight(key)
 		return weight > 0 ? prefix + ' 填写后 +' + weight + '%' : ''
 	}
+	// 只拼接接口下发的 weight，禁止回退到本地百分比。
 	const completionText = (key: string, value: any, emptyText: string): string => {
 		const text = textValue(value).trim()
 		if (text != '') return text

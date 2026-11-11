@@ -57,6 +57,8 @@ const core = [
   'test-search-retry-idempotency.js',
   'test-search-wiring-contract.js',
   'test-search-filter-mapping.js',
+  'test-profile-completion-single-source.js',
+  'test-notifications-category-contract.js',
   'test-home-recommend-display.js',
   'test-public-candidate-card.js',
   // 2026-10-29 首页/消息/情感实验室评估（L1 批）：学历字典收口 + 头像/军师/空区块/情感降级契约。

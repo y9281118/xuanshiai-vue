@@ -17,26 +17,11 @@
 					<textarea class="ai-input" :value="aiQuery" maxlength="300" :placeholder="aiPlaceholder" :disabled="!aiEnabled" @input="onAiInput"></textarea>
 					<view class="ai-input-foot"><view class="ai-template-trigger" :class="{ 'ai-template-trigger--disabled': !aiEnabled }" @tap="onAiSuggestTap"><text class="ai-trigger-text">{{ aiSuggestions.length > 0 ? '选择一条期待' : '读取可编辑建议' }}</text></view><button class="ai-submit-button" :disabled="!aiEnabled || aiGenerating || aiQuery.trim().length == 0" @tap="submitAiSearch">{{ aiGenerating ? '正在解析…' : '解析期待' }}</button></view>
 					<view v-if="aiSuggestions.length > 0" class="ai-suggestion-row"><text v-for="item in aiSuggestions" :key="item" class="ai-suggestion-chip" @tap="typeAiText(item)">{{ item }}</text></view>
-					<text class="panel-note">先把期待解析成条件，再由你确认后执行搜索；不会自动改写长期偏好。</text>
+					<text class="panel-note">描述你的期待，解析成功后直接为你搜索；不会自动改写长期偏好。</text>
 					<text v-if="!aiEnabled" class="panel-unavailable-note" @tap="retryAiCapability">{{ aiCapabilityNotice }}</text>
 					<text v-if="aiGenerating" class="ai-task-inline">{{ aiDraftTaskStage }}</text>
-					<!-- 解析失败时草稿区可能尚不存在：错误放在无草稿也可见的位置。 -->
-					<text v-if="aiDraft == null && aiDraftError != ''" class="panel-error">{{ aiDraftError }}</text>
-				</view>
-
-				<view v-if="aiDraft != null" class="ai-draft-panel">
-					<view class="ai-draft-heading"><text class="condition-label">请确认搜索条件</text><text class="ai-draft-status">{{ aiDraftStatusLabel }}</text></view>
-					<text class="condition-help">条件来源于后端解析。可修改或移除，只有确认后才会执行搜索。</text>
-					<view v-for="(condition, index) in aiConditions" :key="index" class="ai-condition-row">
-						<view class="ai-condition-copy"><text class="ai-condition-name">{{ conditionLabel(condition) }}</text><text class="ai-condition-kind">{{ condition.kind == 'hard' ? '硬条件' : '软偏好' }} · {{ condition.confidence != null ? '置信度 ' + Math.round(Number(condition.confidence) * 100) + '%' : '后端返回' }}</text></view>
-						<input class="ai-condition-input" :value="condition.localValueText" @input="onAiConditionValueInput(index, $event)" />
-						<text v-if="condition.localValueInvalid" class="ai-condition-invalid">请输入有效的 {{ condition.localValueType == 'array' ? 'JSON 数组' : 'JSON 对象' }}</text>
-						<view class="ai-condition-actions"><button :class="{ selected: condition.localAction == 'confirmed' }" @tap="setAiConditionAction(index, 'confirmed')">确认</button><button :class="{ selected: condition.localAction == 'removed' }" @tap="setAiConditionAction(index, 'removed')">移除</button></view>
-					</view>
-					<view v-if="aiUnknown.length > 0" class="ai-result-notice"><text class="ai-result-notice-title">暂未识别</text><text v-for="item in aiUnknown" :key="item">{{ item }}</text></view>
-					<view v-if="aiConflicts.length > 0" class="ai-result-notice ai-result-notice-warn"><text class="ai-result-notice-title">需要处理冲突</text><text v-for="item in aiConflicts" :key="item">{{ item }}</text></view>
-					<text v-if="aiDraftError != ''" class="panel-error">{{ aiDraftError }}</text>
-					<button class="ai-confirm-button" :disabled="aiConfirming || aiConditions.length == 0" @tap="confirmAiSearch">{{ aiConfirming ? '正在确认并搜索…' : '确认条件并查看候选' }}</button>
+					<!-- 解析失败或无有效条件时都留在输入区提示，不进入空搜索。 -->
+					<text v-if="aiDraftError != '' && !aiGenerating" class="panel-error">{{ aiDraftError }}</text>
 				</view>
 			</view>
 
@@ -116,6 +101,10 @@
 			</view>
 
 			<scroll-view class="result-scroll" scroll-y enhanced show-scrollbar="false">
+				<view v-if="activeTab == 0 && (aiConflicts.length > 0 || aiUnknown.length > 0)" class="ai-result-notice-wrap">
+					<view v-if="aiConflicts.length > 0" class="ai-result-notice ai-result-notice-warn"><text class="ai-result-notice-title">已按可执行条件搜索，以下内容需要你后续确认</text><text v-for="item in aiConflicts" :key="item">{{ item }}</text></view>
+					<view v-if="aiUnknown.length > 0" class="ai-result-notice"><text class="ai-result-notice-title">暂未识别</text><text v-for="item in aiUnknown" :key="item">{{ item }}</text></view>
+				</view>
 				<view v-if="resultState === 'loading'" class="result-loading-state">
 					<view v-if="activeTab == 0" class="ai-task-loading"><view class="ai-task-spinner"></view><text class="result-loading-title">{{ aiTaskStage }}</text><text class="result-loading-copy">后端任务完成前不会展示为最终结果</text></view>
 					<view v-else class="result-orbit">
@@ -300,7 +289,6 @@
 	}
 	// confirm 已知成功后的任务/快照引用：成功响应丢失时用它重读结果，而不是重跑整链。
 	let aiConfirmTaskId = ''
-	const aiDraftStatusLabel = computed(() => aiDraftStatus.value == 'awaiting_confirmation' ? '待确认' : (aiDraftStatus.value == 'confirmed' ? '已确认' : (aiDraftStatus.value == 'failed' ? '解析失败' : '解析中')))
 	const resetAiDraftState = (preserveDraftKey: boolean = false) => {
 		aiDraft.value = null
 		aiDraftId.value = ''
@@ -679,12 +667,19 @@
 				}
 				return
 			}
-			aiDraftTaskStage.value = '解析完成，等待你确认条件'
+			aiDraftTaskStage.value = '解析完成，正在为你搜索'
 			const draft = await getSearchDraft(aiDraftId.value)
 			if (runId != searchRunId) return
 			if (!draft.success || draft.data == null) { aiDraftError.value = draft.message != null ? String(draft.message) : '解析条件读取失败'; return }
 			setAiDraftResponse(draft)
 			resultState.value = 'idle'
+			// 解析成功即按默认动作执行搜索，不再要求用户二次确认条件。
+			if (aiConditions.value.length == 0) {
+				aiDraftError.value = '没有识别到可执行的搜索条件，请换个说法再试'
+				return
+			}
+			await confirmAiSearch()
+			if (runId != searchRunId) return
 		} catch (error) {
 			if (runId == searchRunId) aiDraftError.value = '网络异常，搜索期待未完成'
 		} finally {
@@ -1604,6 +1599,7 @@
 .ai-result-notice { display: flex; flex-direction: column; gap: 5rpx; margin-top: 14rpx; padding: 14rpx; border-radius: 10rpx; background: var(--warm); color: var(--ink2); font-size: 21rpx; line-height: 1.5; }
 .ai-result-notice-warn { background: var(--accent-bg); }
 .ai-result-notice-title { color: var(--ink); font-weight: 700; }
+.ai-result-notice-wrap { display: flex; flex-direction: column; padding: 0 16px; }
 .panel-error { display: block; margin-top: 14rpx; color: var(--accent2); font-size: 22rpx; line-height: 1.5; }
 .ai-confirm-button { width: 100%; height: 76rpx; margin-top: 20rpx; border-radius: 38rpx; background: var(--accent); color: var(--text-invert); font-size: 25rpx; font-weight: 700; }
 .ai-confirm-button[disabled] { opacity: .45; }
