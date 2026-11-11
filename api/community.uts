@@ -1098,6 +1098,38 @@ const params: any = {
   })
 }
 
+/** 按人查动态（BE mode=user）：服务端分页，可见性/拉黑/审核全部由后端过滤链保证。
+ *  不走 tab→mode 映射，避免广场流「扫最近 N 条再按作者筛」漏掉不活跃用户的历史动态。 */
+export async function getUserDynamicList(targetUserId: number, page: number = 1, pageSize: number = 20) {
+  const p = page > 0 ? page : 1
+  const size = pageSize > 0 ? pageSize : 20
+  if (USE_MOCK) {
+    const mine = (mockDynamicList as any[]).filter((d: any) => {
+      return d.user != null && (d.user.id as number) == targetUserId && notBlockedDynamic(d)
+    }).slice().sort((a: any, b: any) => ((b.time as number) || 0) - ((a.time as number) || 0))
+    const start = (p - 1) * size
+    const items = mine.slice(start, start + size)
+    return okRes({
+      list: cloneList(items),
+      page: p,
+      pageSize: size,
+      hasMore: start + items.length < mine.length,
+      total: mine.length
+    })
+  }
+  const res = await fetchPostPage({ mode: 'user', target_user_id: targetUserId, page: p, page_size: size, sort: 'latest' })
+  if (!res.success) return res
+  const data = res.data != null ? res.data : {}
+  const total = data.total != null ? (data.total as number) : 0
+  return okRes({
+    list: data.list != null ? (data.list as any[]) : [],
+    page: p,
+    pageSize: size,
+    hasMore: p * size < total,
+    total: total
+  })
+}
+
 export async function getDynamicDetail(dynamicId: number) {
   if (USE_MOCK) {
     const item = findDynamic(dynamicId)

@@ -220,6 +220,7 @@ export type {
 // 社区相关
 export {
   getDynamicList,
+  getUserDynamicList,
   getDynamicDetail,
   getMyPosts,
   getTopics,
