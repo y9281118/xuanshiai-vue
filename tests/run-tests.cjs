@@ -86,6 +86,14 @@ const core = [
   // 支付链路：预支付/requestPayment/权益轮询契约。
   'test-payment-flow-contract.js',
   'test-top-placement-payment-flow.js',
+  // 2026-11-11 张新洋负责项（Q4/Q15/Q18/Q57/Q58）前端修改方案 §11 无阻塞批。
+  'test-card-basic-fields-contract.js',
+  'test-user-dynamics-contract.js',
+  'test-search-auto-confirm-contract.js',
+  'test-points-invite-contract.js',
+  'test-top-placement-states-contract.js',
+  // FE-33-00 域名补丁的连带回归：海报首页地址不能再拿 API_BASE_URL 比 www 首页。
+  'test-poster-home-url-contract.js',
 ]
 
 // artifact 模式禁止 SKIP；源码组仍允许有理由的跳过，二者不能混作发布通过。

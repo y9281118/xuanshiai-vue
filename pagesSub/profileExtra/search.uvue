@@ -102,7 +102,7 @@
 
 			<scroll-view class="result-scroll" scroll-y enhanced show-scrollbar="false">
 				<view v-if="activeTab == 0 && (aiConflicts.length > 0 || aiUnknown.length > 0)" class="ai-result-notice-wrap">
-					<view v-if="aiConflicts.length > 0" class="ai-result-notice ai-result-notice-warn"><text class="ai-result-notice-title">已按可执行条件搜索，以下内容需要你后续确认</text><text v-for="item in aiConflicts" :key="item">{{ item }}</text></view>
+					<view v-if="aiConflicts.length > 0" class="ai-result-notice ai-result-notice-warn"><text class="ai-result-notice-title">{{ aiSearchExecuted ? '已按可执行条件搜索，以下内容需要你后续确认' : '搜索未执行：以下条件需要你先确认' }}</text><text v-for="item in aiConflicts" :key="item">{{ item }}</text></view>
 					<view v-if="aiUnknown.length > 0" class="ai-result-notice"><text class="ai-result-notice-title">暂未识别</text><text v-for="item in aiUnknown" :key="item">{{ item }}</text></view>
 				</view>
 				<view v-if="resultState === 'loading'" class="result-loading-state">
@@ -184,6 +184,9 @@
 	const historyVisible = ref(false)
 	const historyItems = ref<any[]>([])
 	const resultState = ref('idle')
+	// 搜索是否真的执行过：success 与 empty 都拿到了服务端快照，只是候选数不同。
+	// idle/error 意味着还没执行或确认被服务端拒绝，此时不能宣称「已按可执行条件搜索」。
+	const aiSearchExecuted = computed((): boolean => resultState.value == 'success' || resultState.value == 'empty')
 	const searchProgress = ref(0)
 	const searchProgressCopy = ref('正在理解你的搜索期待')
 	const resultCandidates = ref<any[]>([])
@@ -276,8 +279,46 @@
 		aiCapabilityTask = null
 		loadAiCapabilities()
 	}
+	// 后端 422/AI_CONFIRMATION_REQUIRED 的 blockers 是机器码（app/services/ai/search.py
+	// evaluate_auto_confirm），直接抛给用户等于让他读日志。这里逐条翻成人话。
+	const AI_CONFIRM_BLOCKER_TEXT: any = {
+		'no_condition': '没有识别到可执行的搜索条件',
+		'no_hard_condition': '还缺一个明确的硬性条件，比如年龄段或现居城市',
+		'invalid_condition': '有条件的取值不合法',
+		'conflict': '条件区间互相冲突'
+	}
+	const aiConfirmationBlockerText = (blockers: any): string => {
+		if (!Array.isArray(blockers)) return ''
+		const lines: string[] = []
+		for (const raw of blockers as any[]) {
+			const key = ('' + raw).trim()
+			if (key == '') continue
+			let text = AI_CONFIRM_BLOCKER_TEXT[key] != null ? '' + AI_CONFIRM_BLOCKER_TEXT[key] : ''
+			if (text == '') {
+				const parts = key.split(':')
+				if (parts[0] == 'low_confidence') text = '「' + parts[1] + '」是我推断的，需要你确认'
+				else if (parts[0] == 'unknown') text = '「' + parts[1] + '」没能识别，请换个说法'
+			}
+			if (text != '' && lines.indexOf(text) < 0) lines.push(text)
+		}
+		return lines.join('；')
+	}
 	// 后端 503/AI_FEATURE_DISABLED 统一按运营态展示，不当作网络故障。
 	const setAiFailure = (res: any) => {
+		// 确认被拒绝 ≠ 网络故障：服务端根本没执行搜索，也没有快照。
+		// 必须成错误态并说清缺什么，否则用户看到冲突提示却以为「已经搜过了」。
+		if (res != null && res.businessCode != null && '' + res.businessCode == 'AI_CONFIRMATION_REQUIRED') {
+			const detail = res.data != null ? res.data.detail : null
+			const blockerText = aiConfirmationBlockerText(detail != null ? detail.blockers : null)
+			const message = blockerText != '' ? blockerText : '搜索条件需要你先确认'
+			aiDraftError.value = message
+			resultError.value = message
+			resultState.value = 'error'
+			// 这次确认没生效，confirm 阶段的键与成功标记必须作废，
+			// 否则用户改完条件重试会拿旧 revision 的键重放。
+			invalidateAiConfirmPhase()
+			return
+		}
 		const notice = aiFailureNotice(res, 'AI 觅遇')
 		if (notice.disabled) {
 			aiEnabled.value = false
@@ -361,12 +402,12 @@
 			} catch (error) { condition.localValueInvalid = true }
 		}
 		if (condition.localAction != 'removed') condition.localAction = 'confirmed'
-		aiPatchIdempotencyKey.value = ''
+		invalidateAiConditionPhases()
 	}
 	const setAiConditionAction = (index: number, action: string) => {
 		if (index < 0 || index >= aiConditions.value.length) return
 		aiConditions.value[index].localAction = action
-		aiPatchIdempotencyKey.value = ''
+		invalidateAiConditionPhases()
 	}
 	const loadAiSuggestions = async () => {
 		const response = await getSearchSuggestions()
@@ -729,6 +770,18 @@
 	// 否则会拿着旧 revision 的键去重放新内容，必然 409 死循环。
 	let aiPatchPhaseSucceeded = false
 	const aiConfirmSucceeded = ref(false)
+	const invalidateAiConfirmPhase = () => {
+		aiConfirmIdempotencyKey.value = ''
+		aiConfirmSucceeded.value = false
+		aiConfirmTaskId = ''
+	}
+	// 条件被改动后两阶段一起作废：只清 PATCH 键不清阶段标记，会让下一次确认
+	// 跳过 PATCH 直接拿旧 revision 的 confirm 键重放新内容，必然 409 死循环。
+	const invalidateAiConditionPhases = () => {
+		aiPatchIdempotencyKey.value = ''
+		aiPatchPhaseSucceeded = false
+		invalidateAiConfirmPhase()
+	}
 	const confirmAiSearch = async () => {
 		if (!aiEnabled.value) { aiDraftError.value = aiCapabilityNotice.value; return }
 		if (aiConfirming.value || aiDraftId.value == '') return
@@ -751,12 +804,26 @@
 				accepted = await confirmSearchDraft(draftId, searchDraftRevision(aiDraft.value), aiConfirmIdempotencyKey.value)
 			}
 			if (runId != searchRunId || draftId != aiDraftId.value) return
-			if (accepted == null || !accepted.success || accepted.data == null) { setAiFailure(accepted); return }
+			if (accepted == null || !accepted.success || accepted.data == null) {
+				setAiFailure(accepted)
+				// 确认没通过就没有快照：不能停在 loading/success，让用户以为搜索已完成。
+				if (resultState.value != 'error') {
+					resultState.value = 'error'
+					resultError.value = aiDraftError.value
+				}
+				return
+			}
 			const acceptedData = accepted.data
 			aiSnapshotId.value = acceptedData.snapshot_id != null ? String(acceptedData.snapshot_id) : aiSnapshotId.value
 			const taskId = acceptedData.task_id != null ? String(acceptedData.task_id) : aiConfirmTaskId
 			aiConfirmTaskId = taskId
-			if (aiSnapshotId.value == '' || taskId == '') { aiDraftError.value = '搜索服务未返回有效执行任务'; return }
+			if (aiSnapshotId.value == '' || taskId == '') {
+				aiDraftError.value = '搜索服务未返回有效执行任务'
+				resultState.value = 'error'
+				resultError.value = aiDraftError.value
+				invalidateAiConfirmPhase()
+				return
+			}
 			aiConfirmSucceeded.value = true
 			resultState.value = 'loading'
 			aiTaskStage.value = '正在执行已确认的搜索条件'

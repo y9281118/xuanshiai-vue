@@ -1,8 +1,8 @@
 /** xhztest.xyz OpenAPI snapshot: 2026-11-02. No admin permission bypass. */
 import { request as sharedRequest } from './request.uts'
-import { API_BASE_URL, USE_MOCK, getAccessToken } from './config.uts'
+import { IS_LOCAL_BACKEND, USE_MOCK, getAccessToken } from './config.uts'
 
-export const MATCHMAKER_REMOTE_MODE = API_BASE_URL == 'https://xhztest.xyz'
+export const MATCHMAKER_REMOTE_MODE = !IS_LOCAL_BACKEND
 const REMOTE_OPERATIONS: string[] = [
   "GET /matchmaker/workbench/good-news",
   "POST /matchmaker/workbench/good-news",

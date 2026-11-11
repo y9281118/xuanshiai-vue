@@ -46,6 +46,8 @@ function compileFragment(code, extra = '') {
 const inputFns = compileFragment(
   [
     sliceBalanced(source, source.indexOf('const aiConditionValue = (condition: any)')),
+    sliceBalanced(source, source.indexOf('const invalidateAiConfirmPhase = () =>')),
+    sliceBalanced(source, source.indexOf('const invalidateAiConditionPhases = () =>')),
     sliceBalanced(source, source.indexOf('const onAiConditionValueInput = (index: number'))
   ].join(String.fromCharCode(10)),
   'return { aiConditionValue, onAiConditionValueInput };'
@@ -54,7 +56,11 @@ const inputFns = compileFragment(
 function inputSandbox(conditions) {
   const ctx = {
     aiConditions: { value: conditions },
-    aiPatchIdempotencyKey: { value: 'search-patch-stale' }
+    aiPatchIdempotencyKey: { value: 'search-patch-stale' },
+    aiConfirmIdempotencyKey: { value: 'search-confirm-stale' },
+    aiConfirmSucceeded: { value: true },
+    aiPatchPhaseSucceeded: true,
+    aiConfirmTaskId: 'task-stale'
   }
   const fns = vm.runInNewContext(inputFns, ctx)
   return { ctx, fns }
@@ -73,6 +79,11 @@ function inputSandbox(conditions) {
   assert.equal(t.ctx.aiConditions.value[0].localValueInvalid, false, '合法数字不得标记无效')
   assert.equal(t.ctx.aiConditions.value[0].localAction, 'confirmed', '主动输入即视为确认该条件')
   assert.equal(t.ctx.aiPatchIdempotencyKey.value, '', '每次输入必须作废 PATCH 幂等键')
+  // 改条件后两阶段必须一起作废：否则重试会跳过 PATCH，拿旧 revision 的 confirm 键重放新内容
+  assert.equal(t.ctx.aiPatchPhaseSucceeded, false, '改条件必须作废 PATCH 阶段成功标记')
+  assert.equal(t.ctx.aiConfirmIdempotencyKey.value, '', '改条件必须作废 confirm 幂等键')
+  assert.equal(t.ctx.aiConfirmSucceeded.value, false, '改条件必须作废 confirm 阶段成功标记')
+  assert.equal(t.ctx.aiConfirmTaskId, '', '改条件必须清除上一轮任务引用')
   // 越界 index 不得产生副作用
   const before = JSON.stringify(t.ctx.aiConditions.value)
   t.fns.onAiConditionValueInput(99, { detail: { value: 'x' } })

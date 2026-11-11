@@ -772,7 +772,7 @@
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { getMembershipStatus } from '@/api/membership.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
-	import { locationDisplayByCodes, incomeDisplayText, educationLabel } from '@/utils/profile-field-display.uts'
+	import { locationDisplayByCodes, incomeDisplayText, educationLabel, CERT_TAGS_COLLAPSED_COUNT } from '@/utils/profile-field-display.uts'
 	import {
 		recordProfileView,
 		resetDailyIfNeeded,
@@ -845,8 +845,9 @@
 		const text = '' + raw
 		return text.endsWith(unit) ? text : text + unit
 	}
-	// 星座/属相一律读卡片字段（A-2 起后端直接下发 zodiac），不再由生日在端侧推算——
-	// 卡片本来也不带 birthday，端侧推算只会得到空串。
+	// 卡片 zodiac = 属相（后端 app/schemas/discovery.py 明写「zodiac=属相」），
+	// 且卡片不下发 constellation / birthday，端侧推算星座只会得到空串。
+	// 所以这一格必须标「属相」；标成「星座」会与详情页的真星座对不上。
 	const locationTextByCityCode = (rawCode: any): string => {
 		const cityCode = rawCode != null ? '' + rawCode : ''
 		if (cityCode == '') return '未填写'
@@ -857,14 +858,15 @@
 	}
 	const basicInfoRows = computed(() => [
 		[
-			{ label: '年龄', value: currentRecommendUser.value.age != null ? '' + currentRecommendUser.value.age + '岁' : '' },
+			// mapCard 缺值把 age 压成 0（不是 null），用 != null 判空会渲染「0岁」。
+			{ label: '年龄', value: Number(currentRecommendUser.value.age) > 0 ? '' + currentRecommendUser.value.age + '岁' : '未填写' },
 			{ label: '身高', value: dimensionText(currentRecommendUser.value.height, 'cm') },
 			{ label: '体重', value: dimensionText(currentRecommendUser.value.weight, 'kg') }
 		],
 		[
-			{ label: '星座', value: currentRecommendUser.value.zodiac || '' },
+			{ label: '属相', value: currentRecommendUser.value.zodiac || '未填写' },
 			{ label: '学历', value: educationText(currentRecommendUser.value.education) },
-			{ label: '职业', value: currentRecommendUser.value.job || '' }
+			{ label: '职业', value: currentRecommendUser.value.job || '未填写' }
 		],
 		[
 			{ label: '现居', value: currentRecommendUser.value.residenceDisplay || locationTextByCityCode(currentRecommendUser.value.city) },
@@ -1078,6 +1080,7 @@
 			if (recommendRes != null && recommendRes.success && recommendRes.data != null) {
 				recommendUsers.value = recommendRes.data.items as any[]
 				currentRecommendIndex.value = 0
+				certTagsExpanded.value = false
 				loadRecommendBackground()
 				loadFeedDynamics(Number(currentRecommendUser.value.id || 0))
 			} else {
@@ -1233,6 +1236,8 @@
 		// 新对象没有动态时保持空态，不残留上一位的动态。
 		invalidateFeedDynamics()
 		recommendBackground.value = ''
+		// 认证标签的展开态属于「这个人」，不跟着换人走，否则 A 展开后 B 也默认全展开。
+		certTagsExpanded.value = false
 		currentRecommendIndex.value = nextIndex
 		loadRecommendBackground()
 		loadFeedDynamics(Number(currentRecommendUser.value.id || 0))
@@ -1416,8 +1421,8 @@
 		const tags = user.certificationTags
 		return tags != null && tags.length > 0 ? tags : []
 	})
-	const visibleCertTags = computed((): string[] => certTagsExpanded.value ? currentCertTags.value : currentCertTags.value.slice(0, 3))
-	const hiddenCertTagCount = computed((): number => Math.max(0, currentCertTags.value.length - 3))
+	const visibleCertTags = computed((): string[] => certTagsExpanded.value ? currentCertTags.value : currentCertTags.value.slice(0, CERT_TAGS_COLLAPSED_COUNT))
+	const hiddenCertTagCount = computed((): number => Math.max(0, currentCertTags.value.length - CERT_TAGS_COLLAPSED_COUNT))
 	const aiOtherMbti = computed((): string => {
 		const user = currentRecommendUser.value as any
 		const mbti = user.mbti != null ? '' + user.mbti : ''

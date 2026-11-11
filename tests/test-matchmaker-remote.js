@@ -9,7 +9,7 @@ const compiled = babel.transformSync(source.replace(/^import .*$/gm, '').replace
 let token = 'remote-user', response = {success:true,data:[]}, calls = []
 const names = [...source.matchAll(/export (?:async )?function (\w+)/g)].map(m => m[1])
 const api = vm.runInNewContext(compiled + '\n;({' + names.join(',') + '})', {
- API_BASE_URL:'https://xhztest.xyz', USE_MOCK:false, getAccessToken:()=>token,
+ API_BASE_URL:'https://xhztest.xyz', IS_LOCAL_BACKEND:false, USE_MOCK:false, getAccessToken:()=>token,
  sharedRequest:async options => { calls.push(options); return response }
 })
 async function run() {
