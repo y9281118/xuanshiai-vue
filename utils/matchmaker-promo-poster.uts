@@ -5,13 +5,13 @@
  * 换域名时需按同样参数重新生成 HOME_QR_* 两串，运行期只按格子画方块，不在小程序里塞 QR 编码器。
  */
 
-import { API_BASE_URL, resolveMediaUrl } from '@/api/config.uts'
+import { IS_PROD_BACKEND, resolveMediaUrl } from '@/api/config.uts'
 
 const TEST_HOME_URL = 'https://xhztest.xyz'
 const PROD_HOME_URL = 'https://www.xuanshiai.com'
 
 /** 海报二维码指向的平台首页：release 指向正式域名，其余环境统一指向可访问的测试域名。 */
-export const PLATFORM_HOME_URL = API_BASE_URL == PROD_HOME_URL ? PROD_HOME_URL : TEST_HOME_URL
+export const PLATFORM_HOME_URL = IS_PROD_BACKEND ? PROD_HOME_URL : TEST_HOME_URL
 
 export interface PromoPosterData {
   name: string

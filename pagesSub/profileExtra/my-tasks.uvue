@@ -41,8 +41,8 @@
 				</view>
 				<view class="earn-card">
 					<view class="earn-icon"><text>👥</text></view>
-					<view class="earn-copy"><text class="earn-title">邀请好友赚积分</text><text class="earn-desc">查看已邀请人数与奖励状态</text></view>
-					<view class="small-action" @tap="openInvite"><text>查看邀请</text></view>
+					<view class="earn-copy"><text class="earn-title">我的邀请</text><text class="earn-desc">查看已邀请人数</text></view>
+					<view class="small-action" @tap="openInvite"><text>{{ inviteLoading ? '加载中' : '查看邀请' }}</text></view>
 				</view>
 			</view>
 
@@ -86,6 +86,7 @@ const points = ref(0)
 const checkinDone = ref(false)
 const checkinMessage = ref('点击签到领取今日积分')
 const checkinSubmitting = ref(false)
+const inviteLoading = ref(false)
 const exchangeItems = ref<ExchangeItem[]>([])
 const exchangeLoading = ref(false)
 const exchangeSubmitting = ref(false)
@@ -162,18 +163,25 @@ const goBack = () => { uni.navigateBack() }
 const openPurchase = () => { uni.showToast({ title: '积分充值暂未开放', icon: 'none' }) }
 const openExchange = () => { activeSheet.value = 'exchange'; if (exchangeItems.value.length == 0) loadExchangeItems() }
 const openInvite = async () => {
-	const res = await getMyInvites(1, 20)
-	if (res != null && res.success && res.data != null) {
-		const total = res.data.total != null ? Number(res.data.total) : 0
-		uni.showModal({
-			title: '我的邀请',
-			content: '已邀请 ' + total + ' 位好友，奖励状态以服务端记录为准。',
-			showCancel: false,
-			confirmText: '知道了'
-		})
-		return
+	if (inviteLoading.value) return
+	inviteLoading.value = true
+	try {
+		const res = await getMyInvites(1, 20)
+		// 失败只 toast：拿不到数据时弹「已邀请 0 位」等于把网络故障说成事实。
+		if (res != null && res.success && res.data != null) {
+			const total = res.data.total != null ? Number(res.data.total) : 0
+			uni.showModal({
+				title: '我的邀请',
+				content: total > 0 ? '已邀请 ' + total + ' 位好友。邀请奖励尚未开放，记录仅供查看。' : '还没有邀请记录。',
+				showCancel: false,
+				confirmText: '知道了'
+			})
+			return
+		}
+		uni.showToast({ title: res != null && res.message != null ? '' + res.message : '邀请记录加载失败', icon: 'none' })
+	} finally {
+		inviteLoading.value = false
 	}
-	uni.showToast({ title: res != null && res.message != null ? '' + res.message : '邀请记录加载失败', icon: 'none' })
 }
 const closeSheet = () => { activeSheet.value = '' }
 const selectExchangeItem = (index: number) => { selectedExchangeItem.value = index }

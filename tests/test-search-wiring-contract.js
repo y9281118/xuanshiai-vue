@@ -168,17 +168,26 @@ check('条件输入事件先回写新值再校验（执行 onAiConditionValueInp
   }
   const aiConditions = { value: [condition] }
   const aiPatchIdempotencyKey = { value: '' }
+  const aiConfirmIdempotencyKey = { value: 'search-confirm-stale' }
+  const aiConfirmSucceeded = { value: true }
+  // 真实的阶段作废逻辑一起进沙箱：改条件必须同时作废 PATCH 与 confirm 两阶段。
+  const phaseHelpers = sliceDecl(page, 'const invalidateAiConfirmPhase', 'const confirmAiSearch')
   const onAiConditionValueInput = new Function(
     'aiConditions',
     'aiPatchIdempotencyKey',
-    fnSrc + '\nreturn onAiConditionValueInput;'
-  )(aiConditions, aiPatchIdempotencyKey)
+    'aiConfirmIdempotencyKey',
+    'aiConfirmSucceeded',
+    'let aiPatchPhaseSucceeded = true; let aiConfirmTaskId = "task-stale";\n'
+      + phaseHelpers + '\n' + fnSrc + '\nreturn onAiConditionValueInput;'
+  )(aiConditions, aiPatchIdempotencyKey, aiConfirmIdempotencyKey, aiConfirmSucceeded)
   // 用户把 25 改成 32：本地状态必须真的变成 32。
   onAiConditionValueInput(0, { detail: { value: '32' } })
   assert.equal(condition.localValueText, '32', 'input event must write back the typed value')
   assert.equal(condition.localValueInvalid, false, '32 is a valid number')
   assert.equal(condition.localAction, 'confirmed', 'editing implies confirm intent')
   assert.ok(aiPatchIdempotencyKey.value == '', 'edit must drop the stale patch idempotency key')
+  assert.ok(aiConfirmIdempotencyKey.value == '', 'edit must also drop the stale confirm idempotency key')
+  assert.equal(aiConfirmSucceeded.value, false, 'edit must drop the confirm phase success flag')
   // 非法输入仍被拦截
   onAiConditionValueInput(0, { detail: { value: 'abc' } })
   assert.equal(condition.localValueInvalid, true, 'non-numeric must be marked invalid')
