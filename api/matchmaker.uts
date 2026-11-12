@@ -870,6 +870,60 @@ export async function getMatchmakerWorkspaceCommissionEntries(page: number = 1, 
   }
 }
 
+/** 分成标准金额只做显示归一：整数不带小数位，其余保留两位；取不到一律 '--'，不按 0 渲染。 */
+function formatCommissionNumber(value: any): string {
+  if (value == null) return '--'
+  const amount = Number(value)
+  if (isNaN(amount)) return '--'
+  return amount == Math.round(amount) ? String(Math.round(amount)) : amount.toFixed(2)
+}
+
+/**
+ * 「分成级别」页面数据：级别总览、本人当前级别与按消费项目的分成标准。
+ * 全部取服务端配置（后台「总店红娘 → 分成配置」维护同一份 commission_level），
+ * 前端不写死级别与金额；后台未指派级别或未配置规则时返回空值，由页面显示占位与空状态。
+ */
+export async function getMatchmakerCommissionStandards() {
+  const result = await request({ url: '/matchmaker/workbench/commission-standards', method: 'GET' })
+  if (!result.success || result.data == null) return result
+  const data: any = result.data
+  const rawLevels = Array.isArray(data.levels) ? data.levels : []
+  const rawEvents = Array.isArray(data.events) ? data.events : []
+  const currentLevel = data.current_level
+  return {
+    success: true,
+    data: {
+      levels: rawLevels.map((row: any) => ({
+        code: row.code != null ? String(row.code) : '',
+        name: row.name != null && String(row.name).length > 0 ? String(row.name) : '--',
+        condition: row.promotion_condition != null && String(row.promotion_condition).length > 0 ? String(row.promotion_condition) : '--',
+        extra: row.platform_extra_amount != null ? formatCommissionNumber(row.platform_extra_amount) + '元' : '--'
+      })),
+      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '--',
+      events: rawEvents.map((row: any) => ({
+        key: row.name != null ? String(row.name) : '',
+        name: row.name != null && String(row.name).length > 0 ? String(row.name) : '分成事件',
+        amount: row.mode == 'rate'
+          ? (row.rate_percent != null ? formatCommissionNumber(row.rate_percent) + '%' : '--')
+          : (row.amount != null ? formatCommissionNumber(row.amount) + '元' : '--')
+      }))
+    },
+    code: result.code,
+    message: result.message
+  }
+}
+
+/**
+ * 我的账户余额（GET /finance/balance）：available_amount 是可提现余额，pending_amount 是待结算金额。
+ * 财务明细页的「余额（元）」取 available_amount，与后台账户资金同一口径。
+ */
+export async function getAccountBalance() {
+  return request({
+    url: '/finance/balance',
+    method: 'GET'
+  })
+}
+
 /**
  * 我的线下业绩明细：本人作为销售红娘的线下 VIP 已收款订单，
  * 与后台「工作汇报-线下业绩」同一口径；包装成 {time,name,avatar,item,amount} 供财务明细列表渲染。
@@ -1168,6 +1222,32 @@ export async function createMatchmakerMemberFollowUp(id: string, data: any) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/follow-ups', method: 'POST', data: { method: source.method || 'OTHER', content: source.content || '', next_follow_at: source.nextFollowAt || null } })
 }
 
+export async function uploadMemberFollowUpImage(memberId: string, followUpId: string, filePath: string, uploadKey: string) {
+  return new Promise<any>((resolve) => {
+    uni.uploadFile({
+      url: buildApiUrl('/matchmaker/workbench/members/' + encodeURIComponent(memberId) + '/follow-ups/' + encodeURIComponent(followUpId) + '/images'),
+      filePath, name: 'file', formData: { upload_key: uploadKey }, header: { Authorization: 'Bearer ' + getAccessToken() },
+      success: (res: any) => {
+        if (res.statusCode == 401) clearAuthTokens()
+        let message = '图片上传失败'
+        try { const data = JSON.parse('' + res.data); if (data.detail != null) message = '' + data.detail } catch (e) {}
+        resolve({ success: res.statusCode >= 200 && res.statusCode < 300, message })
+      },
+      fail: () => resolve({ success: false, message: '图片上传失败，请检查网络' })
+    })
+  })
+}
+
+export async function downloadMemberFollowUpImage(path: string) {
+  return new Promise<string>((resolve) => {
+    uni.downloadFile({
+      url: buildApiUrl(path), header: { Authorization: 'Bearer ' + getAccessToken() },
+      success: (res: any) => resolve(res.statusCode == 200 ? String(res.tempFilePath) : ''),
+      fail: () => resolve('')
+    })
+  })
+}
+
 export async function getMatchmakerMemberContact(id: string) {
   const result = await request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/contact', method: 'GET' })
   if (!result.success || result.data == null) return result
@@ -1214,7 +1294,7 @@ export async function getMatchmakerMemberNote(id: string) {
   return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/note', method: 'GET' })
 }
 
-/** 红娘说：保存红娘对该会员的公开评价（最长 200 字）。 */
+/** 红娘说：保存红娘对该会员的公开评价（最长 1000 字）。 */
 export async function updateMatchmakerMemberNote(id: string, note: string) {
   return request({
     url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/note',

@@ -5,14 +5,11 @@
 			<view class="nav-back" @click="handlePageBack">
 				<view class="nav-back-chevron"></view>
 			</view>
-			<text class="nav-title">{{ pendingReviewVisible ? '资料待审' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')) }}</text>
+			<text class="nav-title">{{ pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')) }}</text>
 			<!-- 工作区遮罩右上角只保留「保存」药丸；返回走左侧箭头（handlePageBack 会先关遮罩）。 -->
-			<view v-if="pendingReviewVisible || workspaceVisible">
-				<view v-if="isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()">
-					<text class="nav-help-text">保存</text>
-				</view>
-			</view>
-			<view v-else-if="managementCenterVisible" class="nav-entries">
+			<view v-if="(pendingReviewVisible || workspaceVisible) && isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()"><text class="nav-help-text">保存</text></view>
+			<view v-else-if="workspaceVisible && workspaceKind == 'income-placeholder'" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
+			<view v-else-if="!pendingReviewVisible && !workspaceVisible && managementCenterVisible" class="nav-entries">
 				<view class="nav-entry" @click="openMyAccount">
 					<view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view>
 				</view>
@@ -20,7 +17,7 @@
 					<view class="entry-lines"><view></view><view></view><view></view></view>
 				</view>
 			</view>
-			<view v-else-if="!managementCenterLoading" class="nav-help" @click="showHelp">
+			<view v-else-if="!pendingReviewVisible && !workspaceVisible && !managementCenterLoading" class="nav-help" @click="showHelp">
 				<text class="nav-help-text">帮助</text>
 			</view>
 		</view>
@@ -35,32 +32,72 @@
 		/>
 		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :class="{ 'ls-scroll': isLeadEntryStudio }" :show-scrollbar="false" :scroll-top="workspaceScrollTop">
 			<view class="workspace-content" :class="{ 'lead-space': workspaceKind == 'lead' }">
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'news'" class="workspace-heading">
-					<text class="workspace-title">{{ workspaceTitle }}</text>
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'news' && workspaceKind != 'income-placeholder'" class="workspace-heading">
+					<text v-if="workspaceKind != 'commission'" class="workspace-title">{{ workspaceTitle }}</text>
 					<text v-if="workspaceKind != 'income-placeholder'" class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
 				</view>
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'income-placeholder' && workspaceKind != 'news'" class="workspace-tabs">
+				<!-- 「我的分成」不显示页签导航条与搜索框：分成标准走卡片内入口，分成明细没有关键词筛选。 -->
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'income-placeholder' && workspaceKind != 'news' && workspaceKind != 'commission'" class="workspace-tabs">
 					<view class="workspace-tabs-row">
 						<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
 					</view>
 				</view>
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'income-placeholder'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'income-placeholder' && workspaceKind != 'commission'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
 
-				<view v-if="workspaceKind == 'income-placeholder'" class="workspace-state"><text>暂无记录</text></view>
+				<view v-if="workspaceKind == 'income-placeholder'" class="finance-page">
+					<view class="finance-overview">
+						<view class="finance-card finance-balance"><view class="finance-card-mark"><text>¥</text></view><text class="finance-card-label">余额 (元)</text><text class="finance-card-value">--</text><view class="finance-card-actions"><view class="finance-pill" @tap="showToast('提现暂不可用')"><text>提现</text></view></view></view>
+						<view class="finance-card finance-points"><view class="finance-card-mark"><text>¥</text></view><text class="finance-card-label">积分 (金币)</text><text class="finance-card-value">--</text><view class="finance-card-actions"><view class="finance-pill" @tap="showToast('充值暂不可用')"><text>充值</text></view><view class="finance-gift" @tap="showToast('兑换礼物暂不可用')"><text>兑换礼物 ›</text></view></view></view>
+					</view>
+					<view class="finance-tabs"><view v-for="tab in financeTabs" :key="tab" class="finance-tab" :class="{ active: workspaceActiveTab == tab }" @tap="selectWorkspaceTab(tab)"><text>{{ tab }}</text><view v-if="workspaceActiveTab == tab" class="finance-tab-mark"></view></view></view>
+					<view class="finance-notice"><view class="finance-notice-icon"><text>i</text></view><text>{{ financeNotice }}</text></view>
+					<view class="finance-empty"><view class="finance-empty-illustration"><view class="finance-empty-head"></view><view class="finance-empty-person"></view><view class="finance-empty-line"></view><view class="finance-empty-line short"></view><view class="finance-empty-search"><view></view></view></view><view class="finance-empty-shadow"></view><text>明细暂不可用</text></view>
+				</view>
 				<view v-else-if="workspaceKind == 'commission'">
-					<view class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
+					<!-- 我的分成：资金 hero + 级别卡 + 推广卡（导图版式）；财务明细仍用原「资金结算」平板。 -->
+					<view v-if="workspaceTitle == '我的分成'" class="commission-hero">
+						<view class="commission-hero-body">
+							<view class="commission-hero-amount"><text class="commission-hero-label">可提现额度 (元)</text><text class="commission-hero-value">{{ workspaceCommissionBalance }}</text></view>
+							<view class="commission-hero-pill" @click="openCommissionWithdrawal"><text>立即提现</text></view>
+						</view>
+						<view class="commission-hero-foot">
+							<image v-if="commissionIdentityAvatar.length > 0" class="commission-hero-avatar" :src="commissionIdentityAvatar" mode="aspectFill"/>
+							<view v-else class="commission-hero-mark"><text>{{ commissionIdentityInitial }}</text></view>
+							<text class="commission-hero-name">{{ commissionIdentityName }}</text>
+							<text class="commission-hero-earned">累计赚了：{{ workspaceCommissionTotal }}</text>
+						</view>
+					</view>
+					<text v-if="workspaceTitle == '我的分成'" class="commission-hero-note">{{ workspaceCashNote }}</text>
+					<view v-if="workspaceTitle != '我的分成'" class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
 
-					<!-- 分成标准：各消费事件计提比例 -->
-					<view v-if="workspaceActiveTab == '分成标准'">
-						<view class="workspace-demo-notice"><text>平台尚未提供分成标准查询接口，请以平台确认的规则为准。</text></view>
-						<view v-for="rate in workspaceCommissionRates" :key="rate.event" class="workspace-info-card">
-							<view><text>{{ rate.event }}</text><text class="workspace-rate-value">{{ rate.rate }}</text></view>
-							<text class="workspace-muted">{{ rate.note }}</text>
+					<view v-if="isCommissionOverview" class="commission-level-card">
+						<view class="commission-level-head">
+							<text class="commission-level-label">您的收入分成级别：</text>
+							<view class="commission-level-badge"><text>{{ workspaceCommissionLevelName }}</text></view>
+							<view class="commission-standard" @click="openCommissionStandardPage"><text class="commission-standard-text">分成标准</text><text class="commission-standard-caret">›</text></view>
+						</view>
+						<view class="commission-tip">
+							<view class="commission-tip-mark"><text>T</text></view>
+							<view class="commission-tip-body">
+								<text class="commission-tip-title">温馨提示</text>
+								<text class="commission-tip-text">在平台中登录状态下分享/转发相亲平台首页、会员资料海报、专属推广链接、推广海报，均会包含您的专属参数，引流进来的注册会员均自动纳入到您的服务名下，这些会员在平台进行线上消费后您将获得对应的分成。</text>
+							</view>
+						</view>
+					</view>
+
+					<view v-if="isCommissionOverview" class="commission-promo">
+						<view class="commission-promo-head">
+							<view class="commission-promo-icon"><text>↗</text></view>
+							<text class="commission-promo-text">任何人通过您的专属海报或链接进来注册即计入您名下</text>
+						</view>
+						<view class="commission-promo-actions">
+							<view class="commission-promo-pill" @click="handleManagementCenterAction('复制我的专属推广链接')"><text>复制我的专属推广链接</text></view>
+							<view class="commission-promo-pill" @click="handleManagementCenterAction('下载我的专属推广海报')"><text>下载我的专属推广海报</text></view>
 						</view>
 					</view>
 
 					<!-- 财务明细 · 结算说明 -->
-					<view v-else-if="workspaceTitle == '财务明细' && workspaceActiveTab == '结算说明'" class="workspace-notice"><text class="workspace-notice-title">结算说明</text><text>线下业绩含门店服务、线下 VIP 与活动收款，由平台按月统一结算；当前逐笔记录取自本人作为销售红娘的线下 VIP 已收款订单。</text></view>
+					<view v-if="workspaceTitle == '财务明细' && workspaceActiveTab == '结算说明'" class="workspace-notice"><text class="workspace-notice-title">结算说明</text><text>线下业绩含门店服务、线下 VIP 与活动收款，由平台按月统一结算；当前逐笔记录取自本人作为销售红娘的线下 VIP 已收款订单。</text></view>
 
 					<!-- 财务明细 · 逐笔记录：本人作为销售红娘的线下 VIP 已收款订单 -->
 					<view v-else-if="workspaceTitle == '财务明细'">
@@ -408,8 +445,17 @@
 				</view>
 
 				<view v-else-if="workspaceKind == 'activity'">
-					<view class="workspace-demo-notice"><text>远端尚未开放红娘活动报名管理。</text></view>
-					<view v-for="activity in workspaceActivities" :key="activity.title" class="workspace-info-card"><text>{{ activity.title }}</text><text class="workspace-muted">{{ activity.time }} · {{ activity.city }}</text><view><text>报名人数</text><text>{{ activity.count }} 人</text></view><view><text>审核状态</text><text>{{ activity.status }}</text></view><view class="workspace-actions"><text @click="showToast('远端暂未开放活动管理')">报名名单</text><text @click="showToast('远端暂未开放活动管理')">编辑</text><text @click="showToast('远端暂未开放活动管理')">报名审核</text></view></view>
+					<view class="ar-page">
+						<view class="ar-summary">
+							<view class="ar-heading"><view class="ar-symbol"><text>!</text></view><view class="ar-title-wrap"><text class="ar-title">单身青年 免费择偶竞争力评分</text><text class="ar-demo">页面示例 · 数据待接入</text></view></view>
+							<view class="ar-grid"><view v-for="item in activityMetrics" :key="item.label" class="ar-stat" @click="selectActivityFilter(item.label)"><text class="ar-number">{{ item.value }}</text><text class="ar-label">{{ item.label }}</text></view></view>
+							<view class="ar-actions"><view class="ar-action" @click="showToast('活动管理暂未接入')"><text>⇅ 管理其他活动</text></view><view class="ar-action" @click="showToast('签到功能暂未接入')"><text>▣ 扫码签到</text></view></view>
+						</view>
+						<view class="ar-search"><input class="ar-input" placeholder="请输入电话/昵称关键词搜索" :value="activityKeyword" @input="onActivityKeyword" @confirm="applyActivitySearch" /><view class="ar-search-btn" @click="applyActivitySearch"><text>搜索</text></view></view>
+						<view class="ar-list-heading"><text>{{ activityFilter == '全部' ? '全部报名' : activityFilter + '报名' }}</text></view>
+						<view v-if="activityVisibleRows.length == 0" class="ar-empty"><text>暂无符合条件的报名</text></view>
+						<view v-for="row in activityVisibleRows" :key="row.id" class="ar-card"><view class="ar-card-head"><view class="ar-avatar"><text>人</text></view><text class="ar-name">{{ row.name }}</text><text class="ar-badge">{{ row.status }}</text></view><text class="ar-detail">{{ row.detail }}</text><view class="ar-line"><text>☎  {{ row.phone }}</text><text class="ar-muted" @click="showToast('电话功能暂未接入')">拨打 ›</text></view><view class="ar-line"><text>¥  报名费</text><text class="ar-fee">免费</text></view><view class="ar-line"><text>◷  {{ row.time }}</text></view></view>
+					</view>
 				</view>
 
 				<MatchmakerGoodNews v-else-if="workspaceKind == 'news'" ref="goodNewsPanel" :display-name="goodNewsDisplayName" :initial-item-id="goodNewsInitialItem" :initial-kind="goodNewsInitialKind" @title="workspaceTitle = $event" @resetScroll="resetGoodNewsScroll" @profile="openGoodNewsPerson" @shareInfo="goodNewsShare = $event"/>
@@ -427,7 +473,7 @@
 			<!-- 客源线索：添加与筛选入口照搬资料待审的悬浮录入键（成对、右下角、同款圆形浅底） -->
 			<view v-if="workspaceKind == 'lead' && !leadFollowPanelVisible" class="lead-float-actions">
 				<view class="fab-lead-add" @click="openLeadAddSheet"><text class="fab-lead-glyph">✎</text><text>添加</text></view>
-				<view class="fab-lead-filter" :class="{ active: leadFilterStatus.length > 0 || leadFilterIntention > 0 }" @click="openLeadFilterSheet"><text class="fab-lead-glyph">☲</text><text>筛选</text></view>
+				<view class="fab-lead-filter" :class="{ active: leadHasAppliedFilter }" @click="openLeadFilterSheet"><text class="fab-lead-glyph">☲</text><text>筛选</text></view>
 			</view>
 
 		</scroll-view>
@@ -752,27 +798,24 @@
 			</view>
 		</XsaSheet>
 
-		<!-- 线索：筛选 -->
-		<XsaSheet :visible="leadFilterSheetVisible" title="筛选客源" @close="leadFilterSheetVisible = false">
-			<view class="workspace-filter-group">
-				<text class="workspace-filter-label">状态</text>
-				<view class="workspace-filter-chips">
-					<view class="workspace-filter-chip" :class="{ active: leadFilterStatus.length == 0 }" @click="leadFilterStatus = []"><text>全部</text></view>
-					<view v-for="opt in leadStatusOptions" :key="opt.value" class="workspace-filter-chip" :class="{ active: leadFilterStatus.indexOf(opt.value) >= 0 }" @click="toggleLeadFilterStatus(opt.value)"><text>{{ opt.label }}</text></view>
-				</view>
+		<!-- 客源筛选：沿用会员资料管理的抽屉样式。 -->
+		<view v-if="leadFilterSheetVisible" class="lf-layer">
+			<view class="lf-mask" @tap="leadFilterSheetVisible = false"></view>
+			<view class="lf-drawer" @tap.stop>
+				<view class="lf-head"><view><text class="lf-title">条件筛选</text><text class="lf-subtitle">按客源资料缩小查看范围</text></view><view class="lf-close" @tap="leadFilterSheetVisible = false"><text>✕</text></view></view>
+				<scroll-view scroll-y class="lf-scroll" :show-scrollbar="false">
+					<view v-for="row in leadFilterRows" :key="row.key" class="lf-row">
+						<view class="lf-row-summary" @tap="leadFilterExpanded = leadFilterExpanded == row.key ? '' : row.key"><text class="lf-label">{{ row.label }}</text><view class="lf-current"><text>{{ leadFilterText(row.key) }}</text><text class="lf-chevron">›</text></view></view>
+						<view v-if="leadFilterExpanded == row.key && row.key == 'age'" class="lf-range">
+							<text class="lf-range-hint">选择客户年龄范围</text>
+							<view class="lf-range-controls"><picker :range="leadAgeOptions" :value="leadAgeIndex(leadFilterDraft.ageMin)" @change="setLeadAge('ageMin', $event)"><view class="lf-range-input"><text>{{ leadFilterDraft.ageMin || '不限' }}</text></view></picker><text class="lf-range-separator">—</text><picker :range="leadAgeOptions" :value="leadAgeIndex(leadFilterDraft.ageMax)" @change="setLeadAge('ageMax', $event)"><view class="lf-range-input"><text>{{ leadFilterDraft.ageMax || '不限' }}</text></view></picker></view>
+						</view>
+						<view v-else-if="leadFilterExpanded == row.key" class="lf-options"><view v-for="option in leadFilterOptions(row.key)" :key="row.key + option.value" class="lf-option" :class="{ selected: leadFilterDraft[row.key] == option.value }" @tap="selectLeadFilter(row.key, option.value)"><text>{{ option.label }}</text></view></view>
+					</view>
+				</scroll-view>
+				<view class="lf-footer"><view class="lf-reset" @tap="resetLeadFilter"><text>重置</text></view><view class="lf-confirm" @tap="applyLeadFilter"><text>确定</text></view></view>
 			</view>
-			<view class="workspace-filter-group">
-				<text class="workspace-filter-label">意向级别</text>
-				<view class="workspace-filter-chips">
-					<view class="workspace-filter-chip" :class="{ active: leadFilterIntention == 0 }" @click="leadFilterIntention = 0"><text>全部</text></view>
-					<view v-for="opt in leadIntentionOptions" :key="opt.value" class="workspace-filter-chip intention-filter-chip" :class="{ active: leadFilterIntention == opt.value }" @click="leadFilterIntention = opt.value"><text>{{ opt.label }}</text></view>
-				</view>
-			</view>
-			<view class="workspace-sheet-actions">
-				<view class="workspace-sheet-btn ghost" @click="resetLeadFilter"><text>重置</text></view>
-				<view class="workspace-sheet-btn" @click="applyLeadFilter"><text>确认</text></view>
-			</view>
-		</XsaSheet>
+		</view>
 
 		<!-- 线索：添加 / 编辑 -->
 		<XsaSheet :visible="leadFormSheetVisible" :title="leadFormIsEdit ? '编辑线索' : '添加线索'" @close="leadFormSheetVisible = false">
@@ -975,23 +1018,30 @@
 				</view>
 
 				<text class="xsa-contact-name">{{ workspaceContactNameText }}</text>
+				<text class="xsa-contact-caption">已授权查看的联系方式</text>
 
 				<view v-if="workspaceContactLoading" class="xsa-contact-state"><text>正在读取联系方式…</text></view>
 				<view v-else-if="workspaceContactError.length > 0" class="xsa-contact-state error"><text>{{ workspaceContactError }}</text></view>
 				<view v-else class="xsa-contact-rows">
-					<view class="xsa-contact-row phone">
-						<view class="cc-badge phone"><image class="cc-badge-img" src="/static/icons/phone-call-white.svg" mode="aspectFit"></image></view>
-						<text class="cc-value">{{ workspaceContactPhone.length > 0 ? workspaceContactPhone : '该会员未绑定手机号' }}</text>
-						<view v-if="workspaceContactPhone.length > 0" class="cc-actions">
-							<view class="cc-btn phone" @tap="copyWorkspaceContact(workspaceContactPhone)"><text>复制</text></view>
-							<view class="cc-btn phone" @tap="callWorkspaceContact"><text>拨打</text></view>
+					<view class="xsa-contact-row" :class="{ unavailable: workspaceContactPhone.length == 0 }">
+						<view class="cc-kind"><text>手机号</text><view class="cc-kind-chevron"></view></view>
+						<view class="cc-contact-field">
+							<view class="cc-badge phone"><image class="cc-badge-img" src="/static/icons/phone-call-white.svg" mode="aspectFit"></image></view>
+							<text class="cc-value">{{ workspaceContactPhone.length > 0 ? workspaceContactPhone : '该会员未绑定手机号' }}</text>
+							<view v-if="workspaceContactPhone.length > 0" class="cc-actions">
+								<view class="cc-btn copy" @tap="copyWorkspaceContact(workspaceContactPhone)"><text>复制</text></view>
+								<view class="cc-btn phone" @tap="callWorkspaceContact"><image class="cc-action-icon" src="/static/icons/phone-call-white.svg" mode="aspectFit"></image></view>
+							</view>
 						</view>
 					</view>
 
-					<view class="xsa-contact-row wechat">
-						<view class="cc-badge wechat"><image class="cc-badge-img" src="/static/icons/wechat-bubble-white.svg" mode="aspectFit"></image></view>
-						<text class="cc-value">{{ workspaceContactWechat.length > 0 ? workspaceContactWechat : '该会员未绑定微信号' }}</text>
-						<view v-if="workspaceContactWechat.length > 0" class="cc-btn wechat" @tap="copyWorkspaceContact(workspaceContactWechat)"><text>复制</text></view>
+					<view class="xsa-contact-row" :class="{ unavailable: workspaceContactWechat.length == 0 }">
+						<view class="cc-kind"><text>微信号</text><view class="cc-kind-chevron"></view></view>
+						<view class="cc-contact-field">
+							<view class="cc-badge wechat"><image class="cc-badge-img" src="/static/icons/wechat-bubble-white.svg" mode="aspectFit"></image></view>
+							<text class="cc-value">{{ workspaceContactWechat.length > 0 ? workspaceContactWechat : '该会员未绑定微信号' }}</text>
+							<view v-if="workspaceContactWechat.length > 0" class="cc-actions"><view class="cc-btn copy" @tap="copyWorkspaceContact(workspaceContactWechat)"><text>复制</text></view></view>
+						</view>
 					</view>
 				</view>
 
@@ -1044,6 +1094,7 @@ import MatchmakerGoodNews from '@/pagesSub/matchmaker/components/MatchmakerGoodN
 import { onShareAppMessage } from '@dcloudio/uni-app'
 import MatchmakerPendingReview from '@/pagesSub/matchmaker/components/MatchmakerPendingReview.uvue'
 import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
+import { getRemoteFinanceBalance } from '@/api/matchmaker-remote.uts'
 import {
 	getMatchmakerManagementCenterAccess,
 	getMatchmakerManagementCenterSnapshot,
@@ -1072,6 +1123,7 @@ import {
 	getMatchmakerWorkspaceIntroductions,
 	getMatchmakerWorkspaceMeetingRequests,
 	getMatchmakerWorkspaceCommissionEntries,
+	getMatchmakerCommissionStandards,
 	getMatchmakerWorkspaceOfflineIncome,
 	getMatchmakerMemberContact,
 	submitMatchmakerApplication
@@ -1128,6 +1180,8 @@ const workspaceVisible = ref(false)
 const workspaceTitle = ref('')
 const workspaceKind = ref('general')
 const workspaceActiveTab = ref('全部')
+const financeTabs = ['支出明细', '余额明细', '积分明细']
+const financeNotice = computed((): string => workspaceActiveTab.value == '余额明细' ? '您的余额变动记录' : (workspaceActiveTab.value == '积分明细' ? '您的积分变动记录' : '您的线上现金支付和余额支付的全部记录'))
 const workspaceKeyword = ref('')
 const workspaceMembersLoading = ref(false)
 const workspaceMembersError = ref('')
@@ -1143,17 +1197,12 @@ const workspaceMatchesError = ref('')
 const workspaceMeetingsLoading = ref(false)
 const workspaceMeetingsError = ref('')
 const workspaceDefaultTabs = ['全部', '进行中', '已完成']
-const workspaceCommissionTabs = ['分成明细', '分成标准']
 const workspaceLeadTabs = ['客源线索', '弃海客源']
 const workspaceMatchTabs = ['全部', '待牵线', '牵线中', '成功', '失败']
 const workspaceMeetingTabs = ['全部', '约会失败', '待见面', '完成约会']
 // 录入客源线索页的「轻档案卡」风格开关
 const isLeadEntryStudio = computed(() => workspaceVisible.value && workspaceKind.value == 'entry' && workspaceTitle.value == '录入客源线索')
 const workspaceTabs = computed(() => {
-	if (workspaceKind.value == 'commission') {
-		// 「线上分成」与「财务明细」共用 commission 工作区，按标题切换页签与内容。
-		return workspaceTitle.value == '财务明细' ? ['财务明细', '结算说明'] : workspaceCommissionTabs
-	}
 	if (workspaceKind.value == 'news') return ['喜讯', '锦旗']
 	if (workspaceKind.value == 'lead') return workspaceLeadTabs
 	if (workspaceKind.value == 'match') return workspaceMatchTabs
@@ -1166,13 +1215,16 @@ const workspaceSearchPlaceholder = computed(() => {
 	if (workspaceKind.value == 'meeting') return '请输入申请人昵称或编号'
 	return '请输入关键词'
 })
-// 分成明细与财务明细读服务端（会员名与事件名由订单/规则回带）；分成标准未开放时明确提示。
+// 分成明细与财务明细读服务端（会员名与事件名由订单/规则回带）；分成标准在「分成级别」页面按后台配置展示。
 const workspaceCommissionRows = ref<any[]>([])
 const workspaceCommissionLoading = ref(false)
 const workspaceCommissionError = ref('')
 const workspaceCommissionUsingDemoData = ref(false)
 const workspaceCommissionTotalAmount = ref('')
-const workspaceCommissionRates: any[] = []
+// 可提现额度：GET /finance/balance 的 available_amount（当前登录用户账户）。取不到保持 '--'，不能按 0 元渲染。
+const workspaceCommissionBalance = ref('--')
+// 分成级别徽标：取后台 commission_level 配置里本人档案指向的级别，未指派时保持 '--'。
+const workspaceCommissionLevelName = ref('--')
 const workspaceFinanceRows = ref<any[]>([])
 const workspaceFinanceLoading = ref(false)
 const workspaceFinanceError = ref('')
@@ -1216,6 +1268,18 @@ const workspaceCashNote = computed((): string => {
 	if (workspaceCommissionUsingDemoData.value) return '分成金额计入账号余额，可申请提现；当前为本地演示数据。'
 	return '分成记录按服务端数据展示，实际可提现余额以账户余额为准。'
 })
+// 分成明细总览卡（资金卡 + 级别卡 + 推广卡）只在「我的分成」出现，财务明细沿用原资金平板。
+const isCommissionOverview = computed((): boolean => workspaceTitle.value == '我的分成')
+const commissionIdentity = computed((): any => {
+	if (managementCenterSnapshot.value == null || managementCenterSnapshot.value.identity == null) return {}
+	return managementCenterSnapshot.value.identity
+})
+const commissionIdentityName = computed((): string => {
+	const name = commissionIdentity.value.name
+	return name != null && String(name).length > 0 ? String(name) : '服务红娘'
+})
+const commissionIdentityAvatar = computed((): string => resolveMediaUrl(commissionIdentity.value.avatar))
+const commissionIdentityInitial = computed((): string => commissionIdentityName.value.substring(0, 1))
 const workspaceLeads = ref<any[]>([])
 // 九级意向独立保存，便于按 A-J 完整筛选与回显。
 const leadIntentionDetails = ref<any>({})
@@ -1350,7 +1414,19 @@ const reloadManagementCenterSnapshot = async () => {
 	}
 }
 // 远端未开放红娘活动管理，不展示本地活动。
-const workspaceActivities: any[] = []
+const activityMetrics = [{ label: '全部', value: '19' }, { label: '待审', value: '6' }, { label: '通过', value: '13' }, { label: '无效', value: '0' }, { label: '已签到', value: '0' }, { label: '未签到', value: '19' }]
+const activityRows: any[] = [{ id: 1, name: '示例会员', phone: '138****1092', status: '待审核', detail: '33岁 / 165cm / 博士 / 1-2万元 / 未婚', time: '09-16 14:26', checked: false }]
+const activityKeyword = ref('')
+const activitySearch = ref('')
+const activityFilter = ref('全部')
+const onActivityKeyword = (event: any) => { activityKeyword.value = String(event.detail.value || '') }
+const applyActivitySearch = () => { activitySearch.value = activityKeyword.value.trim() }
+const selectActivityFilter = (label: string) => { activityFilter.value = label }
+const activityVisibleRows = computed(() => activityRows.filter((row: any): boolean => {
+	const filter = activityFilter.value
+	const statusMatch = filter == '全部' || (filter == '待审' && row.status == '待审核') || (filter == '通过' && row.status == '已通过') || (filter == '无效' && row.status == '无效') || (filter == '已签到' && row.checked) || (filter == '未签到' && !row.checked)
+	return statusMatch && (activitySearch.value.length == 0 || row.name.indexOf(activitySearch.value) >= 0 || row.phone.indexOf(activitySearch.value) >= 0)
+}))
 const workspaceGenericRows: any[] = []
 const workspaceVisibleMembers = computed(() => {
 	let rows = workspaceMembers.value
@@ -1378,8 +1454,14 @@ const workspaceVisibleLeads = computed(() => {
 			return left < right ? 1 : -1
 		})
 	}
-	if (leadFilterStatus.value.length > 0) rows = rows.filter((item: any) => leadFilterStatus.value.indexOf(item.status) >= 0)
-	if (leadFilterIntention.value > 0) rows = rows.filter((item: any) => Number(item.intentionValue) == leadFilterIntention.value)
+	const filter = leadFilterApplied.value
+	if (filter.status != '') rows = rows.filter((item: any) => item.status == filter.status)
+	if (filter.creator != '') rows = rows.filter((item: any) => item.creator == filter.creator)
+	if (filter.source != '') rows = rows.filter((item: any) => item.source == filter.source)
+	if (filter.owner != '') rows = rows.filter((item: any) => filter.owner == '__unassigned__' ? Number(item.matchmakerId) == 0 : String(item.matchmakerId) == filter.owner)
+	if (filter.stored != '') rows = rows.filter((item: any) => filter.stored == 'yes' ? item.convertedUserId.length > 0 : item.convertedUserId.length == 0)
+	if (filter.intention != '') rows = rows.filter((item: any) => String(item.intentionValue) == filter.intention)
+	if (filter.ageMin != '' || filter.ageMax != '') rows = rows.filter((item: any) => Number(item.age) > 0 && (filter.ageMin == '' || Number(item.age) >= Number(filter.ageMin)) && (filter.ageMax == '' || Number(item.age) <= Number(filter.ageMax)))
 	const keyword = workspaceKeyword.value.trim().toLowerCase()
 	if (keyword.length == 0) return rows
 	return rows.filter((item: any) => {
@@ -1790,26 +1872,49 @@ const loadWorkspaceLeads = async () => {
 }
 
 // ===== 客源线索：工具栏与筛选 =====
-const leadFilterStatus = ref<string[]>([])
-const leadFilterIntention = ref(0)
-
+const createLeadFilter = (): any => ({ status: '', creator: '', source: '', ageMin: '', ageMax: '', owner: '', stored: '', intention: '' })
+const leadFilterDraft = ref<any>(createLeadFilter())
+const leadFilterApplied = ref<any>(createLeadFilter())
+const leadFilterExpanded = ref('')
 const leadFilterSheetVisible = ref(false)
-const openLeadFilterSheet = () => { leadFilterSheetVisible.value = true }
-const toggleLeadFilterStatus = (value: string) => {
-	const idx = leadFilterStatus.value.indexOf(value)
-	if (idx >= 0) {
-		leadFilterStatus.value = leadFilterStatus.value.filter((item: string): boolean => item != value)
+const leadFilterRows = [{ key: 'status', label: '客源状态' }, { key: 'creator', label: '录入人' }, { key: 'source', label: '客户来源' }, { key: 'age', label: '客户年龄' }, { key: 'owner', label: '分派跟进' }, { key: 'stored', label: '入库情况' }, { key: 'intention', label: '意向级别' }]
+const leadAgeOptions: string[] = ['不限']
+for (let i = 16; i <= 120; i++) leadAgeOptions.push(String(i))
+const leadHasAppliedFilter = computed((): boolean => Object.keys(leadFilterApplied.value).some((key: string): boolean => String(leadFilterApplied.value[key] || '').length > 0))
+const leadFilterOptions = (key: string): any[] => {
+	const result: any[] = [{ label: '不限', value: '' }]
+	if (key == 'status') {
+		for (const option of leadStatusMeta as any[]) result.push({ label: String(option.label), value: String(option.value) })
+	} else if (key == 'stored') {
+		result.push({ label: '已入库', value: 'yes' }); result.push({ label: '未入库', value: 'no' })
+	} else if (key == 'intention') {
+		for (const option of leadIntentionOptions as any[]) result.push({ label: String(option.label), value: String(option.value) })
 	} else {
-		leadFilterStatus.value = leadFilterStatus.value.concat([value])
+		if (key == 'owner') result.push({ label: '未分派', value: '__unassigned__' })
+		const seen: string[] = []
+		for (const row of workspaceLeads.value as any[]) {
+			const value = key == 'owner' ? (Number(row.matchmakerId) > 0 ? String(row.matchmakerId) : '') : String(key == 'creator' ? row.creator : row.source)
+			const label = key == 'owner' ? String(row.owner) : value
+			if (value.length > 0 && seen.indexOf(value) < 0) { seen.push(value); result.push({ label: label, value: value }) }
+		}
 	}
+	return result
 }
-const resetLeadFilter = () => {
-	leadFilterStatus.value = []
-	leadFilterIntention.value = 0
+const leadFilterText = (key: string): string => {
+	if (key == 'age') return leadFilterDraft.value.ageMin == '' && leadFilterDraft.value.ageMax == '' ? '不限' : (leadFilterDraft.value.ageMin || '不限') + ' — ' + (leadFilterDraft.value.ageMax || '不限')
+	const option = leadFilterOptions(key).find((item: any): boolean => item.value == leadFilterDraft.value[key])
+	return option != null ? String(option.label) : '不限'
 }
+const leadAgeIndex = (value: string): number => { const index = leadAgeOptions.indexOf(value); return index > 0 ? index : 0 }
+const setLeadAge = (key: string, event: any) => { const index = Number(event.detail.value); leadFilterDraft.value[key] = index > 0 && index < leadAgeOptions.length ? leadAgeOptions[index] : '' }
+const selectLeadFilter = (key: string, value: string) => { leadFilterDraft.value[key] = value; leadFilterExpanded.value = '' }
+const openLeadFilterSheet = () => { leadFilterDraft.value = { ...leadFilterApplied.value }; leadFilterExpanded.value = ''; leadFilterSheetVisible.value = true }
+const resetLeadFilter = () => { leadFilterDraft.value = createLeadFilter(); leadFilterExpanded.value = '' }
 const applyLeadFilter = () => {
+	const min = leadFilterDraft.value.ageMin, max = leadFilterDraft.value.ageMax
+	if (min != '' && max != '' && Number(min) > Number(max)) { showToast('年龄下限不能大于上限'); return }
+	leadFilterApplied.value = { ...leadFilterDraft.value }
 	leadFilterSheetVisible.value = false
-	showToast('已按条件筛选 ' + String(workspaceVisibleLeads.value.length) + ' 条客源')
 }
 
 // ===== 客源线索：状态选择 =====
@@ -2225,7 +2330,7 @@ const submitMemberEntry = async () => {
 		openPendingReview('PENDING')
 		if (memberId.length == 0) { showToast('会员已建号，请重新打开会员资料补填'); return }
 		showToast('已建号 G' + memberId + '，请补全会员资料')
-		uni.navigateTo({ url: '/pagesSub/userExtra/user/edit?memberId=' + memberId + '&matchmakerView=1', fail: () => showToast('会员已建号，可在资料待审中继续补充资料') })
+		uni.navigateTo({ url: '/pagesSub/userExtra/user/edit?memberId=' + memberId + '&matchmakerView=1', fail: () => showToast('会员已建号，可在会员资料管理中继续补充资料') })
 	} catch (e) {
 		memberEntryError.value = '网络异常，请稍后重试'
 	} finally {
@@ -2640,6 +2745,49 @@ const loadWorkspaceCommissionEntries = async () => {
 	} finally {
 		workspaceCommissionLoading.value = false
 	}
+}
+
+const loadWorkspaceCommissionBalance = async () => {
+	workspaceCommissionBalance.value = '--'
+	try {
+		const result = await getRemoteFinanceBalance()
+		if (!result.success || result.data == null) return
+		const data: any = result.data
+		const amount = Number(data.available_amount)
+		if (isNaN(amount) || amount < 0) return
+		workspaceCommissionBalance.value = amount.toFixed(2)
+	} catch (e) {
+		// 余额接口异常时留 '--'，明细与提现到账户资金页看，不显示来路不明的金额。
+	}
+}
+
+const loadWorkspaceCommissionLevel = async () => {
+	workspaceCommissionLevelName.value = '--'
+	try {
+		const result = await getMatchmakerCommissionStandards()
+		if (!result.success || result.data == null) return
+		const levelName = result.data.currentLevelName
+		if (levelName != null && String(levelName).length > 0 && String(levelName) != '--') {
+			workspaceCommissionLevelName.value = String(levelName)
+		}
+	} catch (e) {
+		// 级别取不到就留 '--'，不前端推算级别。
+	}
+}
+
+const openCommissionWithdrawal = () => {
+	uni.navigateTo({
+		url: '/pagesSub/matchmaker/promoter-center?page=withdraw',
+		fail: () => showToast('账户资金打开失败，请稍后重试')
+	})
+}
+
+// 分成标准改为独立页面：级别与按项目分成一律由页面按后台配置渲染，不在工作区内写死。
+const openCommissionStandardPage = () => {
+	uni.navigateTo({
+		url: '/pagesSub/matchmaker/commission-level',
+		fail: () => showToast('分成标准打开失败，请稍后重试')
+	})
 }
 
 const loadWorkspaceOfflineIncome = async () => {
@@ -3323,9 +3471,9 @@ const scrollWorkspaceTop = () => {
 }
 
 const openWorkspace = async (title: string, kind: string, initialTab: string = '') => {
-	workspaceTitle.value = title
+	workspaceTitle.value = kind == 'activity' ? '活动报名管理' : title
 	workspaceKind.value = kind
-	workspaceActiveTab.value = initialTab.length > 0 ? initialTab : (kind == 'commission' ? (title == '财务明细' ? '财务明细' : '分成明细') : (kind == 'lead' ? '客源线索' : (kind == 'news' ? '喜讯' : '全部')))
+	workspaceActiveTab.value = initialTab.length > 0 ? initialTab : (kind == 'income-placeholder' ? '支出明细' : (kind == 'commission' ? (title == '财务明细' ? '财务明细' : '分成明细') : (kind == 'lead' ? '客源线索' : (kind == 'news' ? '喜讯' : '全部'))))
 	workspaceKeyword.value = ''
 	workspaceVisible.value = true
 	if (kind == 'entry') {
@@ -3352,7 +3500,11 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
 	// 「线上分成」与「财务明细」各读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
-	if (kind == 'commission' && title == '我的分成') await loadWorkspaceCommissionEntries()
+	if (kind == 'commission' && title == '我的分成') {
+		await loadWorkspaceCommissionEntries()
+		await loadWorkspaceCommissionBalance()
+		await loadWorkspaceCommissionLevel()
+	}
 	if (kind == 'commission' && title == '财务明细') await loadWorkspaceOfflineIncome()
 	if (kind == 'news') workspaceTitle.value = '红娘喜讯'
 }
@@ -3394,7 +3546,7 @@ const handleManagementCenterAction = (name: string) => {
 		return
 	}
 	if (name == 'metric:pending_introduction') {
-		openWorkspace('待我牵线', 'match', '待牵线')
+		openWorkspace('牵线管理', 'match', '待牵线')
 		return
 	}
 	if (name == 'metric:introduction_succeeded') {
@@ -3539,7 +3691,7 @@ onShow(async () => {
 		await openManagementCenter()
 		if (managementCenterVisible.value) {
 			if (kind == 'meeting') openWorkspace('约会管理', 'meeting', '全部')
-			else if (kind == 'match') openWorkspace('待我牵线', 'match', '待牵线')
+			else if (kind == 'match') openWorkspace('牵线管理', 'match', '待牵线')
 			else if (kind == 'news') openWorkspace('红娘喜讯', 'news')
 		}
 		return
@@ -3891,14 +4043,63 @@ const submitApplication = async () => {
 .workspace-tabs { flex-shrink: 0; padding: 4rpx 0 0; display: flex; flex-direction: row; justify-content: center; }.workspace-tabs-row { display: flex; flex-direction: row; width: 100%; padding: 8rpx; border-radius: 999rpx; background: var(--warm); }.workspace-tab { flex: 1; height: 62rpx; padding: 0 10rpx; border-radius: 999rpx; display: flex; flex-direction: row; align-items: center; justify-content: center; }.workspace-tab text { color: var(--muted); font-size: 24rpx; font-weight: 700; }.workspace-tab.active { background: var(--accent2); }.workspace-tab.active text { color: var(--paper); }.workspace-tab:active { opacity: .82; }
 .workspace-search { height: 78rpx; margin: 18rpx 0; padding: 0 26rpx; border-radius: 999rpx; background: var(--warm); display: flex; flex-direction: row; align-items: center; gap: 14rpx; }.workspace-search-input { flex: 1; min-width: 0; font-size: 25rpx; color: var(--ink); }.workspace-search-ph { color: var(--muted); font-size: 25rpx; }.workspace-search-glyph { font-size: 32rpx; line-height: 1; color: var(--muted); flex-shrink: 0; }
 .workspace-cash { min-height: 254rpx; padding: 30rpx; position: relative; border-radius: 20rpx; background: var(--accent-bg); display: flex; flex-direction: column; gap: 12rpx; color: var(--ink2); font-size: 23rpx; }.workspace-cash-value { font-size: 56rpx; color: var(--ink); font-weight: 800; }.workspace-cash > view { position: absolute; top: 40rpx; right: 26rpx; padding: 14rpx 24rpx; border-radius: 999rpx; background: var(--surface); color: var(--accent2); font-size: 21rpx; font-weight: 800; }
+/* ===== 我的分成总览：资金 hero + 级别卡 + 推广卡。配色全部复用 --review-* 紫粉橙（同一服务红娘工作台域），不新增色值。 ===== */
+.commission-hero { position: relative; overflow: hidden; min-height: 236rpx; padding: 30rpx 30rpx 22rpx; border-radius: 32rpx; background: linear-gradient(135deg, var(--review-lilac), var(--review-pink)); display: flex; flex-direction: column; box-sizing: border-box; }
+.commission-hero:after { content: ''; position: absolute; right: -46rpx; bottom: -130rpx; width: 300rpx; height: 300rpx; border: 24rpx solid rgba(255, 255, 255, 0.18); border-radius: 50%; box-sizing: border-box; }
+.commission-hero-body { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.commission-hero-amount { display: flex; flex-direction: column; gap: 8rpx; }
+.commission-hero-label { font-size: 25rpx; font-weight: 800; color: var(--ink2); }
+.commission-hero-value { font-family: var(--serif); font-size: 62rpx; line-height: 1.05; font-weight: 800; color: var(--ink); }
+.commission-hero-pill { min-width: 174rpx; height: 70rpx; padding: 0 24rpx; border-radius: 999rpx; background: var(--surface); display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 26rpx; font-weight: 800; color: var(--review-purple); box-sizing: border-box; }
+.commission-hero-pill:active { opacity: .82; }
+.commission-hero-foot { margin-top: 20rpx; padding-top: 18rpx; border-top: 1px solid rgba(255, 255, 255, 0.46); display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.commission-hero-avatar, .commission-hero-mark { width: 52rpx; height: 52rpx; border-radius: 50%; flex-shrink: 0; }
+.commission-hero-mark { background: var(--surface); color: var(--review-deep); display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; }
+.commission-hero-name { font-size: 25rpx; font-weight: 800; color: var(--ink); }
+.commission-hero-earned { margin-left: auto; font-size: 22rpx; font-weight: 700; color: var(--ink2); }
+.commission-hero-note { display: block; margin-top: 12rpx; padding: 0 6rpx; font-size: 21rpx; line-height: 1.5; color: var(--muted); }
+.commission-level-card { margin-top: 22rpx; padding: 26rpx; border-radius: 32rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 22rpx; box-sizing: border-box; }
+.commission-level-head { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 12rpx; }
+.commission-level-label { font-size: 26rpx; color: var(--ink2); }
+.commission-level-badge { padding: 8rpx 18rpx; border-radius: 14rpx; background: var(--review-orange-soft); display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; color: var(--review-orange); }
+.commission-standard { display: flex; flex-direction: row; align-items: center; gap: 4rpx; }
+.commission-standard-text { font-size: 26rpx; font-weight: 800; color: var(--review-purple); }
+.commission-standard-caret { font-size: 26rpx; font-weight: 400; color: var(--review-purple); }
+.commission-standard:active { opacity: .7; }
+.commission-tip { padding: 22rpx; border-radius: 24rpx; background: var(--review-soft); display: flex; flex-direction: row; gap: 14rpx; box-sizing: border-box; }
+.commission-tip-mark { width: 40rpx; height: 40rpx; border-radius: 50%; background: var(--review-lilac); color: var(--review-deep); display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 22rpx; font-weight: 800; flex-shrink: 0; }
+.commission-tip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10rpx; }
+.commission-tip-title { font-size: 26rpx; font-weight: 800; color: var(--ink); }
+.commission-tip-text { font-size: 23rpx; line-height: 1.6; color: var(--ink2); }
+.commission-promo { margin-top: 22rpx; padding: 26rpx; border-radius: 32rpx; background: linear-gradient(135deg, var(--review-lilac), var(--review-pink)); display: flex; flex-direction: column; gap: 22rpx; box-sizing: border-box; }
+.commission-promo-head { display: flex; flex-direction: row; align-items: center; gap: 14rpx; }
+.commission-promo-icon { width: 52rpx; height: 52rpx; border-radius: 16rpx; background: var(--surface); color: var(--review-purple); display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 28rpx; font-weight: 800; flex-shrink: 0; }
+.commission-promo-text { flex: 1; min-width: 0; font-size: 25rpx; font-weight: 800; color: var(--ink); }
+.commission-promo-actions { display: flex; flex-direction: row; gap: 16rpx; }
+.commission-promo-pill { flex: 1; min-width: 0; min-height: 66rpx; padding: 0 12rpx; border-radius: 999rpx; background: var(--surface); display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 22rpx; font-weight: 800; color: var(--review-purple); box-sizing: border-box; }
+.commission-promo-pill:active { opacity: .82; }
 .workspace-notice,.workspace-promotion { margin-top: 20rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 10rpx; color: var(--ink2); font-size: 21rpx; line-height: 1.55; box-shadow: var(--shadow-sm); }.workspace-notice-title { font-size: 25rpx; color: var(--ink); font-weight: 800; }.workspace-promotion { background: var(--sage-soft); color: var(--accent2); font-weight: 800; }.workspace-promotion > view { display: flex; gap: 12rpx; }.workspace-promotion > view text { flex: 1; padding: 12rpx 8rpx; border-radius: 999rpx; background: var(--surface); text-align: center; font-size: 19rpx; }
 .workspace-commission-row { margin-top: 18rpx; color: var(--muted); font-size: 20rpx; }.workspace-commission-row > view { margin-top: 8rpx; padding: 20rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; gap: 16rpx; box-shadow: var(--shadow-sm); }.workspace-commission-row image,.workspace-member-header image { width: 60rpx; height: 60rpx; border-radius: 50%; }.workspace-commission-row > view > view { flex: 1; display: flex; flex-direction: column; gap: 4rpx; color: var(--ink); font-size: 21rpx; }.workspace-commission-row > view > view text:last-child { color: var(--muted); font-size: 19rpx; }.workspace-commission-row > view > text:last-child { color: var(--accent2); font-size: 27rpx; font-weight: 800; }
 .workspace-commission-row > view > .workspace-commission-avatar { flex: 0 0 60rpx; width: 60rpx; height: 60rpx; border-radius: 50%; background: var(--warm); color: var(--accent2); display: flex; align-items: center; justify-content: center; font-size: 24rpx; font-weight: 800; }
 .workspace-info-card,.workspace-match-card { margin-top: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: column; gap: 16rpx; color: var(--ink); font-size: 28rpx; font-weight: 800; box-shadow: var(--shadow-sm); }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) { padding-bottom: 13rpx; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; color: var(--ink2); font-size: 21rpx; font-weight: 400; }.workspace-info-card > view:not(.workspace-actions):not(.workspace-member-header) text:last-child { color: var(--ink); }.workspace-actions { display: flex; gap: 9rpx; }.workspace-actions text { flex: 1; padding: 12rpx 4rpx; border-radius: 14rpx; background: var(--warm); color: var(--accent2); text-align: center; font-size: 18rpx; font-weight: 700; }
 .workspace-state { margin-top: 18rpx; min-height: 180rpx; padding: 28rpx; border-radius: 20rpx; background: var(--surface); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 18rpx; color: var(--muted); font-size: 22rpx; box-shadow: var(--shadow-sm); }.workspace-state-action { padding: 12rpx 24rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 21rpx; font-weight: 700; }
+/* 财务明细继承红娘工作台的青瓷色调，数据尚不可用时不展示虚构金额。 */
+.finance-page { padding: 12rpx 0 70rpx; display: flex; flex-direction: column; }
+.finance-overview { display: flex; flex-direction: row; gap: 18rpx; }
+.finance-card { flex: 1; min-width: 0; height: 260rpx; padding: 28rpx; border-radius: 34rpx; position: relative; overflow: hidden; display: flex; flex-direction: column; box-sizing: border-box; box-shadow: var(--shadow-sm); }
+.finance-balance { background: var(--accent-bg); }.finance-points { background: var(--sage-soft); }
+.finance-card-mark { position: absolute; right: -38rpx; bottom: -68rpx; width: 210rpx; height: 210rpx; border: 16rpx solid var(--soft); border-radius: 50%; opacity: .12; display: flex; align-items: center; justify-content: center; }
+.finance-card-mark text { color: var(--accent2); font-size: 132rpx; font-weight: 800; }
+.finance-card-label { position: relative; color: var(--ink); font-size: 24rpx; font-weight: 700; }.finance-card-value { position: relative; margin-top: 12rpx; color: var(--ink); font-size: 52rpx; font-weight: 800; line-height: 1; }
+.finance-card-actions { position: relative; margin-top: auto; display: flex; flex-direction: row; align-items: center; gap: 10rpx; }.finance-pill, .finance-gift { min-height: 58rpx; padding: 0 22rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }.finance-pill { background: var(--surface); }.finance-pill text { color: var(--accent2); font-size: 23rpx; font-weight: 800; }.finance-gift { padding: 0 14rpx; background: var(--soft); }.finance-gift text { color: var(--paper); font-size: 20rpx; font-weight: 700; white-space: nowrap; }
+.finance-tabs { margin-top: 42rpx; display: flex; flex-direction: row; justify-content: space-between; }.finance-tab { flex: 1; min-width: 0; height: 76rpx; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }.finance-tab text { color: var(--muted); font-size: 27rpx; font-weight: 700; }.finance-tab.active text { color: var(--ink); font-weight: 800; }.finance-tab-mark { width: 36rpx; height: 9rpx; margin-top: 8rpx; border-radius: 999rpx; background: var(--accent); }
+.finance-card { padding-left: 20rpx; padding-right: 20rpx; }.finance-pill { padding-left: 14rpx; padding-right: 14rpx; }.finance-gift { padding-left: 10rpx; padding-right: 10rpx; }.finance-gift text { font-size: 18rpx; }
+.finance-notice { min-height: 70rpx; margin-top: 12rpx; padding: 14rpx 20rpx; border: 1rpx solid var(--line); border-radius: 14rpx; background: var(--paper); display: flex; flex-direction: row; align-items: center; gap: 12rpx; box-sizing: border-box; }.finance-notice > text { flex: 1; color: var(--ink2); font-size: 21rpx; line-height: 1.5; }.finance-notice-icon { width: 28rpx; height: 28rpx; flex-shrink: 0; border-radius: 50%; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; }.finance-notice-icon text { color: var(--accent2); font-size: 18rpx; font-weight: 800; }
+.finance-empty { padding-top: 66rpx; display: flex; flex-direction: column; align-items: center; }.finance-empty > text { margin-top: 22rpx; color: var(--muted); font-size: 25rpx; }.finance-empty-illustration { position: relative; width: 112rpx; height: 126rpx; border-radius: 20rpx; background: var(--warm); display: flex; flex-direction: column; align-items: center; }.finance-empty-head { width: 25rpx; height: 28rpx; margin-top: 16rpx; border-radius: 50%; background: var(--line); }.finance-empty-person { width: 50rpx; height: 16rpx; margin-top: 2rpx; border-radius: 20rpx 20rpx 5rpx 5rpx; background: var(--line); }.finance-empty-line { width: 48rpx; height: 8rpx; margin-top: 12rpx; border-radius: 999rpx; background: var(--line); }.finance-empty-line.short { width: 34rpx; align-self: flex-start; margin-left: 30rpx; }.finance-empty-search { position: absolute; right: -22rpx; bottom: -8rpx; width: 56rpx; height: 56rpx; border-radius: 50%; background: var(--soft); display: flex; align-items: center; justify-content: center; }.finance-empty-search view { width: 23rpx; height: 23rpx; border: 5rpx solid var(--paper); border-radius: 50%; }.finance-empty-shadow { width: 118rpx; height: 12rpx; margin-top: 12rpx; border-radius: 50%; background: var(--warm); opacity: .65; }
+.finance-empty-search { right: 0; bottom: 0; }
 .workspace-filter-note { padding: 12rpx; color: var(--accent2); font-size: 22rpx; line-height: 1.5; }.workspace-demo-notice { margin: 4rpx 12rpx 12rpx; padding: 12rpx 14rpx; border-radius: 14rpx; background: var(--accent-bg); color: var(--accent2); font-size: 19rpx; line-height: 1.45; }
-/* 分成标准 / 牵线卡片：比例数值与牵线状态 */
-.workspace-rate-value { color: var(--accent2); font-size: 30rpx; font-weight: 800; }.workspace-match-card { font-size: 21rpx; font-weight: 400; }.workspace-match-card-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }.workspace-match-status { padding: 7rpx 13rpx; border-radius: 999rpx; font-size: 18rpx; font-weight: 800; line-height: 1.2; }.workspace-match-status-pending { background: var(--accent-bg); color: var(--accent2); }.workspace-match-status-progress { background: var(--match-sky); color: var(--match-deep); }.workspace-match-status-succeeded { background: var(--sage-soft); color: var(--sage); }.workspace-match-status-failed { background: var(--match-blush); color: var(--match-coral); }.workspace-match-reason { padding: 14rpx; border-radius: 14rpx; background: var(--match-blush); color: var(--ink2); font-size: 20rpx; line-height: 1.5; }.workspace-match-owner { color: var(--muted); font-size: 19rpx; }
+/* 牵线卡片：牵线状态 */
+.workspace-match-card { font-size: 21rpx; font-weight: 400; }.workspace-match-card-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); }.workspace-match-status { padding: 7rpx 13rpx; border-radius: 999rpx; font-size: 18rpx; font-weight: 800; line-height: 1.2; }.workspace-match-status-pending { background: var(--accent-bg); color: var(--accent2); }.workspace-match-status-progress { background: var(--match-sky); color: var(--match-deep); }.workspace-match-status-succeeded { background: var(--sage-soft); color: var(--sage); }.workspace-match-status-failed { background: var(--match-blush); color: var(--match-coral); }.workspace-match-reason { padding: 14rpx; border-radius: 14rpx; background: var(--match-blush); color: var(--ink2); font-size: 20rpx; line-height: 1.5; }.workspace-match-owner { color: var(--muted); font-size: 19rpx; }
 
 /* 牵线管理（按设计稿）：申请时间+黄色状态胶囊、双人放大头像+心形徽标、图下联系方式行、牵线状态弹窗。 */
 .workspace-match-card { gap: 20rpx; padding: 26rpx 26rpx; }
@@ -6128,9 +6329,9 @@ const submitApplication = async () => {
 .xsa-contact-card {
 	width: 100%;
 	max-width: 644rpx;
-	background: #ffffff;
-	border-radius: 40rpx;
-	padding: 44rpx 36rpx 34rpx;
+	background: var(--surface);
+	border-radius: 30rpx;
+	padding: 42rpx 30rpx 30rpx;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -6166,7 +6367,7 @@ const submitApplication = async () => {
 	width: 52rpx;
 	height: 44rpx;
 	border-radius: 12rpx;
-	background: linear-gradient(135deg, #6E8BFF, #4C6DF5);
+	background: var(--accent);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -6180,7 +6381,7 @@ const submitApplication = async () => {
 	width: 16rpx;
 	height: 16rpx;
 	border-radius: 50%;
-	background: #ffffff;
+	background: var(--surface);
 }
 
 .cc-avatar-body {
@@ -6190,7 +6391,7 @@ const submitApplication = async () => {
 	width: 26rpx;
 	height: 13rpx;
 	border-radius: 13rpx 13rpx 4rpx 4rpx;
-	background: #ffffff;
+	background: var(--surface);
 }
 
 .cc-lens {
@@ -6200,24 +6401,26 @@ const submitApplication = async () => {
 	width: 28rpx;
 	height: 28rpx;
 	border-radius: 50%;
-	border: 6rpx solid #F0518B;
-	background: #ffffff;
+	border: 6rpx solid var(--accent);
+	background: var(--surface);
 	box-sizing: border-box;
 }
 
 .xsa-contact-title {
-	font-size: 42rpx;
+	font-size: 40rpx;
 	font-weight: 800;
-	color: #1F2430;
+	color: var(--ink);
 }
 
 .xsa-contact-name {
-	margin-top: 30rpx;
-	font-size: 30rpx;
+	margin-top: 24rpx;
+	font-size: 29rpx;
 	font-weight: 600;
-	color: #39404E;
+	color: var(--ink2);
 	text-align: center;
 }
+
+.xsa-contact-caption { margin-top: 8rpx; color: var(--muted); font-size: 22rpx; }
 
 .xsa-contact-state {
 	margin-top: 34rpx;
@@ -6237,52 +6440,57 @@ const submitApplication = async () => {
 
 .xsa-contact-rows {
 	width: 100%;
+	margin-top: 8rpx;
 	display: flex;
 	flex-direction: column;
 }
 
 .xsa-contact-row {
-	margin-top: 26rpx;
+	margin-top: 20rpx;
 	width: 100%;
-	min-height: 112rpx;
-	border-radius: 26rpx;
-	padding: 0 20rpx;
+	min-height: 124rpx;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 14rpx;
+	gap: 16rpx;
 	box-sizing: border-box;
 }
 
-.xsa-contact-row.phone { background: #FDE7EB; }
-.xsa-contact-row.wechat { background: #E9F7EF; }
+.cc-kind { width: 120rpx; min-height: 64rpx; padding: 0 14rpx; border-radius: 12rpx; background: var(--match-mist); display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 10rpx; box-sizing: border-box; flex-shrink: 0; }
+.cc-kind text { color: var(--accent2); font-size: 25rpx; font-weight: 700; }
+.cc-kind-chevron { width: 12rpx; height: 12rpx; border-right: 2rpx solid var(--accent2); border-bottom: 2rpx solid var(--accent2); transform: rotate(45deg) translateY(-4rpx); }
+.cc-contact-field { min-width: 0; flex: 1; min-height: 112rpx; padding: 0 18rpx; border: 2rpx solid var(--match-line); border-radius: 16rpx; background: var(--surface); display: flex; flex-direction: row; align-items: center; gap: 14rpx; box-sizing: border-box; }
+.xsa-contact-row.unavailable .cc-contact-field { background: var(--warm); border-style: dashed; }
+.xsa-contact-row.unavailable .cc-kind { opacity: .62; }
 
 .cc-badge {
-	width: 58rpx;
-	height: 58rpx;
-	border-radius: 50%;
+	width: 56rpx;
+	height: 56rpx;
+	border-radius: 16rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
 }
 
-.cc-badge.phone { background: #F04150; }
-.cc-badge.wechat { background: #35C08A; }
+.cc-badge.phone,
+.cc-badge.wechat { background: var(--accent); }
 
 .cc-badge-img {
-	width: 40rpx;
-	height: 40rpx;
+	width: 34rpx;
+	height: 34rpx;
 }
 
 .cc-value {
 	flex: 1;
 	min-width: 0;
-	font-size: 34rpx;
-	font-weight: 800;
+	font-size: 32rpx;
+	font-weight: 700;
 	line-height: 1.25;
-	color: #1F2430;
+	color: var(--ink);
 }
+
+.xsa-contact-row.unavailable .cc-value { color: var(--muted); font-size: 25rpx; font-weight: 500; }
 
 .cc-actions {
 	display: flex;
@@ -6293,9 +6501,10 @@ const submitApplication = async () => {
 }
 
 .cc-btn {
-	height: 66rpx;
-	padding: 0 20rpx;
-	border-radius: 18rpx;
+	height: 62rpx;
+	min-width: 62rpx;
+	padding: 0 16rpx;
+	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -6303,17 +6512,19 @@ const submitApplication = async () => {
 }
 
 .cc-btn text {
-	color: #ffffff;
-	font-size: 26rpx;
+	color: var(--text-invert);
+	font-size: 22rpx;
 	font-weight: 800;
 }
 
-.cc-btn.phone { background: #F04150; }
-.cc-btn.wechat { background: #35C08A; }
+.cc-btn.phone { background: var(--accent); }
+.cc-btn.copy { min-width: 72rpx; border: 2rpx solid var(--match-mist); border-radius: 32rpx; background: var(--match-mist); }
+.cc-btn.copy text { color: var(--accent2); }
+.cc-action-icon { width: 30rpx; height: 30rpx; }
 .cc-btn:active { opacity: .82; }
 
 .xsa-contact-tip {
-	margin-top: 40rpx;
+	margin-top: 34rpx;
 	width: 100%;
 	display: flex;
 	flex-direction: column;
@@ -6331,7 +6542,7 @@ const submitApplication = async () => {
 	width: 38rpx;
 	height: 38rpx;
 	border-radius: 50%;
-	background: #EDE7FF;
+	background: var(--match-mist);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -6341,34 +6552,34 @@ const submitApplication = async () => {
 .cc-tip-mark text {
 	font-size: 22rpx;
 	font-weight: 800;
-	color: #6C5CE7;
+	color: var(--accent2);
 }
 
 .cc-tip-title {
 	font-size: 30rpx;
 	font-weight: 800;
-	color: #2B3240;
+	color: var(--ink2);
 }
 
 .cc-tip-copy {
 	font-size: 26rpx;
 	line-height: 1.62;
-	color: #6B7280;
+	color: var(--muted);
 }
 
 .xsa-contact-close {
-	margin-top: 44rpx;
+	margin-top: 38rpx;
 	width: 100%;
 	height: 104rpx;
-	border-radius: 52rpx;
-	background: linear-gradient(135deg, #7C5CFC, #6C5CE7);
+	border-radius: 18rpx;
+	background: linear-gradient(90deg, var(--accent), var(--accent2));
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 
 .xsa-contact-close text {
-	color: #ffffff;
+	color: var(--text-invert);
 	font-size: 34rpx;
 	font-weight: 800;
 }
@@ -6453,4 +6664,58 @@ const submitApplication = async () => {
 .ls-foot { margin-top: 20rpx; display: flex; justify-content: center; }
 .ls-foot text { color: #9AA8A2; font-size: 20rpx; text-align: center; }
 
+
+/* 客源筛选抽屉与会员资料管理保持一致。 */
+.lf-layer { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 110; display: flex; flex-direction: column; justify-content: flex-end; }
+.lf-mask { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: var(--ink); opacity: .44; }
+.lf-drawer { position: relative; width: 100%; height: 82%; border-radius: 40rpx 40rpx 0 0; overflow: hidden; background: var(--canvas); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; }
+/* 顶部留位与宿主导航带对齐（状态栏 + 88rpx），避免标题与关闭键顶进状态栏或微信胶囊。 */
+.lf-head { flex-shrink: 0; padding: 34rpx 32rpx 24rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.lf-title { display: block; color: var(--ink); font-size: 31rpx; font-weight: 800; }
+.lf-subtitle { display: block; margin-top: 7rpx; color: var(--muted); font-size: 20rpx; }
+.lf-close { width: 56rpx; height: 56rpx; border-radius: 50%; background: var(--warm); display: flex; align-items: center; justify-content: center; }
+.lf-close text { color: var(--muted); font-size: 25rpx; }
+.lf-scroll { flex: 1; height: 0; padding: 0 28rpx 30rpx; box-sizing: border-box; }
+.lf-row { margin-bottom: 12rpx; padding: 0 22rpx; border-radius: 22rpx; background: var(--surface); }
+.lf-row-summary { min-height: 94rpx; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 20rpx; }
+.lf-label { color: var(--ink); font-size: 25rpx; font-weight: 700; }
+.lf-current { min-width: 0; max-width: 360rpx; display: flex; flex-direction: row; align-items: center; gap: 10rpx; }
+.lf-current text:first-child { color: var(--muted); font-size: 22rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lf-chevron { color: var(--muted) !important; font-size: 35rpx !important; line-height: 1; }
+.lf-options { padding: 0 0 22rpx; display: flex; flex-direction: row; flex-wrap: wrap; gap: 14rpx; }
+.lf-range { padding: 0 0 24rpx; display: flex; flex-direction: column; gap: 16rpx; }
+.lf-range-hint { color: var(--muted); font-size: 21rpx; }
+.lf-range-controls { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.lf-range-input { min-width: 112rpx; height: 68rpx; padding: 0 18rpx; border: 1rpx solid var(--line); border-radius: 14rpx; background: var(--canvas); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.lf-range-input text, .lf-range-separator { color: var(--ink2); font-size: 23rpx; }
+.lf-range-apply { margin-left: auto; min-width: 110rpx; height: 68rpx; border-radius: 999rpx; background: var(--accent2); display: flex; align-items: center; justify-content: center; }
+.lf-range-apply text { color: var(--paper); font-size: 23rpx; font-weight: 700; }
+.lf-option { min-height: 54rpx; padding: 0 18rpx; border: 1rpx solid var(--line); border-radius: 999rpx; background: var(--paper); display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.lf-option text { color: var(--ink2); font-size: 21rpx; }
+.lf-option.selected { border-color: var(--accent); background: var(--accent-bg); }
+.lf-option.selected text { color: var(--accent2); font-weight: 800; }
+.lf-data-note { display: block; padding: 28rpx 0 10rpx; color: var(--muted); font-size: 19rpx; line-height: 1.5; }
+.lf-footer { flex-shrink: 0; padding: 18rpx 28rpx calc(env(safe-area-inset-bottom) + 18rpx); border-top: 1rpx solid var(--line); background: var(--surface); display: flex; flex-direction: row; gap: 18rpx; }
+.lf-reset, .lf-confirm { height: 88rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; }
+.lf-reset { width: 180rpx; border: 1rpx solid var(--accent); background: var(--surface); }
+.lf-reset text { color: var(--accent2); font-size: 25rpx; font-weight: 800; }
+.lf-confirm { flex: 1; background: var(--accent2); }
+.lf-confirm text { color: var(--paper); font-size: 25rpx; font-weight: 800; }
+.lf-close:active, .lf-row-summary:active, .lf-option:active, .lf-reset:active, .lf-confirm:active { opacity: .75; }
+
+.ar-page { padding:12rpx 24rpx 60rpx; }
+.ar-summary, .ar-card { background:var(--surface); border-radius:30rpx; padding:28rpx; }
+.ar-heading { display:flex; flex-direction:row; align-items:center; gap:20rpx; }
+.ar-symbol { width:90rpx; height:90rpx; border-radius:20rpx; background:var(--warm); display:flex; align-items:center; justify-content:center; }
+.ar-symbol text { color:var(--muted); font-size:44rpx; font-weight:700; }
+.ar-title-wrap { flex:1; display:flex; flex-direction:column; gap:8rpx; }
+.ar-title { color:var(--ink); font-size:29rpx; font-weight:700; }.ar-demo { color:var(--muted); font-size:20rpx; }
+.ar-grid { display:flex; flex-direction:row; flex-wrap:wrap; justify-content:space-between; margin-top:24rpx; }
+.ar-stat { width:31%; height:112rpx; margin-bottom:16rpx; border-radius:20rpx; background:var(--canvas); display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.ar-number { font-size:34rpx; color:var(--ink); font-weight:700; }.ar-label { font-size:23rpx; color:var(--muted); margin-top:4rpx; }
+.ar-actions { display:flex; flex-direction:row; justify-content:center; gap:20rpx; margin-top:8rpx; }.ar-action { padding:17rpx 24rpx; border-radius:999rpx; background:var(--warm); color:var(--accent2); font-size:23rpx; }
+.ar-search { margin-top:24rpx; border:1rpx solid var(--line); border-radius:999rpx; background:var(--surface); padding:6rpx; display:flex; flex-direction:row; align-items:center; }.ar-input { flex:1; padding-left:22rpx; font-size:23rpx; color:var(--ink); }.ar-search-btn { padding:13rpx 28rpx; border-radius:999rpx; background:var(--accent); color:var(--surface); font-size:24rpx; font-weight:700; }
+.ar-list-heading { margin:32rpx 4rpx 24rpx; font-size:30rpx; font-weight:700; color:var(--ink); }.ar-card { margin-bottom:20rpx; display:flex; flex-direction:column; gap:16rpx; }.ar-card-head { display:flex; flex-direction:row; align-items:center; gap:16rpx; }
+.ar-avatar { width:70rpx; height:70rpx; border-radius:50%; background:var(--warm); display:flex; align-items:center; justify-content:center; color:var(--muted); }.ar-name { flex:1; font-size:27rpx; font-weight:700; color:var(--ink); }.ar-badge { background:var(--canvas); color:var(--accent); border-radius:999rpx; padding:10rpx 20rpx; font-size:22rpx; }
+.ar-detail { font-size:24rpx; color:var(--ink2); }.ar-line { display:flex; flex-direction:row; justify-content:space-between; color:var(--ink2); font-size:22rpx; }.ar-muted { color:var(--muted); }.ar-fee { color:var(--accent); }.ar-empty { padding:60rpx; text-align:center; color:var(--muted); font-size:24rpx; }
 </style>

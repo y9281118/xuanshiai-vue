@@ -3,7 +3,7 @@
 		<view class="promoter-nav"><text class="promoter-nav-title">{{ title }}</text><view class="back" @click="goBack"><view></view></view><view class="nav-entries"><view class="nav-entry" @click="open('account')"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view></view>
 		<scroll-view scroll-y class="scroll" :show-scrollbar="false">
 			<view v-if="loading" class="loading"><view></view><view></view><view></view></view>
-			<MatchmakerRemoteServices v-else-if="page == 'withdraw' || page == 'finance'" initial-tab="账户资金" :finance-only="true"/>
+			<MatchmakerRemoteServices v-else-if="page == 'withdraw'" initial-tab="账户资金" :finance-only="true"/>
 			<view v-else-if="page == 'home'" class="content promoter-home">
 				<view class="promoter-fund-card">
 					<view class="promoter-fund-main"><text>可提现额度（元）</text><text>{{ availableBalance }}</text></view>
@@ -234,11 +234,40 @@
 						</view>
 					</view>
 				</view>
-				<view v-else-if="page == 'finance'" class="section"><view class="funds"><view><text>余额（元）</text><text>{{ money(profile.balance) }}</text><text @click="open('withdraw')">提现</text></view><view><text>积分（金市）</text><text>{{ profile.points }}</text><text @click="showToast('充值功能待后端接入')">充值</text></view></view><view class="tabs"><text :class="{ active: financeTab == 'expense' }" @click="financeTab = 'expense'">支出明细</text><text :class="{ active: financeTab == 'balance' }" @click="financeTab = 'balance'">余额明细</text><text :class="{ active: financeTab == 'points' }" @click="financeTab = 'points'">积分明细</text></view><view class="empty"><text>什么都还没有哦</text></view></view>
+				<view v-else-if="page == 'finance'" class="section finance-section">
+					<view class="finance-funds">
+						<view class="finance-fund finance-fund-cash">
+							<text class="finance-fund-mark">¥</text>
+							<text class="finance-fund-label">余额（元）</text>
+							<text class="finance-fund-value">{{ walletBalance }}</text>
+							<view class="finance-fund-actions"><text class="finance-pill" @click="open('withdraw')">提现</text></view>
+						</view>
+						<view class="finance-fund finance-fund-points">
+							<text class="finance-fund-mark">¥</text>
+							<text class="finance-fund-label">积分（金币）</text>
+							<text class="finance-fund-value">{{ walletPoints }}</text>
+							<view class="finance-fund-actions"><text class="finance-pill" @click="showToast('充值功能待后端接入')">充值</text><view class="finance-pill finance-pill-ghost" @click="showToast('兑换礼物将在积分商城开放后可用')"><text>兑换礼物</text><view class="finance-pill-arrow"></view></view></view>
+						</view>
+					</view>
+					<view class="finance-tabs">
+						<view v-for="item in financeTabs" :key="item.key" class="finance-tab" @click="financeTab = item.key">
+							<text class="finance-tab-text" :class="{ 'finance-tab-on': financeTab == item.key }">{{ item.label }}</text>
+							<view class="finance-tab-mark" :class="{ 'finance-tab-mark-on': financeTab == item.key }"></view>
+						</view>
+					</view>
+					<view class="finance-notice"><view class="finance-notice-mark"><text>i</text></view><text class="finance-notice-text">{{ financeNotice }}</text></view>
+					<view class="finance-empty">
+						<view class="finance-empty-art">
+							<view class="finance-empty-card"><view class="finance-empty-head"></view><view class="finance-empty-body"></view><view class="finance-empty-line"></view><view class="finance-empty-line finance-empty-line-short"></view></view>
+							<view class="finance-empty-glass"><view class="finance-empty-ring"></view><view class="finance-empty-stem"></view></view>
+						</view>
+						<text class="finance-empty-text">什么都还没有哦</text>
+					</view>
+				</view>
 				<view v-else-if="page == 'account'" class="section">
 					<view class="funds">
-						<view><text>余额（元）</text><text>{{ money(profile.balance) }}</text><view><text @click="open('withdraw')">提现</text><view class="inline-arrow-link" @click="open('finance')"><text>财务明细</text><i></i></view></view></view>
-						<view><text>积分（金币）</text><text>{{ profile.points != null ? profile.points : 0 }}</text><view><view class="inline-arrow-link" @click="showToast('兑换礼物将在积分商城开放后可用')"><text>兑换礼物</text><i></i></view></view></view>
+						<view><text>余额（元）</text><text>{{ walletBalance }}</text><view><text @click="open('withdraw')">提现</text><view class="inline-arrow-link" @click="open('finance')"><text>财务明细</text><i></i></view></view></view>
+						<view><text>积分（金币）</text><text>{{ walletPoints }}</text><view><view class="inline-arrow-link" @click="showToast('兑换礼物将在积分商城开放后可用')"><text>兑换礼物</text><i></i></view></view></view>
 					</view>
 					<view class="list-card">
 						<view class="row"><text>头像</text><view class="account-avatar"><text>{{ promoterInitial }}</text></view></view>
@@ -282,7 +311,7 @@ import MatchmakerPromoPoster from '@/pagesSub/matchmaker/components/MatchmakerPr
 import XsaToast from '@/components/XsaToast.uvue'
 import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
 import XsaSheet from '@/components/XsaSheet.uvue'
-import { addPromoterLead, cancelPromoterTeamRequest, createPromoterPromotionCode, createPromoterWithdrawal, getPromoterCenterSnapshot, submitPromoterTeamRequest, updatePromoterCenterProfile } from '@/api'
+import { addPromoterLead, cancelPromoterTeamRequest, createPromoterPromotionCode, createPromoterWithdrawal, getAccountBalance, getPointsSummary, getPromoterCenterSnapshot, submitPromoterTeamRequest, updatePromoterCenterProfile } from '@/api'
 import { getOwnProfile } from '@/api/user.uts'
 // 运行时诊断：暴露 api 层埋点看到的原始 rewards 状态
 import { logout as logoutApi } from '@/api/auth'
@@ -291,11 +320,13 @@ const page = ref('home'), loading = ref(true)
 let pageHistory: string[] = []
 // 由红娘管理中心的「下载推广海报」直接深链进入本页海报视图时，返回要退回管理中心而不是落到本页首页。
 let posterDeepLink = false
-const snapshot = ref<any>({ profile: {}, teamOptions: [], leads: [], effectiveMembers: [], incompleteMembers: [], rewards: [], commissions: [], offlineOrders: [] }), toastVisible = ref(false), toastMessage = ref(''), keyword = ref(''), memberTab = ref('effective'), financeTab = ref('balance'), teamPickerVisible = ref(false), teamChangeTipVisible = ref(false), contactVisible = ref(false), accountEditVisible = ref(false), deactivateVisible = ref(false), withdrawForm = ref(false), withdrawAmount = ref(''), withdrawAccount = ref(''), withdrawPayee = ref(''), withdrawMethod = ref('微信'), accountNickname = ref(''), accountPhone = ref(''), teamInviteCode = ref(''), teamSubmitting = ref(false), recentOnly = ref(false), merchantTab = ref('goods')
+const snapshot = ref<any>({ profile: {}, teamOptions: [], leads: [], effectiveMembers: [], incompleteMembers: [], rewards: [], commissions: [], offlineOrders: [] }), toastVisible = ref(false), toastMessage = ref(''), keyword = ref(''), memberTab = ref('effective'), financeTab = ref('expense'), walletBalance = ref('--'), walletPoints = ref('--'), teamPickerVisible = ref(false), teamChangeTipVisible = ref(false), contactVisible = ref(false), accountEditVisible = ref(false), deactivateVisible = ref(false), withdrawForm = ref(false), withdrawAmount = ref(''), withdrawAccount = ref(''), withdrawPayee = ref(''), withdrawMethod = ref('微信'), accountNickname = ref(''), accountPhone = ref(''), teamInviteCode = ref(''), teamSubmitting = ref(false), recentOnly = ref(false), merchantTab = ref('goods')
 const methods = ['微信', '银行卡', '支付宝']
 const leadForm = ref<any>({ source: '', phone: '', wechat: '', wechatSameAsPhone: false, autoNickname: false, nickname: '', realName: '', gender: '男', birth: '1990-01-01', height: '', weight: '', description: '', photos: [] as any[] })
 const leadFields = [{ key: 'source', label: '来源', placeholder: '请输入来源' }, { key: 'phone', label: '手机', placeholder: '请输入' }, { key: 'wechat', label: '微信', placeholder: '请输入' }, { key: 'nickname', label: '称呼', placeholder: '请输入' }, { key: 'realName', label: '姓名', placeholder: '请输入' }, { key: 'birth', label: '出生', placeholder: '1990-01-01' }, { key: 'weight', label: '体重', placeholder: '未填写' }, { key: 'height', label: '身高', placeholder: '未填写' }]
 const merchantTabs = [ { key: 'goods', label: '在售商品' }, { key: 'orders', label: '订单记录' }, { key: 'verify', label: '核销记录' } ]
+// 财务明细三个页签：支出/余额明细后端还没有流水列表接口，只保留入口和空态；积分明细有 /users/me/points/ledger，等接入后替换空态。
+const financeTabs = [ { key: 'expense', label: '支出明细' }, { key: 'balance', label: '余额明细' }, { key: 'points', label: '积分明细' } ]
 const merchantBar = [ { key: 'home', icon: '⌂', label: '商家首页' }, { key: 'shop', icon: '🏪', label: '我的店铺' }, { key: 'orders', icon: '📋', label: '订单核销' }, { key: 'settle', icon: '¥', label: '分成结算' } ]
 const merchantNegotiate=()=>{contactVisible.value=true}
 const goApplyPartner=()=>{uni.navigateTo({url:'/pagesSub/matchmaker/become-partner'})}
@@ -319,6 +350,7 @@ const nextLevel = computed(() => { for (let i = 0; i < promoterLevels.length; i+
 const nextLevelName = computed(() => { if (profile.value.nextLevel != null && String(profile.value.nextLevel) != '') return String(profile.value.nextLevel); const local = nextLevel.value; return local != null ? local.name : '' })
 const nextLevelGap = computed(() => { if (profile.value.memberGap != null && !isNaN(Number(profile.value.memberGap))) return String(profile.value.memberGap); const local = nextLevel.value; return local != null ? String(local.threshold - effectiveTotal.value) : '0' })
 const availableBalance = computed(() => { const amount = Number(profile.value.balance); return isNaN(amount) || amount < 0 ? '0.00' : amount.toFixed(2) })
+const financeNotice = computed(() => { const dict:any = { expense: '您的线上现金支付和余额支付的全部记录', balance: '您的余额充值、提现与到账的全部记录', points: '您的积分获取与消耗的全部记录' }; return dict[financeTab.value] || '' })
 const promoterInitial = computed(() => { const name = profile.value.nickname == null ? '' : String(profile.value.nickname).trim(); return name.length > 0 ? name.substring(0, 1) : '推' })
 // 推广海报资料：昵称优先取推广中心快照；快照因无推广业务身份被拒时，与头像一起按本人资料补。
 const posterProfileName = ref(''), posterAvatar = ref('')
@@ -340,7 +372,7 @@ function isPositiveUserId(idValue:any):boolean { const n = Number(idValue); retu
 const avatarChar=(name:any)=>{const v=name==null?'':String(name).trim();return v.length>0?v.substring(0,1):'会'}
 const viewMemberHome=(item:any)=>{const memberId = Number(item.id);if(isNaN(memberId)||memberId<=0){showToast('会员主页编号待服务端同步');return};uni.navigateTo({url:'/pagesSub/userExtra/user/detail?userId='+memberId})}
 const filteredLeads = computed(()=>listFilter(leads.value)), filteredRewards = computed(()=>listFilter(rewards.value)), memberRows = computed(()=>{let rows=listFilter(memberTab.value=='effective'?effectiveMembers.value:incompleteMembers.value);if(memberTab.value=='effective'&&recentOnly.value)rows=rows.filter((x:any)=>isWithinDays(x.registerAt,7));return rows})
-const money=(v:any)=>{if(v==null||v==='')return '--';const n=Number(v);return isNaN(n)?'--':n.toFixed(2)}, showToast=(v:string)=>{toastMessage.value=v;toastVisible.value=true}, open=(v:string)=>{if(v=='withdraw'||v=='mall'||v=='finance'){showToast('资金与商业结算能力不在本期范围内');return};if(page.value!='home')pageHistory.push(page.value);page.value=v;keyword.value='';withdrawForm.value=false;recentOnly.value=false}, goBack=()=>{if(page.value=='home'||(posterDeepLink&&page.value=='poster')){uni.navigateBack();return};page.value=pageHistory.length>0?pageHistory.pop():'home';keyword.value='';withdrawForm.value=false;recentOnly.value=false}, checkSearch=()=>{if(keyword.value.trim()=='')showToast('请输入搜索关键词')}, updateLead=(key:string,value:string)=>{leadForm.value[key]=value}
+const money=(v:any)=>{if(v==null||v==='')return '--';const n=Number(v);return isNaN(n)?'--':n.toFixed(2)}, showToast=(v:string)=>{toastMessage.value=v;toastVisible.value=true}, open=(v:string)=>{if(v=='withdraw'||v=='mall'){showToast('资金与商业结算能力不在本期范围内');return};if(page.value!='home')pageHistory.push(page.value);page.value=v;keyword.value='';withdrawForm.value=false;recentOnly.value=false;if(v=='finance'||v=='account')loadWallet()}, goBack=()=>{if(page.value=='home'||(posterDeepLink&&page.value=='poster')){uni.navigateBack();return};page.value=pageHistory.length>0?pageHistory.pop():'home';keyword.value='';withdrawForm.value=false;recentOnly.value=false}, checkSearch=()=>{if(keyword.value.trim()=='')showToast('请输入搜索关键词')}, updateLead=(key:string,value:string)=>{leadForm.value[key]=value}
 const copyLink=async()=>{if(profile.value.promotionCode){uni.setClipboardData({data:String(profile.value.promotionCode),success:()=>showToast('推广码已复制')});return};const r=await createPromoterPromotionCode();if(!r.success||r.data==null){showToast(r.message||'推广码生成失败');return};uni.setClipboardData({data:String(r.data.code),success:()=>showToast('推广码已复制')});await load()}, savePoster=()=>{open('poster'); loadPosterAvatar()}
 const openTeamEntry=()=>{if(profile.value.teamStatus=='ACTIVE'){teamChangeTipVisible.value=true;return};teamInviteCode.value='';teamPickerVisible.value=true}
 const cancelJoinRequest=async()=>{const id=String(profile.value.pendingRequestId||'');if(id==''){showToast('未找到待确认的申请');return};uni.showModal({title:'撤回申请',content:'确定撤回加入「'+String(profile.value.teamName||'')+'」的申请吗？',success:async(modal:any)=>{if(!modal.confirm)return;try{const r=await cancelPromoterTeamRequest(id);if(r.success){showToast('申请已撤回');await load()}else showToast(r.message||'撤回失败')}catch(e){showToast('网络异常，请稍后重试')}}})}
@@ -369,6 +401,12 @@ const submitLead=async()=>{const form=leadForm.value;form.phone=String(form.phon
 const submitWithdraw=async()=>{const r=await createPromoterWithdrawal({amount:withdrawAmount.value,method:withdrawMethod.value,account:withdrawAccount.value,payee:withdrawPayee.value});if(r.success){showToast(r.message);withdrawForm.value=false;await load()}else showToast(r.message)}
 const saveAccount=async()=>{const p=accountPhone.value.trim();if(p!=''&&!/^1[3-9]\d{9}$/.test(p)){showToast('请输入正确的11位手机号');return};const r=await updatePromoterCenterProfile({nickname:accountNickname.value.trim(),phone:p});if(r.success){snapshot.value=r.data;accountEditVisible.value=false;showToast('账号资料已保存')}else showToast(r.message)}
 const load=async()=>{loading.value=true;try{const r=await getPromoterCenterSnapshot();if(r.success&&r.data!=null){snapshot.value=r.data;accountNickname.value=String(profile.value.nickname||'');accountPhone.value=String(profile.value.phone||'')}else showToast(r.message)}catch(e){showToast('网络数据加载失败')}finally{loading.value=false}}
+// 财务明细与我的账号共用的资金数字：余额取 /finance/balance 的 available_amount，积分取 /users/me/points 的 balance；接口取不到时留 '--'，不拿来路不明的金额渲染。
+const loadWallet=async()=>{
+	walletBalance.value='--';walletPoints.value='--'
+	try{const r=await getAccountBalance();if(r.success&&r.data!=null){const n=Number((r.data as any).available_amount);if(!isNaN(n)&&n>=0)walletBalance.value=n.toFixed(2)}}catch(e){}
+	try{const p=await getPointsSummary();if(p.success&&p.data!=null){const n=Number((p.data as any).balance);if(!isNaN(n))walletPoints.value=String(n)}}catch(e){}
+}
 onLoad((options: any) => { if (options != null && options.page != null && String(options.page) == 'poster') { posterDeepLink = true; page.value = 'poster'; loadPosterAvatar() } })
 onMounted(()=>load())
 </script>
@@ -803,4 +841,42 @@ onMounted(()=>load())
 .inline-arrow-link { display: flex; flex-direction: row; align-items: center; gap: 6rpx; }
 .inline-arrow-link text { color: var(--accent2); font-size: 23rpx; }
 .inline-arrow-link i { width: 10rpx; height: 10rpx; border-top: 2rpx solid var(--accent2); border-right: 2rpx solid var(--accent2); transform: rotate(45deg); }
+
+/* 财务明细：资金双卡（半透明 ¥ 圆环水印）+ 三类明细页签 + 说明条 + 档案插画空态；沿用本页青瓷浅色调，明细流水接口未就绪前只保留页签与空态入口。 */
+.finance-section { gap: 34rpx; }
+.finance-funds { display: flex; flex-direction: row; gap: 20rpx; }
+.finance-fund { position: relative; overflow: hidden; width: 50%; min-height: 300rpx; padding: 28rpx 26rpx 26rpx; border-radius: 28rpx; box-sizing: border-box; display: flex; flex-direction: column; gap: 14rpx; }
+.finance-fund:after { content: ''; position: absolute; right: -36rpx; bottom: -46rpx; width: 210rpx; height: 210rpx; border: 22rpx solid rgba(255, 255, 255, .45); border-radius: 50%; box-sizing: border-box; }
+.finance-fund-cash { background: linear-gradient(160deg, var(--match-mist), var(--accent-bg)); }
+.finance-fund-points { background: linear-gradient(160deg, var(--shortcut-sky), var(--plane-sky-deep)); }
+.finance-fund-mark { position: absolute; right: 14rpx; bottom: 2rpx; color: rgba(255, 255, 255, .62); font-size: 88rpx; font-weight: 900; line-height: 1; }
+.finance-fund-label { position: relative; z-index: 1; color: var(--ink2); font-size: 26rpx; font-weight: 800; }
+.finance-fund-value { position: relative; z-index: 1; color: var(--ink); font-size: 60rpx; line-height: 1; font-weight: 900; }
+.finance-fund-actions { position: relative; z-index: 1; margin-top: auto; display: flex; flex-direction: row; align-items: center; gap: 14rpx; }
+.finance-pill { min-width: 126rpx; height: 62rpx; padding: 0 22rpx; border-radius: 999rpx; background: var(--surface); color: var(--accent2); box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: center; font-size: 26rpx; font-weight: 800; }
+.finance-pill-ghost { background: rgba(255, 255, 255, .5); gap: 8rpx; }
+/* 微信小程序会把 <i> 编成 <view>，箭头必须用类名选中，否则整条规则失效。 */
+.finance-pill-arrow { width: 16rpx; height: 16rpx; border-top: 3rpx solid var(--accent2); border-right: 3rpx solid var(--accent2); border-radius: 3rpx; transform: rotate(45deg); }
+.finance-pill:active { opacity: .8; }
+.finance-tabs { padding-top: 6rpx; display: flex; flex-direction: row; justify-content: space-between; }
+.finance-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 12rpx; }
+.finance-tab-text { color: var(--muted); font-size: 30rpx; font-weight: 700; }
+.finance-tab-on { color: var(--ink); font-weight: 900; }
+.finance-tab-mark { width: 54rpx; height: 10rpx; border-radius: 999rpx; background: transparent; }
+.finance-tab-mark-on { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.finance-notice { padding: 22rpx 24rpx; border: 1rpx solid var(--match-line); border-radius: 18rpx; background: var(--match-mist); display: flex; flex-direction: row; align-items: center; gap: 14rpx; }
+.finance-notice-mark { width: 34rpx; height: 34rpx; border-radius: 50%; background: var(--accent-bg); display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.finance-notice-mark text { color: var(--accent2); font-size: 22rpx; font-weight: 900; }
+.finance-notice-text { flex: 1; min-width: 0; color: var(--ink2); font-size: 26rpx; line-height: 1.5; }
+.finance-empty { padding: 44rpx 0 70rpx; display: flex; flex-direction: column; align-items: center; gap: 24rpx; }
+.finance-empty-art { position: relative; width: 210rpx; height: 190rpx; }
+.finance-empty-card { position: absolute; left: 26rpx; top: 0; width: 150rpx; height: 176rpx; padding: 22rpx 20rpx; border-radius: 20rpx; background: var(--warm); box-shadow: var(--shadow-sm); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 10rpx; }
+.finance-empty-head { width: 44rpx; height: 44rpx; border-radius: 50%; background: var(--line); }
+.finance-empty-body { width: 74rpx; height: 32rpx; border-radius: 32rpx 32rpx 0 0; background: var(--line); }
+.finance-empty-line { width: 80rpx; height: 10rpx; border-radius: 6rpx; background: var(--line); }
+.finance-empty-line-short { width: 54rpx; }
+.finance-empty-glass { position: absolute; right: 4rpx; bottom: 14rpx; width: 92rpx; height: 92rpx; z-index: 2; }
+.finance-empty-ring { position: absolute; left: 0; top: 0; width: 68rpx; height: 68rpx; border: 8rpx solid var(--line); border-radius: 50%; background: rgba(255, 255, 255, .6); box-sizing: border-box; }
+.finance-empty-stem { position: absolute; right: 4rpx; bottom: 4rpx; width: 26rpx; height: 9rpx; border-radius: 6rpx; background: var(--line); transform: rotate(45deg); }
+.finance-empty-text { color: var(--muted); font-size: 28rpx; }
 </style>

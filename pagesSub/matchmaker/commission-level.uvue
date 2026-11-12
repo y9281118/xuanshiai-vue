@@ -1,0 +1,406 @@
+<template>
+	<view class="level-page">
+		<scroll-view scroll-y class="level-scroll" :show-scrollbar="false">
+			<view class="level-content">
+				<!-- 身份卡：名称/头像/角色取工作台身份接口，级别徽标取分成标准接口；未指派时显示 --，不写死称呼。 -->
+				<view class="level-identity">
+					<view class="level-identity-head">
+						<image v-if="identityAvatar.length > 0" class="level-avatar" :src="identityAvatar" mode="aspectFill"/>
+						<view v-else class="level-avatar level-avatar-mark"><text>{{ identityInitial }}</text></view>
+						<view class="level-identity-body">
+							<view class="level-name-row">
+								<text class="level-name">{{ identityName }}</text>
+								<view class="level-badge"><text>{{ currentLevelName }}</text></view>
+							</view>
+							<text class="level-slogan">{{ sloganLine }}</text>
+						</view>
+					</view>
+					<view class="level-tip">
+						<view class="level-tip-mark"><text>T</text></view>
+						<view class="level-tip-body">
+							<text class="level-tip-title">温馨提示</text>
+							<text class="level-tip-text">不同级别的分成标准不同，级别越高，对应的分成越高；达到自动升级条件后由平台调整级别，并发放相应的额外奖励。</text>
+						</view>
+					</view>
+				</view>
+
+				<view class="level-section">
+					<view class="level-section-dots"><view class="level-dot level-dot-a"></view><view class="level-dot level-dot-b"></view></view>
+					<text class="level-section-title">分成标准</text>
+					<view class="level-section-dots"><view class="level-dot level-dot-b"></view><view class="level-dot level-dot-a"></view></view>
+				</view>
+				<view class="level-table">
+					<view class="level-table-head"><text class="level-col-name">级别名称</text><text class="level-col-condition">自动升级条件</text><text class="level-col-amount">额外奖励</text></view>
+					<view v-if="loading" class="level-state"><text>正在加载分成标准…</text></view>
+					<view v-else-if="errorText.length > 0" class="level-state"><text>{{ errorText }}</text><text class="level-state-action" @click="loadStandards">重新加载</text></view>
+					<view v-else-if="levels.length == 0" class="level-state"><text>平台尚未开放分成级别配置</text></view>
+					<view v-else>
+						<view v-for="item in levels" :key="item.code" class="level-table-row">
+							<text class="level-col level-col-name">{{ item.name }}</text>
+							<text class="level-col level-col-condition">{{ item.condition }}</text>
+							<text class="level-col level-col-amount">{{ item.extra }}</text>
+						</view>
+					</view>
+				</view>
+
+				<view class="level-section">
+					<view class="level-section-dots"><view class="level-dot level-dot-a"></view><view class="level-dot level-dot-b"></view></view>
+					<text class="level-section-title">{{ currentLevelTitle }}</text>
+					<view class="level-section-dots"><view class="level-dot level-dot-b"></view><view class="level-dot level-dot-a"></view></view>
+				</view>
+				<view class="level-table">
+					<view class="level-table-head"><text class="level-event-name">会员消费项目</text><text class="level-event-amount">分成金额</text></view>
+					<view v-if="loading" class="level-state"><text>正在加载分成标准…</text></view>
+					<view v-else-if="errorText.length > 0" class="level-state"><text>{{ errorText }}</text><text class="level-state-action" @click="loadStandards">重新加载</text></view>
+					<view v-else-if="events.length == 0" class="level-state"><text>平台尚未配置按消费项目的分成标准，请联系平台确认</text></view>
+					<view v-else>
+						<view v-for="item in events" :key="item.key" class="level-table-row">
+							<text class="level-event-name">{{ item.name }}</text>
+							<text class="level-event-amount">{{ item.amount }}</text>
+						</view>
+					</view>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+import { getMatchmakerCommissionStandards, getMatchmakerWorkspaceHomepage, getMatchmakerWorkspaceIdentity } from '@/api'
+import { resolveMediaUrl } from '@/api/config.uts'
+
+const levels = ref<any[]>([])
+const events = ref<any[]>([])
+const currentLevelName = ref('--')
+const identityName = ref('服务红娘')
+const identityRole = ref('服务红娘')
+const identityAvatar = ref('')
+const slogan = ref('')
+const loading = ref(true)
+const errorText = ref('')
+
+const identityInitial = computed((): string => identityName.value.substring(0, 1))
+// 未填个性签名时退回服务端给出的角色称呼，不用示例文案占位。
+const sloganLine = computed((): string => slogan.value.length > 0 ? slogan.value : identityRole.value)
+const currentLevelTitle = computed((): string => currentLevelName.value == '--' ? '您当前的分成标准' : '您当前的分成标准（' + currentLevelName.value + '）')
+
+const loadStandards = async () => {
+	loading.value = true
+	errorText.value = ''
+	try {
+		const identity = await getMatchmakerWorkspaceIdentity()
+		if (identity.success && identity.data != null) {
+			const name = identity.data.name
+			if (name != null && String(name).length > 0) identityName.value = String(name)
+			const role = identity.data.roleName
+			if (role != null && String(role).length > 0) identityRole.value = String(role)
+			identityAvatar.value = resolveMediaUrl(identity.data.avatar)
+		}
+		const homepage = await getMatchmakerWorkspaceHomepage()
+		if (homepage.success && homepage.data != null) {
+			const value = homepage.data.slogan
+			slogan.value = value != null ? String(value) : ''
+		}
+		const result = await getMatchmakerCommissionStandards()
+		if (!result.success || result.data == null) {
+			const message = result.message
+			errorText.value = message != null && String(message).length > 0 ? String(message) : '分成标准加载失败，请稍后重试'
+			return
+		}
+		levels.value = Array.isArray(result.data.levels) ? result.data.levels : []
+		events.value = Array.isArray(result.data.events) ? result.data.events : []
+		const levelName = result.data.currentLevelName
+		currentLevelName.value = levelName != null && String(levelName).length > 0 ? String(levelName) : '--'
+	} catch (e) {
+		errorText.value = '分成标准加载失败，请点击重新加载'
+	} finally {
+		loading.value = false
+	}
+}
+
+onLoad(() => { loadStandards() })
+</script>
+
+<style>
+.level-page {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	background: var(--canvas);
+}
+
+.level-scroll {
+	flex: 1;
+}
+
+.level-content {
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	padding: 24rpx 24rpx 64rpx;
+}
+
+/* 身份卡 */
+.level-identity {
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	padding: 26rpx 28rpx;
+	border-radius: 32rpx;
+	background: var(--surface);
+	box-shadow: var(--shadow-sm);
+}
+
+.level-identity-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 18rpx;
+}
+
+.level-avatar {
+	width: 96rpx;
+	height: 96rpx;
+	border-radius: 999rpx;
+	flex-shrink: 0;
+}
+
+.level-avatar-mark {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	background: var(--review-lilac);
+}
+
+.level-avatar-mark text {
+	font-size: 36rpx;
+	font-weight: 800;
+	color: var(--review-purple);
+}
+
+.level-identity-body {
+	display: flex;
+	flex-direction: column;
+	gap: 10rpx;
+	flex: 1;
+	min-width: 0;
+}
+
+.level-name-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14rpx;
+}
+
+.level-name {
+	font-size: 34rpx;
+	font-weight: 800;
+	font-family: var(--serif);
+	color: var(--ink);
+}
+
+.level-badge {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 6rpx 16rpx;
+	border-radius: 999rpx;
+	background: var(--review-orange-soft);
+}
+
+.level-badge text {
+	font-size: 22rpx;
+	font-weight: 700;
+	color: var(--review-orange);
+}
+
+.level-slogan {
+	font-size: 24rpx;
+	color: var(--muted);
+}
+
+.level-tip {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 14rpx;
+	box-sizing: border-box;
+	margin-top: 24rpx;
+	padding: 22rpx;
+	border-radius: 24rpx;
+	background: var(--review-soft);
+}
+
+.level-tip-mark {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 40rpx;
+	height: 40rpx;
+	border-radius: 999rpx;
+	background: var(--review-lilac);
+	flex-shrink: 0;
+}
+
+.level-tip-mark text {
+	font-size: 22rpx;
+	font-weight: 800;
+	color: var(--review-purple);
+}
+
+.level-tip-body {
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+	flex: 1;
+}
+
+.level-tip-title {
+	font-size: 26rpx;
+	font-weight: 800;
+	color: var(--review-deep);
+}
+
+.level-tip-text {
+	font-size: 22rpx;
+	line-height: 1.6;
+	color: var(--ink2);
+}
+
+/* 分节标题（两侧圆点） */
+.level-section {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 14rpx;
+	margin: 40rpx 0 18rpx;
+}
+
+.level-section-dots {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6rpx;
+}
+
+.level-dot {
+	width: 14rpx;
+	height: 14rpx;
+	border-radius: 999rpx;
+}
+
+.level-dot-a {
+	background: var(--review-lilac);
+}
+
+.level-dot-b {
+	background: var(--review-pink);
+}
+
+.level-section-title {
+	font-size: 30rpx;
+	font-weight: 800;
+	font-family: var(--serif);
+	color: var(--ink);
+}
+
+/* 标准表 */
+.level-table {
+	display: flex;
+	flex-direction: column;
+	border-radius: 24rpx;
+	background: var(--surface);
+	box-shadow: var(--shadow-sm);
+	overflow: hidden;
+}
+
+.level-table-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	box-sizing: border-box;
+	padding: 20rpx 24rpx;
+	background: var(--review-soft);
+}
+
+.level-table-head text {
+	font-size: 22rpx;
+	font-weight: 800;
+	color: var(--review-deep);
+}
+
+.level-table-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	box-sizing: border-box;
+	padding: 24rpx;
+	border-top: 1px solid var(--line);
+}
+
+.level-col {
+	font-size: 24rpx;
+	line-height: 1.5;
+	color: var(--ink2);
+}
+
+.level-col-name {
+	width: 180rpx;
+	flex-shrink: 0;
+	color: var(--ink);
+	font-weight: 700;
+}
+
+.level-col-condition {
+	flex: 1;
+	min-width: 0;
+}
+
+.level-col-amount {
+	width: 150rpx;
+	flex-shrink: 0;
+	text-align: right;
+}
+
+.level-event-name {
+	flex: 1;
+	min-width: 0;
+	font-size: 24rpx;
+	color: var(--ink);
+	font-weight: 700;
+}
+
+.level-event-amount {
+	width: 200rpx;
+	flex-shrink: 0;
+	text-align: right;
+	font-size: 24rpx;
+	color: var(--ink2);
+}
+
+/* 空态与错误态 */
+.level-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 14rpx;
+	box-sizing: border-box;
+	padding: 46rpx 28rpx;
+}
+
+.level-state text {
+	font-size: 22rpx;
+	line-height: 1.5;
+	text-align: center;
+	color: var(--muted);
+}
+
+.level-state-action {
+	font-weight: 700;
+	color: var(--review-purple);
+}
+</style>

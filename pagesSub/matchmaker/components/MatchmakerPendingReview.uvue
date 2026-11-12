@@ -133,8 +133,8 @@
         <view class="more-item" @tap="openIntroductions(menuMember)"><text>牵线({{ menuMember.introCount || 0 }})</text></view>
         <view class="more-item" @tap="openMatch(menuMember)"><text>匹配</text></view>
         <view class="more-item" @tap="openNote(menuMember)"><text>红娘说</text></view>
-        <view class="more-item" :class="{ last: !canReview }" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
-        <view v-if="canReview" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.abandoned ? '已弃海' : '移入弃海' }}</text></view>
+        <view v-if="canManageHeadOffice" class="more-item" @tap="openAssign(menuMember)"><text>修改红娘</text></view>
+        <view v-if="canManageHeadOffice" class="more-item last" @tap="onAbandonEntry(menuMember)"><text>{{ menuMember.abandoned ? '已弃海' : '移入弃海' }}</text></view>
         </template>
       </view>
     </view>
@@ -170,7 +170,6 @@
     <view v-else-if="subview == 'match' && selected != null" class="subpage">
       <view class="subpage-head">
         <text class="subpage-title">匹配合适的人</text>
-        <view class="subpage-close" @tap="closeSubpage"><text>✕</text></view>
       </view>
       <scroll-view scroll-y class="subpage-list" :show-scrollbar="false">
         <view class="match-member">
@@ -221,7 +220,7 @@
         </view>
 
         <view v-if="sheet == 'note' && selected != null" class="panel-body">
-          <textarea class="panel-textarea" maxlength="200" placeholder="请输入一段红娘对该会员的评价，本信息公开展示，限制200汉字" :value="noteDraft" @input="onNoteDraft" />
+          <textarea class="panel-textarea" maxlength="1000" placeholder="请输入一段红娘对该会员的评价，本信息公开展示，限制1000字" :value="noteDraft" @input="onNoteDraft" />
           <view class="panel-submit" @tap="submitNote"><text>提交</text></view>
         </view>
 
@@ -264,14 +263,25 @@
         </view>
 
         <view v-else-if="sheet == 'followups' && selected != null" class="panel-body">
-          <view v-for="item in followUps" :key="item.id" class="fu-row">
-            <text class="fu-method">{{ followMethodLabel(item.method) }}</text>
-            <text class="fu-content">{{ item.content }}</text>
-            <text class="fu-time">{{ formatTime(item.created_at) }}</text>
-          </view>
-          <view v-if="followUps.length == 0" class="state-inline"><text>暂无服务跟进</text></view>
-          <textarea class="panel-textarea" maxlength="2000" placeholder="记录本次服务跟进" :value="followContent" @input="onFollowContent" />
-          <view class="panel-submit" @tap="submitFollowUp"><text>新增跟进</text></view>
+          <template v-if="!followEditing">
+            <view class="fu-appointment"><text>预约下次跟进</text><text class="fu-action" @tap="notify('预约功能暂不可用')">设置时间</text></view>
+            <scroll-view scroll-y class="fu-list"><view v-for="item in followUps" :key="item.id" class="fu-row"><text class="fu-method">{{ followMethodLabel(item.method) }}</text><text class="fu-content">{{ item.content }}</text><view class="fu-images"><image v-for="(photo, index) in item.displayImages" :key="index" class="fu-image" :src="photo" mode="aspectFill" @tap="previewFollowImages(item.displayImages, index)" /></view><text v-if="item.imageError" class="fu-time" @tap="openFollowUps(selected)">图片加载失败，点击重试</text><text v-if="item.next_follow_at" class="fu-time">下次跟进：{{ formatTime(item.next_follow_at) }}</text><text class="fu-time">{{ formatTime(item.created_at) }}</text></view><view v-if="followUps.length == 0" class="state-inline"><text>还没有服务跟进记录</text></view></scroll-view>
+            <view class="panel-submit" @tap="followEditing = true"><text>＋ 添加服务跟进</text></view>
+          </template>
+          <template v-else>
+            <view class="fu-appointment">
+              <text>下次跟进时间</text>
+              <picker mode="date" :disabled="followPendingId != ''" :value="followDate" @change="onFollowDate"><text class="fu-action">{{ followDate || '选择日期' }}</text></picker>
+              <picker mode="time" :disabled="followPendingId != ''" :value="followTime" @change="onFollowTime"><text class="fu-action">{{ followTime || '选择时间' }}</text></picker>
+            </view>
+            <textarea class="panel-textarea fu-editor" :disabled="followPendingId != ''" maxlength="1000" placeholder="请输入跟进内容" :value="followContent" @input="onFollowContent" />
+            <text class="panel-counter">已输入 {{ followContent.length }}/1000字</text>
+            <view v-if="followPendingId == ''" class="fu-templates"><view v-for="tpl in followTemplates" :key="tpl.name" class="fu-template" @tap="applyFollowTemplate(tpl.content)"><text>{{ tpl.name }}</text></view></view>
+            <text v-else class="fu-time">跟进内容已保存，图片上传中断可点击重试。</text>
+            <view class="fu-images"><view v-for="(photo, index) in followPhotos" :key="index" class="fu-photo"><image class="fu-image" :src="photo" mode="aspectFill" @tap="previewFollowImages(followPhotos, index)"/><text v-if="followPendingId == ''" @tap="removeFollowPhoto(index)">×</text></view><view v-if="followPhotos.length < 9 && followPendingId == ''" class="fu-photo-placeholder" @tap="chooseFollowPhotos"><text>＋ 上传图片（最多9张）</text></view></view>
+            <view class="panel-submit" @tap="submitFollowUp"><text>{{ followSubmitting ? '提交中…' : (followPendingId != '' ? '重试上传图片' : '确定提交') }}</text></view>
+            <view v-if="followPendingId == ''" class="fu-back" @tap="followEditing = false"><text>返回跟进记录</text></view>
+          </template>
         </view>
       </view>
     </view>
@@ -326,6 +336,8 @@ import { watch } from 'vue'
 import {
   assignMatchmakerMemberMatchmaker,
   createMatchmakerMemberFollowUp,
+  uploadMemberFollowUpImage,
+  downloadMemberFollowUpImage,
   getMatchmakerMemberFollowUps,
   getMatchmakerMemberMatchCandidates,
   getMatchmakerMemberMatchHistory,
@@ -366,6 +378,7 @@ const rawMembers = ref<any[]>([])
 const selfUserId = ref(0)
 // 公开资料审核只对总店（SUPER）红娘开放，后端同口径返回 403。
 const canReview = ref(false)
+const canManageHeadOffice = ref(false)
 
 const filterVisible = ref(false)
 const expandedFilterKey = ref('')
@@ -415,6 +428,33 @@ const abandonReason = ref('')
 const pendingAbandon = ref(false)
 const followUps = ref<any[]>([])
 const followContent = ref('')
+const followEditing = ref(false)
+const followPhotos = ref<string[]>([])
+const followSubmitting = ref(false)
+const followPendingId = ref('')
+const followUploaded = ref(0)
+const chooseFollowPhotos = () => {
+  uni.chooseImage({ count: 9 - followPhotos.value.length, sizeType: ['compressed'], success: (result: any) => {
+    const paths = result.tempFilePaths as string[]
+    followPhotos.value = followPhotos.value.concat(paths).slice(0, 9)
+  } })
+}
+const removeFollowPhoto = (index: number) => { followPhotos.value.splice(index, 1) }
+const previewFollowImages = (urls: string[], index: number) => { if (urls.length > 0) uni.previewImage({ urls, current: urls[index] }) }
+const followDate = ref('')
+const followTime = ref('')
+const onFollowDate = (event: any) => { followDate.value = String(event.detail.value) }
+const onFollowTime = (event: any) => { followTime.value = String(event.detail.value) }
+const followTemplates = [
+  { name: '核实资料', content: '【基本资料】：\n【单身原因】：情感经历、分手原因、急迫动机\n【择偶要求】：\n【相亲意识】：\n【休息时间】：' },
+  { name: '邀约到店', content: '【人选刺激】：\n【急迫动机】：\n【到店时间】：\n【到店原由】：\n【不到店原因】：\n【下次跟进思路】：' },
+  { name: '到店面谈', content: '【面谈情况】面谈人： 面谈时长：\n【急迫动机】：\n【情感经历】：\n【消费意识】：\n【报价情况】：\n【不买单原因】：\n【下次跟进思路】：' },
+  { name: '服务交接', content: '【面接老师】面谈老师： 交接面谈时长：\n【感情经历】：\n【家庭背景】：\n【经济收入】： 是否有房： 是否有车： 是否有负债： 是否有存款： 花呗借呗：支付方式：\n【人选刺激】：\n【择偶要求】： 忌讳点：（避免后期匹配不精准）\n【服务内容】：\n【服务节奏】：\n【买单点】：' }
+]
+const applyFollowTemplate = (content: string) => {
+  if (followContent.value.trim().length == 0) { followContent.value = content; return }
+  uni.showModal({ title: '替换跟进内容', content: '选择模板会替换当前已填写的内容，是否继续？', success: (result: any) => { if (result.confirm === true) followContent.value = content } })
+}
 
 const reviewStatus = ref('')
 const reviewReason = ref('')
@@ -456,7 +496,7 @@ const emptyText = computed(() => {
 const sheetTitle = computed(() => {
   if (sheet.value == 'note') return '红娘说'
   if (sheet.value == 'abandonReason') return '弃海原因'
-  if (sheet.value == 'followups') return '服务跟进'
+  if (sheet.value == 'followups') return followEditing.value ? '添加会员服务跟进' : '会员跟进记录'
   if (sheet.value == 'review') return '审核状态'
   return ''
 })
@@ -753,6 +793,7 @@ const loadSelfProfile = async () => {
     if (result.success && result.data != null && result.data.user_id != null) {
       selfUserId.value = Number(result.data.user_id)
       canReview.value = String(result.data.level) == 'SUPER'
+      canManageHeadOffice.value = canReview.value && result.data.organization_id == null
       emitServedCount()
     }
   } catch (e) {
@@ -760,15 +801,17 @@ const loadSelfProfile = async () => {
 }
 
 /* ---------- 更多菜单 ---------- */
-const toggleMenu = (member: any, event: any) => {
+const toggleMenu = async (member: any, event: any) => {
   const id = Number(member.user_id)
   if (menuForId.value == id) {
     closeMenu()
     return
   }
+  canManageHeadOffice.value = false
+  await loadSelfProfile()
   const windowInfo = uni.getSystemInfoSync()
   const menuWidth = 270 * windowInfo.windowWidth / 750
-  const menuHeight = (activeTab.value == 'REJECTED' ? 1 : (canReview.value ? 5 : 4)) * 84 * windowInfo.windowWidth / 750
+  const menuHeight = (activeTab.value == 'REJECTED' ? 1 : (canManageHeadOffice.value ? 5 : 3)) * 84 * windowInfo.windowWidth / 750
   let tapX = 0
   let tapY = 0
   if (event != null && event.detail != null) {
@@ -882,8 +925,8 @@ const submitNote = async () => {
     notify('请输入红娘说内容')
     return
   }
-  if (text.length > 200) {
-    notify('红娘说最多 200 字')
+  if (text.length > 1000) {
+    notify('红娘说最多 1000 字')
     return
   }
   const result = await updateMatchmakerMemberNote(String(selected.value.user_id), text)
@@ -896,8 +939,15 @@ const submitNote = async () => {
 }
 
 /* ---------- 修改红娘 ---------- */
-const openAssign = (member: any) => {
+const openAssign = async (member: any) => {
   closeMenu()
+  canManageHeadOffice.value = false
+  await loadSelfProfile()
+  // 改派跟进红娘只对总店（SUPER）开放；后端只校验会员是否在工作范围内，闸门必须落在入口。
+  if (!canManageHeadOffice.value) {
+    uni.showModal({ title: '暂无权限', content: '您不是超级红娘，没有权限修改', showCancel: false, confirmText: '知道了' })
+    return
+  }
   selected.value = member
   assignOptions.value = []
   assignTarget.value = member.matchmaker_id != null ? Number(member.matchmaker_id) : 0
@@ -940,8 +990,11 @@ const submitAssign = async () => {
 }
 
 /* ---------- 移入弃海 ---------- */
-const onAbandonEntry = (member: any) => {
+const onAbandonEntry = async (member: any) => {
   closeMenu()
+  canManageHeadOffice.value = false
+  await loadSelfProfile()
+  if (!canManageHeadOffice.value) { notify('仅总店超级红娘可移入弃海'); return }
   selected.value = member
   if (member.abandoned === true) {
     notify('该会员已在弃海列表中')
@@ -1032,32 +1085,59 @@ const openFollowUps = async (member: any) => {
   closeMenu()
   selected.value = member
   followContent.value = ''
+  followDate.value = ''
+  followTime.value = ''
+  followPhotos.value = []
+  followPendingId.value = ''
+  followUploaded.value = 0
+  followEditing.value = false
   followUps.value = []
   sheet.value = 'followups'
   const result = await getMatchmakerMemberFollowUps(String(member.user_id))
   if (result.success && result.data != null) {
-    followUps.value = Array.isArray(result.data.items) ? result.data.items : []
+    const items: any[] = Array.isArray(result.data.items) ? result.data.items : []
+    for (const item of items) {
+      const displays: string[] = []
+      const paths: string[] = Array.isArray(item.images) ? item.images : []
+      for (const path of paths) { const display = await downloadMemberFollowUpImage(path); if (display != '') displays.push(display) }
+      item.displayImages = displays
+      item.imageError = displays.length != paths.length
+    }
+    followUps.value = items
     member.followCount = result.data.total != null ? Number(result.data.total) : 0
   } else notify(result.message || '服务跟进加载失败')
 }
 const submitFollowUp = async () => {
-  if (selected.value == null) return
+  if (selected.value == null || followSubmitting.value) return
   if (followContent.value.trim() == '') {
     notify('请填写跟进内容')
     return
   }
-  const result = await createMatchmakerMemberFollowUp(String(selected.value.user_id), { method: 'OTHER', content: followContent.value.trim() })
-  if (!result.success) {
-    notify(result.message || '跟进提交失败')
+  if ((followDate.value == '') != (followTime.value == '')) {
+    notify('请选择完整的下次跟进日期和时间')
     return
   }
+  const nextFollowAt = followDate.value != '' ? followDate.value + 'T' + followTime.value + ':00' : null
+  followSubmitting.value = true
+  try {
+    if (followPendingId.value == '') {
+      const result = await createMatchmakerMemberFollowUp(String(selected.value.user_id), { method: 'OTHER', content: followContent.value.trim(), nextFollowAt: nextFollowAt })
+      if (!result.success || result.data == null || result.data.id == null) { notify(result.message || '跟进提交失败'); return }
+      followPendingId.value = String(result.data.id)
+    }
+    while (followUploaded.value < followPhotos.value.length) {
+      const index = followUploaded.value
+      const uploaded = await uploadMemberFollowUpImage(String(selected.value.user_id), followPendingId.value, followPhotos.value[index], String(index))
+      if (!uploaded.success) { notify(uploaded.message || '图片上传失败，请重试'); return }
+      followUploaded.value++
+    }
   followContent.value = ''
+  followDate.value = ''
+  followTime.value = ''
+  followEditing.value = false
   notify('服务跟进已保存')
-  const reload = await getMatchmakerMemberFollowUps(String(selected.value.user_id))
-  if (reload.success && reload.data != null) {
-    followUps.value = Array.isArray(reload.data.items) ? reload.data.items : []
-    selected.value.followCount = reload.data.total != null ? Number(reload.data.total) : 0
-  }
+    await openFollowUps(selected.value)
+  } finally { followSubmitting.value = false }
 }
 
 /* ---------- 复制 / 编辑 / 悬浮球（按键逻辑保留） ---------- */
@@ -1253,6 +1333,13 @@ const onFilter = () => {
 }
 
 const closeSheet = () => {
+  if (sheet.value == 'followups' && followSubmitting.value) { notify('图片正在上传，请稍候'); return }
+  if (sheet.value == 'followups' && followPendingId.value != '' && followUploaded.value < followPhotos.value.length) {
+    uni.showModal({ title: '图片尚未上传完成', content: '跟进内容和已上传的图片已保存；关闭后剩余图片不会继续上传。', success: (result: any) => {
+      if (result.confirm === true) { sheet.value = ''; selected.value = null }
+    } })
+    return
+  }
   sheet.value = ''
   if (!pendingAbandon.value) selected.value = null
 }
@@ -1512,9 +1599,14 @@ onMounted(() => {
 .panel-copy { color: var(--muted); font-size: 21rpx; line-height: 1.55; }
 .contact-value { padding: 24rpx; border-radius: 16rpx; background: var(--accent-bg); color: var(--ink); font-size: 30rpx; font-weight: 800; text-align: center; }
 .fu-row { padding: 16rpx; border-radius: 12rpx; background: var(--warm); display: flex; flex-direction: column; gap: 8rpx; }
+.fu-images { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
+.fu-photo { position: relative; }
+.fu-image { width: 120rpx; height: 120rpx; border-radius: 12rpx; }
+.fu-photo text { position: absolute; top: 0; right: 0; color: var(--text-invert); background: var(--ink2); padding: 0 8rpx; }
 .fu-method { color: var(--accent2); font-size: 20rpx; font-weight: 800; }
 .fu-content { color: var(--ink); font-size: 21rpx; line-height: 1.5; }
 .fu-time { color: var(--muted); font-size: 18rpx; }
+.fu-appointment { display: flex; flex-direction: row; justify-content: space-between; color: var(--ink2); font-size: 24rpx; }.fu-action { color: var(--accent2); font-weight: 700; }.fu-list { height: 340rpx; }.fu-row { margin-bottom: 12rpx; }.fu-editor { min-height: 240rpx; }.fu-templates { display: flex; flex-direction: row; flex-wrap: wrap; gap: 10rpx; }.fu-template { padding: 10rpx 16rpx; border: 1rpx solid var(--line); border-radius: 12rpx; background: var(--paper); }.fu-template text { color: var(--accent2); font-size: 21rpx; }.fu-photo-placeholder { padding: 20rpx; border-radius: 14rpx; background: var(--warm); }.fu-photo-placeholder text, .fu-back text { color: var(--muted); font-size: 21rpx; }.fu-back { padding: 10rpx; text-align: center; }
 
 /* assign sheet */
 .assign-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; margin-bottom: 6rpx; }

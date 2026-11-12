@@ -212,6 +212,12 @@
       "root": "pagesSub/matchmaker",
       "pages": [
         {
+          "path": "commission-level",
+          "style": {
+            "navigationBarTitleText": "分成级别"
+          }
+        },
+        {
           "path": "apply",
           "style": {
             "navigationBarTitleText": "我要做红娘"

@@ -373,6 +373,7 @@ export {
   getMatchmakerWorkspaceIntroductions,
   getMatchmakerWorkspaceMeetingRequests,
   getMatchmakerWorkspaceCommissionEntries,
+  getMatchmakerCommissionStandards,
   getMatchmakerWorkspaceOfflineIncome,
   getMatchmakerWorkspaceIdentity,
   getMatchmakerWorkspaceGoodNews,
@@ -396,6 +397,8 @@ export {
   createMatchmakerWorkspaceMember,
   getMatchmakerMemberFollowUps,
   createMatchmakerMemberFollowUp,
+  uploadMemberFollowUpImage,
+  downloadMemberFollowUpImage,
   getMatchmakerMemberContact,
   getMatchmakerMemberMatchCandidates,
   getMatchmakerMemberMatchHistory,
@@ -431,7 +434,8 @@ export {
   updateMatchmakerMemberNickname,
   uploadMatchmakerMemberMedia,
   uploadWorkspaceLeadPhoto,
-  deleteMatchmakerMemberPhoto
+  deleteMatchmakerMemberPhoto,
+  getAccountBalance
 } from './matchmaker.uts'
 
 

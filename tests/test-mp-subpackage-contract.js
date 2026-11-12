@@ -64,6 +64,7 @@ const expectedSubpackages = {
     'become-promoter',
     'promoter-center',
     'application-success',
+    'commission-level',
     'custom',
     'my-account'
   ],
@@ -81,6 +82,7 @@ const expectedSubpackages = {
     'my-posters',
     'my-poster-preview',
     'history',
+    'unlock-history',
     'visitors',
     'search',
     'report',
