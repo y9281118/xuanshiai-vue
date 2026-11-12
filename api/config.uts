@@ -1,6 +1,6 @@
 /** API configuration for the deployed FastAPI service. */
 
-const DEV_API_BASE_URL = 'https://xhztest.xyz'
+const DEV_API_BASE_URL = 'https://api.xuanshiai.com'
 const TRIAL_API_BASE_URL = 'https://api.xuanshiai.com'
 // 本地与远端联调只切此开关；trial/release 遵循生产域名。
 const USE_LOCAL_BACKEND = false

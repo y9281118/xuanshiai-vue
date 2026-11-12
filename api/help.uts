@@ -1,6 +1,17 @@
 /**
  * 客服与帮助 API。
- * 帮助文档、意见反馈、转人工客服走真实接口；AI 客服无后端路由，保留本地降级。
+ *
+ * 后端（app/api/routes/support.py）提供五个路由：
+ * - `GET  /support/help-docs`     帮助文档（title / subtitle / body 三段）
+ * - `GET  /support/feedback/mine` 我的反馈
+ * - `POST /support/feedback`      意见箱（幂等 + 每日上限）
+ * - `POST /support/contact`       转人工，落 user_feedback(category=咨询)
+ * - `POST /support/ai-chat`       AI 客服（简单版：帮助文档检索 + 无关内容拒答）
+ *
+ * 三层兜底顺序：AI 客服先答 → 答不上来引导人工 → 人工落库成工单。
+ *
+ * AI 客服目前是**确定性**实现（后端 `services/support_ai.py` 做词条检索，不调大模型），
+ * 所以不会出现「AI 域开关没开导致点了永远失败」的老问题（Q54 原症状）。
  */
 
 import { USE_MOCK } from './config.uts'
@@ -20,7 +31,10 @@ export interface HelpQuickAction {
 export interface HelpFaqItem {
   id: string
   question: string
+  /** 提问用的短句（标题去噪后），点一下就把这句发给 AI 客服。 */
   prompt: string
+  /** 后端 `help-doc.body` 的答案正文；后台未维护答案时为空串，端侧要能降级。 */
+  answer?: string
 }
 
 export interface HelpCategory {
@@ -33,6 +47,24 @@ export interface HelpCategory {
 export interface HelpCenterData {
   categories: HelpCategory[]
 }
+
+/**
+ * AI 客服回复。
+ *
+ * `status` 只有三种：
+ * - `answered`  命中帮助词条，`answer` 是词条正文；
+ * - `no_answer` 问的是平台的事但知识库没有答案，后端口径是「暂时无法帮助您」；
+ * - `off_topic` 与本平台无关，后端直接拒答。
+ *
+ * `escalate` 为 true 时页面必须显示「联系客服」按钮——别让用户卡在一句拒答里。
+ */
+export interface AiSupportReply {
+  status: string
+  answer: string
+  matchedTitle: string
+  escalate: boolean
+}
+
 
 export async function getHelpCenter(): Promise<{ success: boolean, data: HelpCenterData | null, message?: string }> {
   if (USE_MOCK) {
@@ -56,8 +88,12 @@ export async function getHelpCenter(): Promise<{ success: boolean, data: HelpCen
       categoryIndex = categories.length - 1
     }
     const question = row != null && row.title != null ? '' + row.title : ''
-    const answer = row != null && row.body != null ? '' + row.body : (row != null && row.subtitle != null ? '' + row.subtitle : '')
-    if (question != '') categories[categoryIndex].items.push({ id: 'doc-' + i, question: question, prompt: answer })
+    // body 才是答案正文；subtitle 只是摘要兜底。空答案要原样保留空串，
+    // 让页面显式走「未配置说明 → 联系客服」的降级，而不是把标题当答案回显。
+    const body = row != null && row.body != null ? '' + row.body : ''
+    const subtitle = row != null && row.subtitle != null ? '' + row.subtitle : ''
+    const answer = body != '' ? body : subtitle
+    if (question != '') categories[categoryIndex].items.push({ id: 'doc-' + i, question: question, prompt: question, answer: answer })
   }
   return { success: true, data: { categories: categories } }
 }
@@ -69,12 +105,46 @@ export function getHelpQuickActions(): Promise<{ success: boolean, data: HelpQui
   return Promise.resolve({ success: false, data: [], message: '客服服务暂未接入，请稍后重试' })
 }
 
-export function sendAiSupportMessage(content: string): Promise<{ success: boolean, data: AiSupportMessage | null, message?: string }> {
+/**
+ * AI 客服问答：`POST /support/ai-chat`。
+ *
+ * 后端做的是「帮助文档检索 + 无关内容拒答」，不调大模型，所以：
+ * - 命中词条 → 返回词条正文，和帮助中心看到的完全一致；
+ * - 域内没答案 → `no_answer` + 「暂时无法帮助您，等待升级」；
+ * - 无关内容（写诗、编程、股票…）→ `off_topic` 拒答。
+ *
+ * 前端不做任何本地判断，一律以后端 `status` 为准——本地复算会让两边口径漂移。
+ */
+export async function sendAiSupportMessage(content: string): Promise<{ success: boolean, data: AiSupportReply | null, message?: string }> {
+  const text = content != null ? ('' + content).trim() : ''
+  if (text == '') return { success: false, data: null, message: '请先说说你遇到的问题' }
   if (USE_MOCK) {
-    const reply = getMockAiSupportReply(content)
-    return Promise.resolve({ success: true, data: reply })
+    const mock: any = getMockAiSupportReply(text)
+    const answer = mock != null && mock.content != null ? '' + mock.content : ''
+    return { success: true, data: { status: 'answered', answer: answer, matchedTitle: '', escalate: false } }
   }
-  return Promise.resolve({ success: false, data: null, message: 'AI 客服服务暂未接入，请稍后重试' })
+  const res = await request({ url: '/support/ai-chat', method: 'POST', data: { content: text } })
+  if (res == null || !res.success || res.data == null) {
+    return {
+      success: false,
+      data: null,
+      message: res != null && res.message != null && '' + res.message != '' ? '' + res.message : 'AI 客服暂时不可用，请用「联系客服」提交咨询'
+    }
+  }
+  const row = res.data
+  const answer = row.answer != null ? '' + row.answer : ''
+  if (answer == '') {
+    return { success: false, data: null, message: 'AI 客服暂时不可用，请用「联系客服」提交咨询' }
+  }
+  return {
+    success: true,
+    data: {
+      status: row.status != null ? '' + row.status : 'answered',
+      answer: answer,
+      matchedTitle: row.matched_title != null ? '' + row.matched_title : '',
+      escalate: row.escalate == true
+    }
+  }
 }
 
 export async function submitFeedback(content: string): Promise<{ success: boolean, data: any, message?: string }> {
@@ -94,8 +164,13 @@ export async function submitFeedback(content: string): Promise<{ success: boolea
   return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '提交失败，请稍后重试' }
 }
 
-/** 转人工客服：落 user_feedback（category=咨询）。 */
-export async function contactSupport(content: string, contactPhone: string = ''): Promise<{ success: boolean, data: any, message?: string }> {
+/**
+ * 转人工客服：落 user_feedback（category=咨询）。
+ *
+ * `idempotencyKey` 由调用方在「打开表单」时生成并复用整个提交过程，避免网络抖动后
+ * 用户重试把同一条咨询推成两条工单（后端按同键同载荷回放首次结果）。
+ */
+export async function contactSupport(content: string, contactPhone: string = '', idempotencyKey: string = ''): Promise<{ success: boolean, data: any, message?: string }> {
   if (USE_MOCK) {
     return { success: true, data: { id: 0, category: '咨询', content: content } }
   }
@@ -107,8 +182,10 @@ export async function contactSupport(content: string, contactPhone: string = '')
     url: '/support/contact',
     method: 'POST',
     data: body,
-    headers: { 'Idempotency-Key': supportKey('support-contact') }
+    headers: { 'Idempotency-Key': idempotencyKey != '' ? idempotencyKey : supportKey('support-contact') }
   })
   if (res != null && res.success) return { success: true, data: res.data }
+  // /support/contact 复用 create_feedback，与意见箱共享每人每日 10 条的额度。
+  if (res != null && Number(res.code) == 429) return { success: false, data: null, message: '今日咨询次数已达上限，请明天再试' }
   return { success: false, data: null, message: res != null && res.message != null ? '' + res.message : '客服请求提交失败，请稍后重试' }
 }

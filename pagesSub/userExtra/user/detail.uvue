@@ -154,19 +154,18 @@
 					<view v-if="showDynamicsSection" id="anchor-dynamics" class="vip-section-card">
 						<view class="section-heading-row">
 							<text class="vip-section-title">Ta的动态</text>
-							<!-- 原「查看全部 N 条」把客户端扫描到的条数说成全量，是不实陈述。
-							     独立动态页依赖后端 mode=user 接口 + pages.json 注册，本期改为按需续拉并诚实标注扫描范围。 -->
-							<text v-if="dynamics.length > DYNAMICS_PREVIEW_COUNT || canScanMoreDynamics" class="section-more" @tap="onDynamicsToggle">{{ dynamicsExpanded ? '收起' : '展开更多动态' }}</text>
+							<!-- 动态走后端 mode=user 服务端分页，条数与完整性由服务端 total 决定。
+							     独立「Ta 的动态」页仍需 pages.json 注册（受保护文件），本期就地展开。 -->
+							<text v-if="dynamics.length > DYNAMICS_PREVIEW_COUNT || canLoadMoreDynamics" class="section-more" @tap="onDynamicsToggle">{{ dynamicsExpanded ? '收起' : '展开更多动态' }}</text>
 						</view>
 						<view v-for="item in visibleDynamics" :key="item.id" class="dynamic-card"><view class="dynamic-user-row"><image class="dynamic-avatar" :src="user.avatar" mode="aspectFill"></image><view class="dynamic-user-copy"><text class="dynamic-name">{{ user.name }}</text><text class="dynamic-time">{{ item.time }}</text></view></view><text class="dynamic-content">{{ item.content }}</text><image v-if="item.photo != ''" class="dynamic-photo" :src="item.photo" mode="aspectFill"></image><view class="dynamic-footer"><text class="dynamic-topic">{{ item.topic }}</text><text class="dynamic-count">♡ {{ item.likes }}　◌ {{ item.comments }}</text></view></view>
 						<text v-if="dynamics.length == 0 && dynamicsEmptyText != ''" class="dynamics-note">{{ dynamicsEmptyText }}</text>
-						<view v-if="dynamics.length == 0 && !dynamicsLoading && dynamicsError != ''" class="detail-info-toggle" @tap="onDynamicsScanMore"><text class="detail-info-toggle-text">重新加载</text></view>
-						<view v-else-if="dynamics.length == 0 && !dynamicsLoading && canScanMoreDynamics" class="detail-info-toggle" @tap="onDynamicsScanMore"><text class="detail-info-toggle-text">继续向后查找</text></view>
-						<view v-if="dynamicsExpanded && dynamics.length > 0" class="dynamics-scan-footer">
+						<view v-if="dynamics.length == 0 && !dynamicsLoading && dynamicsError != ''" class="detail-info-toggle" @tap="onDynamicsLoadMore"><text class="detail-info-toggle-text">重新加载</text></view>
+						<view v-else-if="dynamics.length == 0 && !dynamicsLoading && canLoadMoreDynamics" class="detail-info-toggle" @tap="onDynamicsLoadMore"><text class="detail-info-toggle-text">加载更多动态</text></view>
+						<view v-if="dynamicsExpanded && dynamics.length > 0" class="dynamics-more-footer">
 							<text v-if="dynamicsLoading" class="dynamics-note">加载中…</text>
-							<text v-else-if="dynamicsError != ''" class="dynamics-note dynamics-note-action" @tap="onDynamicsScanMore">{{ dynamicsError }}</text>
-							<text v-else-if="dynamicsTruncated" class="dynamics-note">{{ DYNAMICS_TRUNCATED_NOTE }}</text>
-							<text v-else-if="canScanMoreDynamics" class="dynamics-note dynamics-note-action" @tap="onDynamicsScanMore">加载更多动态</text>
+							<text v-else-if="dynamicsError != ''" class="dynamics-note dynamics-note-action" @tap="onDynamicsLoadMore">{{ dynamicsError }}</text>
+							<text v-else-if="canLoadMoreDynamics" class="dynamics-note dynamics-note-action" @tap="onDynamicsLoadMore">加载更多动态</text>
 							<text v-else class="dynamics-note">没有更多了</text>
 						</view>
 					</view>
@@ -355,7 +354,7 @@ import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
-import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
+import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getUserDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
 import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import { LOCATION_TREE as locationJson } from '../data/location.uts'
@@ -482,34 +481,28 @@ const visibleCerts = computed(() => certsExpanded.value ? certs.value : certs.va
 
 const dynamics = ref([] as any[])
 
-// 动态：默认只露 3 条，点展开按需续拉（独立页等后端 mode=user 接口）。
-// 后端暂无 mode=user，只能在广场流里按作者筛，所以扫描范围必须对用户诚实：
-// 首屏只拉 1 页，展开后续拉，触顶且服务端仍有更多时明确告知可能不完整。
+// 动态：默认只露 3 条，点展开向后端要下一页（mode=user 服务端分页）。
+// 首屏只拉 1 页，不预扫；翻页由服务端 total 决定，不再靠客户端扫描范围猜完整性。
 const DYNAMICS_PREVIEW_COUNT = 3
-const DYNAMICS_SCAN_PAGE_SIZE = 20
-const DYNAMICS_MAX_SCAN_PAGES = 5
-const DYNAMICS_TRUNCATED_NOTE = '已加载广场最近 ' + (DYNAMICS_MAX_SCAN_PAGES * DYNAMICS_SCAN_PAGE_SIZE) + ' 条动态，可能不包含 Ta 更早的内容'
+const DYNAMICS_PAGE_SIZE = 20
 const dynamicsExpanded = ref(false)
 const dynamicsLoading = ref(false)
 const dynamicsError = ref('')
 const dynamicsHasMore = ref(false)
-const dynamicsTruncated = ref(false)
-let dynamicsScanPage = 0
+let dynamicsPage = 0
 let dynamicsRunId = 0
 let dynamicsTargetId = 0
 const visibleDynamics = computed((): any[] => {
 	const all = dynamics.value
 	return dynamicsExpanded.value ? all : all.slice(0, DYNAMICS_PREVIEW_COUNT)
 })
-const canScanMoreDynamics = computed((): boolean => dynamicsHasMore.value && !dynamicsTruncated.value)
+const canLoadMoreDynamics = computed((): boolean => dynamicsHasMore.value)
 const showDynamicsSection = computed((): boolean =>
 	dynamics.value.length > 0 || dynamicsLoading.value || dynamicsError.value != '' || dynamicsHasMore.value
 )
 const dynamicsEmptyText = computed((): string => {
 	if (dynamicsLoading.value) return '正在加载 Ta 的动态…'
 	if (dynamicsError.value != '') return dynamicsError.value
-	if (dynamicsTruncated.value) return '已加载的广场动态里没有 Ta 的内容，更早的动态暂时查不到'
-	if (dynamicsHasMore.value) return '已加载的广场动态里还没有 Ta 的内容，可以继续向后查找'
 	return ''
 })
 
@@ -892,16 +885,16 @@ const load = async () => {
 	}
 }
 
-// 扫描一页广场流并挑出目标作者的动态。runId 变化（切换用户/重进页面）后
+// 向后端要目标用户的下一页动态。runId 变化（切换用户/重进页面）后
 // 迟到的响应必须整段丢弃，否则会把上一位用户的动态写进当前页。
-const scanUserDynamicsPage = async (targetUserId: number) => {
+const loadUserDynamicsPage = async (targetUserId: number) => {
 	if (targetUserId <= 0 || dynamicsLoading.value) return
 	const runId = dynamicsRunId
-	const nextPage = dynamicsScanPage + 1
+	const nextPage = dynamicsPage + 1
 	dynamicsLoading.value = true
 	dynamicsError.value = ''
 	try {
-		const res = await getDynamicList({ tab: 'discover', page: nextPage, pageSize: DYNAMICS_SCAN_PAGE_SIZE })
+		const res = await getUserDynamicList(targetUserId, nextPage, DYNAMICS_PAGE_SIZE)
 		if (runId != dynamicsRunId) return
 		if (!res.success || res.data == null) {
 			dynamicsError.value = res != null && res.message != null && '' + res.message != '' ? '' + res.message : '动态加载失败，点击重试'
@@ -912,9 +905,6 @@ const scanUserDynamicsPage = async (targetUserId: number) => {
 		const collected = dynamics.value.slice()
 		for (let i = 0; i < rows.length; i++) {
 			const row = rows[i]
-			const author = row.user != null ? row.user : {}
-			const authorId = Number(author.id != null ? author.id : (author.userId != null ? author.userId : 0))
-			if (authorId != targetUserId) continue
 			const rowPhotos = row.photos != null && Array.isArray(row.photos) ? row.photos as any[] : []
 			const rowTags = row.tags != null && Array.isArray(row.tags) ? row.tags as any[] : []
 			collected.push({
@@ -922,15 +912,14 @@ const scanUserDynamicsPage = async (targetUserId: number) => {
 				time: row.timeText != null ? '' + row.timeText : '',
 				content: row.content != null ? '' + row.content : '',
 				photo: rowPhotos.length > 0 ? resolveMediaUrl(rowPhotos[0]) : '',
-				topic: rowTags.length > 0 ? '' + rowTags[0] : '',
+				topic: rowTags.length > 0 ? '' + rowTags[0] : (row.topicTitle != null ? '' + row.topicTitle : ''),
 				likes: Number(row.likeCount || 0),
 				comments: Number(row.commentCount || 0)
 			})
 		}
 		dynamics.value = collected
-		dynamicsScanPage = nextPage
+		dynamicsPage = nextPage
 		dynamicsHasMore.value = data.hasMore == true
-		dynamicsTruncated.value = dynamicsHasMore.value && dynamicsScanPage >= DYNAMICS_MAX_SCAN_PAGES
 	} catch (e) {
 		if (runId == dynamicsRunId) dynamicsError.value = '网络异常，动态加载失败，点击重试'
 	} finally {
@@ -942,13 +931,15 @@ const loadUserDynamics = async (targetUserId: number) => {
 	if (targetUserId <= 0) return
 	dynamicsRunId++
 	dynamicsTargetId = targetUserId
-	dynamicsScanPage = 0
+	dynamicsPage = 0
 	dynamics.value = []
 	dynamicsExpanded.value = false
 	dynamicsError.value = ''
 	dynamicsHasMore.value = false
-	dynamicsTruncated.value = false
-	await scanUserDynamicsPage(targetUserId)
+	// 在途请求已被 runId 作废，它的 finally 不会再解锁 loading；这里不复位，
+	// 换人后的首次请求会被 loading 守卫直接吞掉，新用户永远看不到动态。
+	dynamicsLoading.value = false
+	await loadUserDynamicsPage(targetUserId)
 }
 
 const onDynamicsToggle = () => {
@@ -957,16 +948,16 @@ const onDynamicsToggle = () => {
 		return
 	}
 	dynamicsExpanded.value = true
-	if (canScanMoreDynamics.value) scanUserDynamicsPage(dynamicsTargetId)
+	if (canLoadMoreDynamics.value) loadUserDynamicsPage(dynamicsTargetId)
 }
 
-const onDynamicsScanMore = () => {
+const onDynamicsLoadMore = () => {
 	if (dynamicsLoading.value) return
 	if (dynamicsError.value != '') {
-		scanUserDynamicsPage(dynamicsTargetId)
+		loadUserDynamicsPage(dynamicsTargetId)
 		return
 	}
-	if (canScanMoreDynamics.value) scanUserDynamicsPage(dynamicsTargetId)
+	if (canLoadMoreDynamics.value) loadUserDynamicsPage(dynamicsTargetId)
 }
 
 const refreshLockedView = () => {
@@ -1394,7 +1385,7 @@ const onLike = async () => {
 .dynamic-user-copy { display: flex; flex-direction: column; gap: 4rpx; }
 .dynamic-name { color: var(--ink); font-size: 24rpx; font-weight: 700; }
 .dynamic-time { color: var(--muted); font-size: 20rpx; }
-.dynamics-scan-footer { display: flex; flex-direction: column; align-items: center; padding-top: 18rpx; }
+.dynamics-more-footer { display: flex; flex-direction: column; align-items: center; padding-top: 18rpx; }
 .dynamics-note { color: var(--muted); font-size: 22rpx; line-height: 1.5; text-align: center; }
 .dynamics-note-action { color: var(--accent2); }
 .dynamic-content { color: var(--ink2); font-size: 24rpx; line-height: 1.6; }

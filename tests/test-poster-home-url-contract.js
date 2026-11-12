@@ -1,6 +1,9 @@
 // 海报二维码首页地址契约：官网首页在 www、API 在 api 子域名，两者不同源。
 // P1 域名补丁把 PROD_API_BASE_URL 从 www 改成 api 后，原先「API_BASE_URL == 首页地址」
-// 的判断恒假，release 海报会画成测试服二维码。此处按 envVersion 三档锁死。
+// 的判断恒假，release 海报会画成测试服二维码。此处按 envVersion 分档锁死。
+// 2026-11-11：DEV_API_BASE_URL 已切到生产域名，develop 与 release/trial 同档，
+// 因此 IS_PROD_BACKEND 在 develop 也为 true、海报指向官网；TEST 点阵仍保留差异化校验，
+// 防止两串矩阵被误合并。若日后开发环境回到测试服，本文件 develop 段需同步改回。
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -27,9 +30,9 @@ function loadFor(envVersion) {
 }
 
 const PROD_HOME = 'https://www.xuanshiai.com'
-const TEST_HOME = 'https://xhztest.xyz'
+// 历史测试服首页（xhztest.xyz）自 2026-11-11 起不再被 develop 档使用，见文件头说明。
 
-// release / trial 都打生产后端，海报必须指向官网首页；develop 与 H5 回退测试域名。
+// release / trial 都打生产后端，海报必须指向官网首页。
 const release = loadFor('release')
 assert.equal(release.cfg.API_BASE_URL, 'https://api.xuanshiai.com')
 assert.equal(release.cfg.IS_PROD_BACKEND, true)
@@ -39,10 +42,11 @@ const trial = loadFor('trial')
 assert.equal(trial.cfg.API_BASE_URL, 'https://api.xuanshiai.com')
 assert.equal(trial.poster.PLATFORM_HOME_URL, PROD_HOME)
 
+// develop 与生产同域：DEV_API_BASE_URL == PROD_API_BASE_URL，故 IS_PROD_BACKEND 同样为 true。
 const develop = loadFor('develop')
-assert.equal(develop.cfg.API_BASE_URL, TEST_HOME)
-assert.equal(develop.cfg.IS_PROD_BACKEND, false)
-assert.equal(develop.poster.PLATFORM_HOME_URL, TEST_HOME)
+assert.equal(develop.cfg.API_BASE_URL, 'https://api.xuanshiai.com')
+assert.equal(develop.cfg.IS_PROD_BACKEND, true)
+assert.equal(develop.poster.PLATFORM_HOME_URL, PROD_HOME)
 
 // 点阵必须跟着首页地址走：选错矩阵 = 二维码扫出来是另一个域名。
 const qrOf = (rel) => {
@@ -52,7 +56,8 @@ const qrOf = (rel) => {
 }
 const qr = qrOf('utils/matchmaker-promo-poster.uts')
 assert.equal(release.poster.rows.join('|'), qr.prod)
-assert.equal(develop.poster.rows.join('|'), qr.test)
+assert.equal(develop.poster.rows.join('|'), qr.prod)
+// prod / test 两串矩阵仍须不同：矩阵选错等于二维码扫出另一个域名。
 assert.notEqual(qr.prod, qr.test)
 
 // 首页 URL 未变，点阵不得重生成：仍是 25x25 字节模式 / ECC M 的那两串。

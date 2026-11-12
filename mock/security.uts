@@ -17,7 +17,7 @@ export const mockSecurityCenterData = {
     { type: 'fraud_identity_scam', mark: '防', tone: 'guide-mark', title: '识别冒充诈骗', description: '警惕冒充客服、红娘或平台工作人员索要验证码和转账。' },
     { type: 'fraud_investment_scam', mark: '防', tone: 'governance-mark', title: '远离投资转账骗局', description: '恋爱关系中的投资、充值、借款和代收款请求都要先核实。' }
   ],
-  aiSupportTitle: '需要操作指引？打开 AI 客服',
-  aiSupportDescription: 'AI 仅提供入口说明，不会代替你提交举报',
+  aiSupportTitle: '需要操作指引？联系客服',
+  aiSupportDescription: '客服只提供入口说明，不会代替你提交举报',
   riskNotice: '遇到现实中的人身或财产风险，请停止互动、保存记录，并及时联系当地警方或紧急服务。'
 }

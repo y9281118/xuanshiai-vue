@@ -220,6 +220,7 @@ export type {
 // 社区相关
 export {
   getDynamicList,
+  getUserDynamicList,
   getDynamicDetail,
   getMyPosts,
   getTopics,
@@ -305,6 +306,7 @@ export {
 export {
   getHelpQuickActions,
   sendAiSupportMessage,
+  contactSupport,
   submitFeedback
 } from './help.uts'
 

@@ -134,7 +134,7 @@
 	const shouldStartOnboarding = async (data: any): Promise<boolean> => {
 		if (data != null && data.need_bind_phone === true) return true
 		const completion = await getProfileCompletion()
-		if (!completion.success || completion.data == null) return false
+		if (!completion.success || completion.data == null) throw new Error('completion unavailable')
 		const score = completion.data.score != null ? Number(completion.data.score) : 100
 		return score < 30
 	}
@@ -155,9 +155,10 @@
 		try {
 			needsOnboarding = await shouldStartOnboarding(data)
 		} catch (e) {
-			needsOnboarding = data != null && data.need_bind_phone === true
+			// 服务端不可用时才回退本地标记，避免老账号因标记丢失被重推引导
+			needsOnboarding = (data != null && data.need_bind_phone === true) || uni.getStorageSync('xsa_onboarding_completed') != true
 		}
-		if (needsOnboarding || uni.getStorageSync('xsa_onboarding_completed') != true) {
+		if (needsOnboarding) {
 			uni.navigateTo({ url: '/pagesSub/userExtra/onboarding/profile' })
 			return
 		}

@@ -72,10 +72,17 @@
 				</view>
 				<view
 					class="message-item"
+					:class="{ selecting: selectionMode }"
 					v-for="(message, index) in messages"
 					:key="message.clientMessageId != null ? message.clientMessageId : message.id"
 					:id="'msg-' + index"
 				>
+					<!-- 多选态铺一层透明热区：拦截图片预览/语音播放/重试等子元素点击，
+					     整行点击只做勾选。 -->
+					<view v-if="selectionMode" class="select-overlay" @click="toggleMessageSelection(message)"></view>
+					<view v-if="selectionMode && message.id > 0" class="select-check" :class="{ on: isMessageSelected(message) }">
+						<text class="select-check-mark" v-if="isMessageSelected(message)">✓</text>
+					</view>
 					<view class="time-divider" v-if="message.showTime">
 						<text class="time-text">{{ message.time }}</text>
 					</view>
@@ -166,7 +173,7 @@
 				</view>
 			</scroll-view>
 
-			<view class="input-bar" :class="{ expanded: showMore && !isAiAvatarMode, 'ai-mode': isAiAvatarMode && !isParentMode }">
+			<view class="input-bar" v-if="!selectionMode" :class="{ expanded: showMore && !isAiAvatarMode, 'ai-mode': isAiAvatarMode && !isParentMode }">
 				<view v-if="quotedMessage != null && !isAiAvatarMode" class="quote-preview">
 					<text class="quote-preview-text">引用：{{ quotedMessage.content }}</text>
 					<text class="quote-preview-close" @click="clearQuotedMessage">✕</text>
@@ -220,6 +227,17 @@
 					</view>
 				</view>
 			</view>
+
+				<!-- 多选操作栏：长按选「多选」后替换输入栏。只提供「仅自己删除」，
+				     撤回必须单条走服务端召回口径（对方也要看到撤回态）。 -->
+				<view v-if="selectionMode" class="selection-bar">
+					<text class="selection-count">已选 {{ selectedMessageIds.length }} 条</text>
+					<view class="selection-actions">
+						<button class="selection-btn" @click="toggleSelectAll">全选</button>
+						<button class="selection-btn danger" :disabled="selectionDeleting" @click="deleteSelectedMessages">{{ selectionDeleting ? '删除中…' : '删除' }}</button>
+						<button class="selection-btn" @click="exitSelectionMode">取消</button>
+					</view>
+				</view>
 		</template>
 
 			<XsaReportSheet
@@ -347,6 +365,11 @@
 	const aiAvatarError = ref('')
 	const aiAdvisorVisible = ref(false)
 	const aiAdvisorInitialMessage = ref('')
+	// 长按多选：进入后气泡不再响应预览/重发，改为勾选，底部输入栏换成批量操作栏。
+	// 只做「仅自己删除」批量版——跨用户撤回必须单条走服务端撤回口径，不能批量化。
+	const selectionMode = ref(false)
+	const selectedMessageIds = ref([] as number[])
+	const selectionDeleting = ref(false)
 	const activeMessageSubject = ref(null as MessageSubject | null)
 	const activeParentContext = ref(null as ParentContext | null)
 	const chatMutationVersion = ref(0)
@@ -1436,13 +1459,17 @@
 		}
 
 		const openMessageMenu = (message: any) => {
-			if (isParentMode.value || message == null || message.type === 'system' || message.revoked === true) return
+			if (isParentMode.value || selectionMode.value || message == null || message.type === 'system') return
+			// 已撤回的气泡不再提供复制/引用/重新编辑/撤回（原文已经不该存在），
+			// 但必须保留「仅自己删除」：旧实现直接 return，撤回消息就永久占位删不掉。
+			const revoked = message.revoked === true
 			const items: string[] = []
-			if (message.type === 'text' && message.content != null && String(message.content).length > 0) items.push('复制')
-			if (message.isMine === true && message.type === 'text' && message.status === 'sent') items.push('重新编辑')
-			if (message.id > 0 && message.revoked !== true) items.push('引用')
-			if (message.isMine === true && message.id > 0 && message.status === 'sent' && message.revoked !== true) items.push('撤回')
+			if (!revoked && message.type === 'text' && message.content != null && String(message.content).length > 0) items.push('复制')
+			if (!revoked && message.isMine === true && message.type === 'text' && message.status === 'sent') items.push('重新编辑')
+			if (!revoked && message.id > 0) items.push('引用')
+			if (!revoked && message.isMine === true && message.id > 0 && message.status === 'sent') items.push('撤回')
 			if (message.id > 0) items.push('仅自己删除')
+			if (message.id > 0) items.push('多选')
 			if (items.length === 0) return
 			messageMenuOpenedAt = Date.now()
 			uni.showActionSheet({
@@ -1456,6 +1483,89 @@
 					else if (action === '引用') quotedMessage.value = message
 					else if (action === '撤回') requestRevokeMessage(message)
 					else if (action === '仅自己删除') hideMessageForMeLocally(message)
+					else if (action === '多选') enterSelectionMode(message)
+				}
+			})
+		}
+
+		const isMessageSelected = (message: any): boolean => {
+			const id = message != null && message.id != null ? Number(message.id) : 0
+			return id > 0 && (selectedMessageIds.value as number[]).indexOf(id) >= 0
+		}
+
+		const toggleMessageSelection = (message: any) => {
+			const id = message != null && message.id != null ? Number(message.id) : 0
+			if (id <= 0) return
+			const ids = selectedMessageIds.value as number[]
+			const index = ids.indexOf(id)
+			if (index >= 0) ids.splice(index, 1)
+			else ids.push(id)
+		}
+
+		const selectableMessages = (): any[] => (messages.value as any[]).filter((item: any) => item != null && Number(item.id) > 0)
+
+		const enterSelectionMode = (message: any) => {
+			if (isParentMode.value) return
+			selectionMode.value = true
+			selectedMessageIds.value = []
+			if (message != null && Number(message.id) > 0) (selectedMessageIds.value as number[]).push(Number(message.id))
+			closeMoreMenu()
+		}
+
+		const exitSelectionMode = () => {
+			if (selectionDeleting.value) return
+			selectionMode.value = false
+			selectedMessageIds.value = []
+		}
+
+		const toggleSelectAll = () => {
+			if (selectionDeleting.value) return
+			const all = selectableMessages()
+			if ((selectedMessageIds.value as number[]).length >= all.length) {
+				selectedMessageIds.value = []
+				return
+			}
+			selectedMessageIds.value = all.map((item: any) => Number(item.id))
+		}
+
+		// 批量删除只走「仅自己删除」：逐条命中 /chat/messages/{id}/for-me。
+		// 任一条失败只保留失败项并提示，成功的已经从本地列表移除，避免重复提交。
+		const deleteSelectedMessages = () => {
+			if (selectionDeleting.value) return
+			const ids = (selectedMessageIds.value as number[]).slice(0)
+			if (ids.length == 0) {
+				uni.showToast({ title: '请先选择要删除的消息', icon: 'none' })
+				return
+			}
+			const subject = activeMessageSubject.value
+			if (subject == null) return
+			uni.showModal({
+				title: '删除消息',
+				content: '将删除你选中的 ' + ids.length + ' 条消息，仅在你这里隐藏，对方不受影响。',
+				confirmText: '删除',
+				success: async (result: any) => {
+					if (result == null || result.confirm != true) return
+					selectionDeleting.value = true
+					const failedIds: number[] = []
+					const removedIds: number[] = []
+					for (let i = 0; i < ids.length; i++) {
+						const id = ids[i]
+						const res = await hideMessageForMe(id, subject)
+						if (res != null && res.success == true) removedIds.push(id)
+						else failedIds.push(id)
+					}
+					selectionDeleting.value = false
+					if (removedIds.length > 0) {
+						messages.value = (messages.value as any[]).filter((item: any) => removedIds.indexOf(Number(item != null ? item.id : 0)) < 0)
+					}
+					if (failedIds.length > 0) {
+						selectedMessageIds.value = failedIds
+						uni.showToast({ title: '有 ' + failedIds.length + ' 条删除失败，请重试', icon: 'none' })
+						return
+					}
+					selectionMode.value = false
+					selectedMessageIds.value = []
+					uni.showToast({ title: '已删除 ' + removedIds.length + ' 条', icon: 'none' })
 				}
 			})
 		}
@@ -1490,6 +1600,10 @@
 						message.revoked = true
 						message.type = 'text'
 						message.content = '消息已撤回'
+						// 输入框里的引用草稿同样持有原文。撤回后必须一起清掉，
+						// 否则「已撤回」的内容还挂在输入栏上方（Q63：撤回不要显示在外面）。
+						const quoted = quotedMessage.value
+						if (quoted != null && Number(quoted.id) == Number(message.id)) quotedMessage.value = null
 						return
 					}
 					uni.showToast({ title: responseMessage(res, '撤回失败，请重试'), icon: 'none' })
@@ -1540,15 +1654,37 @@
 	const openAiAdvisor = async () => {
 		if (isParentMode.value || isAiAvatarMode.value) return
 		closeMoreMenu()
+		// 能力位（GET /ai/capabilities）是「此刻能不能用」的唯一判据，前端不复算开关。
+		// 但失败原因必须分开报：以前三种情况一律提示「暂未开放」，用户没法判断是该
+		// 重试、该重新登录，还是产品确实还没灰度到他（Q62 的核心症状）。
+		let capabilities: any = null
 		try {
-			const capabilities = await getAiCapabilities()
-			const advisorEnabled = capabilities != null && capabilities.success == true && capabilities.data != null && capabilities.data.advisor == true
-			if (!advisorEnabled) {
-				uni.showToast({ title: 'AI 军师暂未开放', icon: 'none' })
-				return
-			}
+			capabilities = await getAiCapabilities()
 		} catch (e) {
-			uni.showToast({ title: 'AI 军师暂未开放', icon: 'none' })
+			capabilities = null
+		}
+		if (capabilities == null || capabilities.success != true || capabilities.data == null) {
+			const status = capabilities != null && capabilities.code != null ? Number(capabilities.code) : 0
+			let reason = ''
+			if (status == -1) {
+				reason = '网络异常，请检查网络后重试'
+			} else if (status >= 500) {
+				reason = '服务暂时异常，请稍后重试'
+			} else if (capabilities != null && capabilities.message != null && String(capabilities.message) != '') {
+				reason = String(capabilities.message)
+			} else {
+				reason = '暂时无法获取 AI 军师状态，请稍后重试'
+			}
+			uni.showToast({ title: reason, icon: 'none' })
+			return
+		}
+		if (capabilities.data.advisor != true) {
+			// master=false 是「AI 总开关没开」（运维/环境配置）；master=true 而
+			// advisor=false 才是「军师这一项单独没开」（总闸开了但 ai_enabled 关）。
+			uni.showToast({
+				title: capabilities.data.master == true ? 'AI 军师暂未对你开放' : 'AI 功能总开关未开启',
+				icon: 'none'
+			})
 			return
 		}
 		let advisorVip = false
@@ -1652,7 +1788,18 @@
 		overflow-y: auto;
 	}
 
-	.message-item { margin-bottom: 16px; }
+	.message-item { position: relative; margin-bottom: 16px; }
+	/* ===== 长按多选 ===== */
+	.select-overlay { position: absolute; left: 0px; right: 0px; top: 0px; bottom: 0px; z-index: 5; }
+	.select-check { position: absolute; left: 2px; top: 50%; margin-top: -11px; z-index: 6; pointer-events: none; width: 22px; height: 22px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: row; align-items: center; justify-content: center; }
+	.select-check.on { border-color: var(--accent); background: var(--accent); }
+	.select-check-mark { color: var(--text-invert); font-size: 12px; font-weight: 800; line-height: 12px; }
+	.selection-bar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--surface); border-top: 1px solid var(--line); }
+	.selection-count { color: var(--ink2); font-size: 13px; font-weight: 700; }
+	.selection-actions { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+	.selection-btn { height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); font-size: 13px; line-height: 32px; }
+	.selection-btn.danger { border-color: transparent; background: var(--accent); color: var(--text-invert); }
+	.selection-btn[disabled] { opacity: 0.6; }
 	.time-divider { text-align: center; margin-bottom: 16px; }
 
 	.time-text {

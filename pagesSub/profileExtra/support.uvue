@@ -1,15 +1,32 @@
 <template>
-	<view class="support-page"><view class="support-nav"><text class="ic ic-sys ic-fanhui back" @tap="back"></text><view class="nav-title"><text class="ic ic-sys ic-bangzhu"></text><text>帮助与客服</text></view><view class="placeholder"></view></view><view class="support-table"><view v-for="group in groups" :key="group.title" class="support-group"><view class="group-label"><text :class="'ic ic-sys ' + group.icon + ' group-icon'"></text><text>{{ group.title }}</text></view><view class="question-list"><view v-for="question in group.questions" :key="question" class="question" @tap="answer(question)"><text>{{ question }}</text></view></view></view></view><view class="support-footer"><view @tap="contact"><text class="ic ic-sys ic-kefu"></text><text>联系客服</text></view><view @tap="feedback"><text class="ic ic-sys ic-bangzhu"></text><text>意见箱</text></view></view></view>
+  <view class="support-redirect"><text class="support-redirect-text">正在打开客服与帮助...</text></view>
 </template>
+
 <script setup lang="uts">
-const groups = [{ title: '常见问题', icon: 'ic-bangzhu', questions: ['喜欢、小纸条后可以取消吗', '我初来乍到，如何在平台交友', '看见心仪的TA，如何开启聊天', '我为什么不能看“谁喜欢我”和“访客”'] }, { title: '完善资料和认证', icon: 'ic-shiming', questions: ['资料和认证审核多久能通过', '为什么我必须要通过身份和学历认证才能聊天', '我提交的认证资料有泄漏风险嘛？', '什么是可信度'] }, { title: '嘉宾推荐', icon: 'ic-peidui', questions: ['为什么每天限量推荐有限嘉宾', '推荐嘉宾数量不足或重复', '推荐的人不符合要求'] }, { title: '其他', icon: 'ic-gengduo', questions: ['脱单了如何修改感情状态', '什么是“小纸条”'] }]
-const back = () => uni.navigateBack({ delta: 1 })
-const answer = (question: string) => uni.showToast({ title: question, icon: 'none' })
-const contact = () => uni.showToast({ title: '客服将在工作时间联系你', icon: 'none' })
-const feedback = () => uni.showToast({ title: '意见箱暂未开放', icon: 'none' })
+/**
+ * 旧版「帮助与客服」页（legacy）。
+ *
+ * 这个页面曾经是 help 的一份静态副本：4 组 hardcode FAQ + 两个按钮全是
+ * `uni.showToast`，零接口调用，意见箱写死「暂未开放」。Q54 把它合并到
+ * `pagesSub/profileExtra/help`（真实 /support/help-docs、/support/feedback、
+ * /support/contact）。
+ *
+ * 保留路由而不是直接删掉，是因为老分享路径、二维码和已安装客户端的深链都还指向
+ * `/pagesSub/profileExtra/support`；直接下线会让这些入口 404。改成中转页后老链接
+ * 仍然可用，功能只有一份实现。用 `redirectTo` 而不是 `navigateTo`，避免用户返回时
+ * 又回到这个空白中转页。
+ */
+onLoad((options) => {
+  const open = options?.open ?? ''
+  const url = open != '' ? '/pagesSub/profileExtra/help?open=' + open : '/pagesSub/profileExtra/help'
+  uni.redirectTo({
+    url: url,
+    fail: () => { uni.showToast({ title: '客服与帮助打开失败，请重试', icon: 'none' }) }
+  })
+})
 </script>
+
 <style scoped>
-.support-page { min-height: 100vh; background: #FFF; color: #35383F; }.support-nav { height: 74px; padding: 28px 18px 0; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: space-between; border-bottom: 1px solid #E7E8EA; font-size: 20px; font-weight: 800; }.back,.placeholder { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; }.back { font-size: 36px; font-weight: 300; }.support-table { display: flex; flex-direction: column; }.support-group { display: flex; flex-direction: row; border-bottom: 1px solid #E2E3E5; }.group-label { width: 110px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border-right: 1px solid #E2E3E5; color: #3A3D44; font-size: 14px; text-align: center; }.group-icon { width: 30px; height: 30px; border: 2px solid #35424D; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #35AFA1; }.question-list { flex: 1; }.question { min-height: 58px; padding: 0 14px; display: flex; align-items: center; border-bottom: 1px solid #E2E3E5; font-size: 15px; }.question:last-child { border-bottom: 0; }.support-footer { position: fixed; left: 0; right: 0; bottom: 0; height: 62px; display: flex; flex-direction: row; background: #FFF; border-top: 1px solid #E4E5E8; }.support-footer view { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }.support-footer view + view { border-left: 1px solid #E0E1E5; }
-@font-face { font-family: "iconfont-sys"; src: url('/static/婚恋小程序图标/系统通用/iconfont.woff2') format('woff2'); }.ic { font-style: normal; }.ic-sys { font-family: "iconfont-sys" !important; }.ic-fanhui:before { content: "\e606"; }.ic-bangzhu:before { content: "\e623"; }.ic-kefu:before { content: "\e6d0"; }.ic-shiming:before { content: "\e605"; }.ic-peidui:before { content: "\e634"; }.ic-gengduo:before { content: "\e63f"; }
-.back { width: 40px; height: 40px; border-radius: 20px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #2C2C2C; }
+.support-redirect { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--canvas); }
+.support-redirect-text { color: var(--muted); font-size: 13px; }
 </style>
