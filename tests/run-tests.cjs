@@ -33,6 +33,7 @@ const core = [
   'test-workspace-contact-dialog.js',
   'test-lead-auto-name.js',
   'test-matchmaker-vip-tabs.js',
+  'test-matchmaker-offline-orders.js',
   'test-pending-review-counter.js',
   'test-matchmaker-homepage-edit.js',
   'test-good-news-contract.js',

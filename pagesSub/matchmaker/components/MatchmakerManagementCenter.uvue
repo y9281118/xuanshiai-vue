@@ -128,7 +128,7 @@ const defaultMetrics = [
 	{ key: 'pending_review', label: '资料待审', value: '0', action: '资料待审', valuePrefix: '' },
 	{ key: 'served_members', label: '我服务的', value: '0', action: '我服务的', valuePrefix: '' },
 	{ key: 'online_commission', label: '线上分成', value: '--', action: '分成明细', valuePrefix: '￥' },
-	{ key: 'offline_performance', label: '线下业绩', value: '--', action: '财务明细', valuePrefix: '￥' },
+	{ key: 'offline_performance', label: '线下业绩', value: '--', action: '线下开单明细', valuePrefix: '￥' },
 	{ key: 'pending_introduction', label: '牵线管理', value: '0', action: '牵线记录', valuePrefix: '' },
 	{ key: 'introduction_succeeded', label: '牵线成功', value: '0', action: '牵线记录', valuePrefix: '' },
 	{ key: 'meeting_requests', label: '约见申请', value: '0', action: '约见申请', valuePrefix: '' },
@@ -163,7 +163,8 @@ const briefMetrics = computed(() => {
 })
 
 const onMetricAction = (item: any) => {
-	if (item != null && (item.key == 'pending_introduction' || item.key == 'introduction_succeeded' || item.key == 'meeting_requests' || item.key == 'pending_meeting')) {
+	// 线下业绩走独立的「线下开单明细」页，按 key 路由，不受服务端下发的 action 文案影响。
+	if (item != null && (item.key == 'pending_introduction' || item.key == 'introduction_succeeded' || item.key == 'meeting_requests' || item.key == 'pending_meeting' || item.key == 'offline_performance')) {
 		emit('action', 'metric:' + String(item.key))
 		return
 	}

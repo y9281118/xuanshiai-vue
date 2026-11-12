@@ -12,7 +12,7 @@ import {
   mockMatchmakerWorkspaceIntroductions,
   mockMatchmakerWorkspaceMeetingRequests,
   mockMatchmakerCommissionEntries,
-  mockMatchmakerFinanceEntries
+  mockMatchmakerOfflineOrders
 } from '@/mock/matchmaker.uts'
 
 // 仅本机联调可在服务端尚未写入工作台记录时展示脱敏测试明细；部署环境始终只用服务端数据。
@@ -935,69 +935,24 @@ export async function getAccountBalance() {
 }
 
 /**
- * 我的线下业绩明细：本人作为销售红娘的线下 VIP 已收款订单，
- * 与后台「工作汇报-线下业绩」同一口径；包装成 {time,name,avatar,item,amount} 供财务明细列表渲染。
+ * 线下开单明细：红娘管理中心「线下业绩」的独立页数据，与财务明细不再共用列表。
+ * 本期按设计稿先出本地演示数据；服务端 /matchmaker/workbench/offline-income
+ * 补齐开单日期与销售红娘字段后，这里换成真实请求即可，页面按同一结构渲染。
  */
-export async function getMatchmakerWorkspaceOfflineIncome(page: number = 1, pageSize: number = 100) {
-  const result = await request({
-    url: '/matchmaker/workbench/offline-income',
-    method: 'GET',
-    data: { page: page, page_size: pageSize },
-    mockData: USE_MOCK ? { items: mockMatchmakerFinanceEntries, total: mockMatchmakerFinanceEntries.length } : null
-  })
-  const serverItems = result.success && result.data != null && Array.isArray(result.data.items) ? result.data.items : []
-  const useMockSource = USE_MOCK && result.success && result.data != null
-  const useDemoFallback = useMockSource
-  if (!result.success && !useDemoFallback) return result
-  if (useDemoFallback) {
-    const demoItems = mockMatchmakerFinanceEntries
-    return {
-      success: true,
-      data: {
-        items: demoItems.map((item: any) => ({
-          id: item.time != null ? String(item.time) : '',
-          time: item.time != null ? String(item.time) : '',
-          name: item.name != null ? String(item.name) : '',
-          avatar: item.avatar != null ? String(item.avatar) : '',
-          item: item.item != null ? String(item.item) : '',
-          amount: item.amount != null ? String(item.amount) : '',
-          orderNo: ''
-        })),
-        total: demoItems.length,
-        page: page,
-        pageSize: pageSize,
-        hasMore: false,
-        totalAmount: '￥' + formatWorkspaceMoney(sumDemoAmounts(demoItems)),
-        isDemo: true
-      },
-      code: 0,
-      message: '本地测试数据'
-    }
-  }
-  const source = result.data
-  if (source == null) return result
-  const items = Array.isArray(source.items) ? source.items : []
+export async function getMatchmakerOfflineOrders() {
+  const items = mockMatchmakerOfflineOrders.map((item: any) => ({
+    id: String(item.id),
+    date: String(item.date),
+    name: String(item.name),
+    avatar: resolveMediaUrl(item.avatar),
+    salesMatchmaker: String(item.salesMatchmaker),
+    amount: Number(item.amount)
+  }))
   return {
     success: true,
-    data: {
-      items: items.map((item: any) => ({
-        id: item.id != null ? String(item.id) : '',
-        time: formatWorkspaceTime(item.paid_at),
-        name: item.consumer_name != null && String(item.consumer_name).length > 0 ? String(item.consumer_name) : '未知会员',
-        avatar: item.consumer_avatar != null && String(item.consumer_avatar).length > 0 ? resolveMediaUrl(String(item.consumer_avatar)) : '',
-        item: item.item_name != null && String(item.item_name).length > 0 ? String(item.item_name) : '线下VIP服务',
-        amount: signedWorkspaceMoney(item.amount),
-        orderNo: item.order_no != null ? String(item.order_no) : ''
-      })),
-      total: source.total != null ? Number(source.total) : items.length,
-      page: source.page != null ? Number(source.page) : page,
-      pageSize: source.page_size != null ? Number(source.page_size) : pageSize,
-      hasMore: source.has_more === true,
-      totalAmount: '￥' + formatWorkspaceMoney(source.total_amount),
-      isDemo: false
-    },
-    code: result.code,
-    message: result.message
+    data: { items: items, total: items.length, isDemo: true },
+    code: 0,
+    message: '本地演示数据'
   }
 }
 

@@ -376,7 +376,7 @@ export {
   getMatchmakerWorkspaceMeetingRequests,
   getMatchmakerWorkspaceCommissionEntries,
   getMatchmakerCommissionStandards,
-  getMatchmakerWorkspaceOfflineIncome,
+  getMatchmakerOfflineOrders,
   getMatchmakerWorkspaceIdentity,
   getMatchmakerWorkspaceGoodNews,
   getMatchmakerWorkspaceGoodNewsPennants,

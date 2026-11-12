@@ -1,0 +1,137 @@
+<template>
+	<view class="oo-shell">
+		<scroll-view scroll-y class="oo-scroller" :show-scrollbar="false">
+			<view class="oo-content">
+				<view class="oo-notice">
+					<view class="oo-notice-head">
+						<view class="oo-notice-mark"><text>i</text></view>
+						<text class="oo-notice-title">须知</text>
+					</view>
+					<text class="oo-notice-copy">以下是您名下客源成功签单成为我们平台线下VIP服务客户的记录。数据信息若有误差，请与工作人员核对为准。</text>
+				</view>
+				<text v-if="usingDemoData" class="oo-demo">当前展示本地演示数据，线下开单接口接入后自动切换为真实记录。</text>
+
+				<view v-if="loading && rows.length == 0" class="oo-state"><text>正在加载开单明细…</text></view>
+				<view v-else-if="errorMessage.length > 0" class="oo-state"><text>{{ errorMessage }}</text><text class="oo-state-action" @tap="loadRows">重新加载</text></view>
+				<view v-else-if="rows.length == 0" class="oo-state">
+					<view class="oo-empty-mark"><view class="oo-avatar-head"></view><view class="oo-avatar-body"></view></view>
+					<text>暂时没有线下开单记录</text>
+					<text class="oo-state-copy">名下客源签单成为线下VIP服务客户后，记录会出现在这里。</text>
+				</view>
+				<view v-else class="oo-list">
+					<view v-for="row in rows" :key="row.id" class="oo-card">
+						<text class="oo-card-time">开单时间：{{ row.date }}</text>
+						<view class="oo-card-divider"></view>
+						<view class="oo-card-body">
+							<view class="oo-member">
+								<image v-if="row.avatar.length > 0" class="oo-avatar" :src="row.avatar" mode="aspectFill"/>
+								<view v-else class="oo-avatar oo-avatar-blank"><view class="oo-avatar-head"></view><view class="oo-avatar-body"></view></view>
+								<view class="oo-badge"><text>签单会员</text></view>
+							</view>
+							<view class="oo-info">
+								<text class="oo-name">{{ row.name }}</text>
+								<text class="oo-field">销售红娘：{{ row.salesMatchmaker }}</text>
+								<view class="oo-amount"><text class="oo-field">签单金额：</text><text class="oo-amount-value">{{ amountText(row.amount) }}</text></view>
+							</view>
+						</view>
+					</view>
+					<view class="oo-end"><view class="oo-end-line"></view><text>没有更多了</text><view class="oo-end-line"></view></view>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+import { ref, onMounted } from 'vue'
+import { getMatchmakerOfflineOrders } from '@/api/matchmaker.uts'
+
+const rows = ref<any[]>([])
+const loading = ref(false)
+const errorMessage = ref('')
+const usingDemoData = ref(false)
+
+// 签单金额按「元」展示：整元不带小数，带角分的保留两位，千位加逗号。
+const amountText = (value: any): string => {
+	const amount = Number(value)
+	if (isNaN(amount)) return '--'
+	const hasCents = Math.abs(amount - Math.round(amount)) > 0.001
+	const fixed = hasCents ? amount.toFixed(2) : String(Math.round(amount))
+	const segments = fixed.split('.')
+	let intPart = segments[0]
+	let grouped = ''
+	while (intPart.length > 3) {
+		grouped = ',' + intPart.substring(intPart.length - 3) + grouped
+		intPart = intPart.substring(0, intPart.length - 3)
+	}
+	return intPart + grouped + (segments.length > 1 ? '.' + segments[1] : '') + '元'
+}
+
+const loadRows = async () => {
+	loading.value = true
+	errorMessage.value = ''
+	try {
+		const result = await getMatchmakerOfflineOrders()
+		if (!result.success || result.data == null) {
+			rows.value = []
+			usingDemoData.value = false
+			errorMessage.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '开单明细加载失败'
+			return
+		}
+		const source = result.data
+		rows.value = Array.isArray(source.items) ? source.items : []
+		usingDemoData.value = source.isDemo == true
+	} catch (e) {
+		rows.value = []
+		usingDemoData.value = false
+		errorMessage.value = '网络数据加载失败，请稍后重试'
+	} finally {
+		loading.value = false
+	}
+}
+
+onMounted(() => { loadRows() })
+</script>
+
+<style scoped>
+/* 线下开单明细：继承红娘工作台的青瓷色调（--canvas/--surface/--accent 系），
+ * 导图的浅紫须知卡与紫色徽标只借布局，颜色一律换成同域浅强调色。 */
+/* 外壳按 pr-shell 配方给一个真实布局盒：virtualHost 组件在 mp-weixin 里没有自己的盒，
+ * scroll-view 必须挂在有高度的父级上才能算出可滚动区。 */
+.oo-shell { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+.oo-scroller { flex: 1; height: 0; background: var(--canvas); }
+.oo-content { min-height: 100%; box-sizing: border-box; padding: 22rpx 22rpx calc(env(safe-area-inset-bottom) + 60rpx); background: var(--canvas); display: flex; flex-direction: column; }
+.oo-notice { box-sizing: border-box; padding: 24rpx 26rpx 26rpx; border: 1rpx solid var(--accent-bg); border-radius: 24rpx; background: var(--match-mist); display: flex; flex-direction: column; gap: 14rpx; }
+.oo-notice-head { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.oo-notice-mark { width: 34rpx; height: 34rpx; border-radius: 50%; background: var(--accent2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.oo-notice-mark text { color: var(--paper); font-size: 20rpx; font-weight: 800; line-height: 1; }
+.oo-notice-title { color: var(--ink); font-size: 27rpx; font-weight: 800; }
+.oo-notice-copy { color: var(--ink2); font-size: 23rpx; line-height: 1.65; }
+.oo-demo { margin-top: 14rpx; padding: 12rpx 18rpx; border-radius: 14rpx; background: var(--warm); color: var(--ink2); font-size: 19rpx; line-height: 1.5; }
+.oo-list { display: flex; flex-direction: column; }
+.oo-card { box-sizing: border-box; margin-top: 22rpx; padding: 26rpx 26rpx 30rpx; border-radius: 24rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; }
+.oo-card-time { color: var(--muted); font-size: 22rpx; line-height: 1.4; }
+.oo-card-divider { height: 1rpx; margin: 20rpx 0 24rpx; background: var(--line); }
+.oo-card-body { display: flex; flex-direction: row; align-items: flex-start; gap: 26rpx; }
+.oo-member { width: 132rpx; display: flex; flex-direction: column; align-items: center; gap: 4rpx; flex-shrink: 0; }
+.oo-avatar { width: 96rpx; height: 96rpx; border-radius: 50%; }
+.oo-avatar-blank { position: relative; overflow: hidden; background: var(--warm); }
+/* 人形占位用边框绘制（空 view 的 border 在小程序里可渲染，与导航栏入口图标同一手法）。 */
+.oo-avatar-head { position: absolute; left: 34rpx; top: 22rpx; width: 28rpx; height: 28rpx; border: 4rpx solid var(--muted); border-radius: 50%; box-sizing: border-box; }
+.oo-avatar-body { position: absolute; left: 22rpx; top: 56rpx; width: 52rpx; height: 42rpx; border: 4rpx solid var(--muted); border-bottom: none; border-radius: 26rpx 26rpx 0 0; box-sizing: border-box; }
+.oo-badge { padding: 7rpx 16rpx; border-radius: 999rpx; background: var(--accent-bg); display: flex; align-items: center; justify-content: center; }
+.oo-badge text { color: var(--accent2); font-size: 19rpx; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+.oo-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16rpx; }
+.oo-name { color: var(--ink); font-size: 30rpx; font-weight: 800; line-height: 1.3; }
+.oo-field { color: var(--ink2); font-size: 23rpx; line-height: 1.4; }
+.oo-amount { display: flex; flex-direction: row; align-items: baseline; }
+.oo-amount-value { color: var(--match-coral); font-size: 26rpx; font-weight: 800; line-height: 1.4; }
+.oo-end { margin-top: 34rpx; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 16rpx; }
+.oo-end text { color: var(--muted); font-size: 22rpx; }
+.oo-end-line { width: 60rpx; height: 1rpx; background: var(--line); }
+.oo-state { margin-top: 22rpx; min-height: 300rpx; box-sizing: border-box; padding: 40rpx 32rpx; border-radius: 24rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18rpx; color: var(--muted); font-size: 23rpx; }
+.oo-state-copy { color: var(--muted); font-size: 21rpx; line-height: 1.5; text-align: center; }
+.oo-state-action { padding: 12rpx 26rpx; border-radius: 999rpx; background: var(--sage-soft); color: var(--accent2); font-size: 21rpx; font-weight: 700; }
+.oo-state-action:active { opacity: .82; }
+.oo-empty-mark { position: relative; overflow: hidden; width: 96rpx; height: 96rpx; border-radius: 50%; background: var(--warm); }
+</style>

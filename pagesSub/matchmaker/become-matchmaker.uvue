@@ -5,10 +5,11 @@
 			<view class="nav-back" @click="handlePageBack">
 				<view class="nav-back-chevron"></view>
 			</view>
-			<text class="nav-title">{{ pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')) }}</text>
+			<text class="nav-title">{{ offlineOrdersVisible ? '线下开单明细' : (pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘'))) }}</text>
 			<!-- 工作区遮罩右上角只保留「保存」药丸；返回走左侧箭头（handlePageBack 会先关遮罩）。 -->
 			<view v-if="(pendingReviewVisible || workspaceVisible) && isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()"><text class="nav-help-text">保存</text></view>
 			<view v-else-if="workspaceVisible && workspaceKind == 'income-placeholder'" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
+			<view v-else-if="offlineOrdersVisible" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
 			<view v-else-if="!pendingReviewVisible && !workspaceVisible && managementCenterVisible" class="nav-entries">
 				<view class="nav-entry" @click="openMyAccount">
 					<view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view>
@@ -30,6 +31,7 @@
 			@servedCount="onPendingReviewServedCount"
 			@contact="onPendingReviewContact"
 		/>
+		<MatchmakerOfflineOrders v-else-if="offlineOrdersVisible" />
 		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :class="{ 'ls-scroll': isLeadEntryStudio }" :show-scrollbar="false" :scroll-top="workspaceScrollTop">
 			<view class="workspace-content" :class="{ 'lead-space': workspaceKind == 'lead' }">
 				<view v-if="workspaceKind != 'remote' && workspaceKind != 'news' && workspaceKind != 'income-placeholder'" class="workspace-heading">
@@ -54,7 +56,7 @@
 					<view class="finance-empty"><view class="finance-empty-illustration"><view class="finance-empty-head"></view><view class="finance-empty-person"></view><view class="finance-empty-line"></view><view class="finance-empty-line short"></view><view class="finance-empty-search"><view></view></view></view><view class="finance-empty-shadow"></view><text>明细暂不可用</text></view>
 				</view>
 				<view v-else-if="workspaceKind == 'commission'">
-					<!-- 我的分成：资金 hero + 级别卡 + 推广卡（导图版式）；财务明细仍用原「资金结算」平板。 -->
+					<!-- 我的分成：资金 hero + 级别卡 + 推广卡（导图版式）。线下业绩已拆到独立的「线下开单明细」页。 -->
 					<view v-if="workspaceTitle == '我的分成'" class="commission-hero">
 						<view class="commission-hero-body">
 							<view class="commission-hero-amount"><text class="commission-hero-label">可提现额度 (元)</text><text class="commission-hero-value">{{ workspaceCommissionBalance }}</text></view>
@@ -68,7 +70,6 @@
 						</view>
 					</view>
 					<text v-if="workspaceTitle == '我的分成'" class="commission-hero-note">{{ workspaceCashNote }}</text>
-					<view v-if="workspaceTitle != '我的分成'" class="workspace-cash"><text>资金结算</text><text class="workspace-cash-value">{{ workspaceTitle == '财务明细' ? workspaceFinanceTotal : workspaceCommissionTotal }}</text><text>{{ workspaceCashNote }}</text></view>
 
 					<view v-if="isCommissionOverview" class="commission-level-card">
 						<view class="commission-level-head">
@@ -96,22 +97,8 @@
 						</view>
 					</view>
 
-					<!-- 财务明细 · 结算说明 -->
-					<view v-if="workspaceTitle == '财务明细' && workspaceActiveTab == '结算说明'" class="workspace-notice"><text class="workspace-notice-title">结算说明</text><text>线下业绩含门店服务、线下 VIP 与活动收款，由平台按月统一结算；当前逐笔记录取自本人作为销售红娘的线下 VIP 已收款订单。</text></view>
-
-					<!-- 财务明细 · 逐笔记录：本人作为销售红娘的线下 VIP 已收款订单 -->
-					<view v-else-if="workspaceTitle == '财务明细'">
-						<view v-if="workspaceFinanceUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生线下业绩后将自动切换为真实数据。</text></view>
-						<view v-if="workspaceFinanceLoading" class="workspace-state"><text>正在加载财务明细…</text></view>
-						<view v-else-if="workspaceFinanceError.length > 0" class="workspace-state"><text>{{ workspaceFinanceError }}</text><text class="workspace-state-action" @click="loadWorkspaceOfflineIncome">重新加载</text></view>
-						<view v-else-if="workspaceFinanceRows.length == 0" class="workspace-state"><text>暂时没有线下业绩记录</text></view>
-						<view v-else>
-							<view v-for="row in workspaceFinanceRows" :key="row.id" class="workspace-commission-row"><text>{{ row.time }}</text><view><image v-if="row.avatar.length > 0" :src="row.avatar" mode="aspectFill"/><view v-else class="workspace-commission-avatar"><text>{{ commissionAvatarText(row.name) }}</text></view><view><text>{{ row.name }}</text><text>{{ row.item }}</text></view><text>{{ row.amount }}</text></view></view>
-						</view>
-					</view>
-
 					<!-- 分成明细 · 逐笔记录：会员名/头像按支付订单回带，事件名取分成规则 -->
-					<view v-else>
+					<view>
 						<view v-if="workspaceCommissionUsingDemoData" class="workspace-demo-notice"><text>当前显示本地测试数据；服务端产生分成记录后将自动切换为真实数据。</text></view>
 						<view v-if="workspaceCommissionLoading" class="workspace-state"><text>正在加载分成明细…</text></view>
 						<view v-else-if="workspaceCommissionError.length > 0" class="workspace-state"><text>{{ workspaceCommissionError }}</text><text class="workspace-state-action" @click="loadWorkspaceCommissionEntries">重新加载</text></view>
@@ -1093,6 +1080,7 @@ import MatchmakerManagementCenter from '@/pagesSub/matchmaker/components/Matchma
 import MatchmakerGoodNews from '@/pagesSub/matchmaker/components/MatchmakerGoodNews.uvue'
 import { onShareAppMessage } from '@dcloudio/uni-app'
 import MatchmakerPendingReview from '@/pagesSub/matchmaker/components/MatchmakerPendingReview.uvue'
+import MatchmakerOfflineOrders from '@/pagesSub/matchmaker/components/MatchmakerOfflineOrders.uvue'
 import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
 import { getRemoteFinanceBalance } from '@/api/matchmaker-remote.uts'
 import {
@@ -1124,7 +1112,6 @@ import {
 	getMatchmakerWorkspaceMeetingRequests,
 	getMatchmakerWorkspaceCommissionEntries,
 	getMatchmakerCommissionStandards,
-	getMatchmakerWorkspaceOfflineIncome,
 	getMatchmakerMemberContact,
 	submitMatchmakerApplication
 } from '@/api'
@@ -1164,6 +1151,8 @@ const managementAccessLoading = ref(true)
 const managementCenterLoading = ref(false)
 const managementCenterVisible = ref(false)
 const pendingReviewVisible = ref(false)
+// 线下业绩独立页：与「财务明细」工作区互斥，不再共用同一个页面。
+const offlineOrdersVisible = ref(false)
 const pendingReviewInitialTab = ref('PENDING')
 // 会员主页「编辑资料」入口深链：进入页面后自动打开资料待审列表
 const autoOpenPendingReview = ref(false)
@@ -1215,7 +1204,7 @@ const workspaceSearchPlaceholder = computed(() => {
 	if (workspaceKind.value == 'meeting') return '请输入申请人昵称或编号'
 	return '请输入关键词'
 })
-// 分成明细与财务明细读服务端（会员名与事件名由订单/规则回带）；分成标准在「分成级别」页面按后台配置展示。
+// 分成明细读服务端（会员名与事件名由订单/规则回带）；分成标准在「分成级别」页面按后台配置展示。
 const workspaceCommissionRows = ref<any[]>([])
 const workspaceCommissionLoading = ref(false)
 const workspaceCommissionError = ref('')
@@ -1225,11 +1214,6 @@ const workspaceCommissionTotalAmount = ref('')
 const workspaceCommissionBalance = ref('--')
 // 分成级别徽标：取后台 commission_level 配置里本人档案指向的级别，未指派时保持 '--'。
 const workspaceCommissionLevelName = ref('--')
-const workspaceFinanceRows = ref<any[]>([])
-const workspaceFinanceLoading = ref(false)
-const workspaceFinanceError = ref('')
-const workspaceFinanceUsingDemoData = ref(false)
-const workspaceFinanceTotalAmount = ref('')
 const commissionAvatarText = (name: any): string => {
 	const text = name != null ? String(name).trim() : ''
 	return text.length > 0 ? text.substring(0, 1) : '会'
@@ -1258,17 +1242,11 @@ const formatDemoAmount = (rows: any[]): string => {
 const workspaceCommissionTotal = computed((): string => workspaceCommissionTotalAmount.value.length > 0
 	? workspaceCommissionTotalAmount.value
 	: formatDemoAmount(workspaceCommissionRows.value))
-const workspaceFinanceTotal = computed((): string => workspaceFinanceTotalAmount.value.length > 0
-	? workspaceFinanceTotalAmount.value
-	: formatDemoAmount(workspaceFinanceRows.value))
 const workspaceCashNote = computed((): string => {
-	if (workspaceTitle.value == '财务明细') return workspaceFinanceUsingDemoData.value
-		? '线下业绩与开单收款为本地演示数据，服务端接入后自动切换。'
-		: '线下业绩为本人作为销售红娘的线下 VIP 已收款订单，由平台按月统一结算。'
 	if (workspaceCommissionUsingDemoData.value) return '分成金额计入账号余额，可申请提现；当前为本地演示数据。'
 	return '分成记录按服务端数据展示，实际可提现余额以账户余额为准。'
 })
-// 分成明细总览卡（资金卡 + 级别卡 + 推广卡）只在「我的分成」出现，财务明细沿用原资金平板。
+// 分成明细总览卡（资金卡 + 级别卡 + 推广卡）只在「我的分成」出现。
 const isCommissionOverview = computed((): boolean => workspaceTitle.value == '我的分成')
 const commissionIdentity = computed((): any => {
 	if (managementCenterSnapshot.value == null || managementCenterSnapshot.value.identity == null) return {}
@@ -1360,7 +1338,7 @@ const stopPendingReviewCountTimer = () => {
 const startPendingReviewCountTimer = () => {
 	stopPendingReviewCountTimer()
 	pendingReviewCountTimer = setInterval(() => {
-		if (managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value) refreshPendingReviewCount()
+		if (managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value && !offlineOrdersVisible.value) refreshPendingReviewCount()
 	}, 15000)
 }
 // 「我服务的」以会员列表真实数据（matchmaker_id == 当前红娘）为准，实时覆盖简报里的服务端统计。
@@ -1642,6 +1620,7 @@ const exitManagementCenter = () => {
 	stopPendingReviewCountTimer()
 	pendingReviewCountRequest += 1
 	pendingReviewVisible.value = false
+	offlineOrdersVisible.value = false
 	workspaceVisible.value = false
 	managementCenterVisible.value = false
 }
@@ -1658,6 +1637,7 @@ const openMemberEntryFromReview = () => {
 
 const openPendingReview = (initialTab: string = 'PENDING') => {
 	if (!managementCenterVisible.value) return
+	offlineOrdersVisible.value = false
 	pendingReviewInitialTab.value = initialTab
 	pendingReviewVisible.value = true
 }
@@ -1665,6 +1645,17 @@ const openPendingReview = (initialTab: string = 'PENDING') => {
 const closePendingReview = () => {
 	pendingReviewVisible.value = false
 	refreshPendingReviewCount()
+}
+
+const openOfflineOrders = () => {
+	if (!managementCenterVisible.value) return
+	pendingReviewVisible.value = false
+	workspaceVisible.value = false
+	offlineOrdersVisible.value = true
+}
+
+const closeOfflineOrders = () => {
+	offlineOrdersVisible.value = false
 }
 
 const closeWorkspace = () => {
@@ -1699,9 +1690,7 @@ const loadWorkspaceMembers = async () => {
 			const reviewStatus = item.review_status != null ? String(item.review_status) : 'PENDING'
 			return {
 				id: String(item.user_id),
-				avatar: item.avatar != null && String(item.avatar).length > 0
-					? String(item.avatar)
-					: (Number(item.gender) == 1 ? '/static/portraits/profile-man-light.webp' : '/static/portraits/profile-woman-main.webp'),
+				avatar: resolvePersonAvatar(item.avatar, Number(item.gender) == 1 ? '/static/portraits/profile-man-light.webp' : '/static/portraits/profile-woman-main.webp'),
 				name: item.nickname != null ? String(item.nickname) : '未命名会员',
 				gender: gender,
 				type: Number(item.profile_completion_score) >= 90 ? '资料完善' : '待完善',
@@ -2651,6 +2640,15 @@ const getIntroductionFallbackAvatar = (memberId: any, gender: string, memberName
 	return candidate
 }
 
+/**
+ * 会员头像存的是服务器相对路径（/storage/uploads/…），小程序会把 / 开头的 src 当包内路径解析，
+ * 结果只渲染出 .workspace-match-photo-image 的 --warm 底色，看起来就是空白头像框；必须先过 resolveMediaUrl 补域名。
+ */
+const resolvePersonAvatar = (raw: any, fallback: string = ''): string => {
+	const url = resolveMediaUrl(raw)
+	return url.length > 0 ? url : fallback
+}
+
 // 牵线卡片就地展开的联系方式槽位（每条记录两侧各一份）。
 const createMatchContactSlot = () => {
 	return { loading: false, error: '', phone: '', wechat: '', revealed: false }
@@ -2698,14 +2696,14 @@ const loadWorkspaceMatches = async () => {
 					name: fromUser.name != null ? String(fromUser.name) : '未命名会员',
 					gender: fromUser.gender != null ? String(fromUser.gender) : '未填写',
 					isVip: fromUser.isVip == true,
-					avatar: fromUser.avatar != null && String(fromUser.avatar).length > 0 ? String(fromUser.avatar) : getIntroductionFallbackAvatar(fromUser.id, String(fromUser.gender), String(fromUser.name))
+					avatar: resolvePersonAvatar(fromUser.avatar, getIntroductionFallbackAvatar(fromUser.id, String(fromUser.gender), String(fromUser.name)))
 				},
 				toUser: {
 					id: toUser.id != null ? String(toUser.id) : '',
 					name: toUser.name != null ? String(toUser.name) : '未命名会员',
 					gender: toUser.gender != null ? String(toUser.gender) : '未填写',
 					isVip: toUser.isVip == true,
-					avatar: toUser.avatar != null && String(toUser.avatar).length > 0 ? String(toUser.avatar) : getIntroductionFallbackAvatar(toUser.id, String(toUser.gender), String(toUser.name))
+					avatar: resolvePersonAvatar(toUser.avatar, getIntroductionFallbackAvatar(toUser.id, String(toUser.gender), String(toUser.name)))
 				},
 				owner: owner,
 				fromContact: createMatchContactSlot(),
@@ -2788,32 +2786,6 @@ const openCommissionStandardPage = () => {
 		url: '/pagesSub/matchmaker/commission-level',
 		fail: () => showToast('分成标准打开失败，请稍后重试')
 	})
-}
-
-const loadWorkspaceOfflineIncome = async () => {
-	workspaceFinanceLoading.value = true
-	workspaceFinanceError.value = ''
-	workspaceFinanceUsingDemoData.value = false
-	workspaceFinanceTotalAmount.value = ''
-	try {
-		const result = await getMatchmakerWorkspaceOfflineIncome(1, 100)
-		if (!result.success || result.data == null) {
-			workspaceFinanceRows.value = []
-			workspaceFinanceError.value = result.message != null ? String(result.message) : '财务明细加载失败'
-			return
-		}
-		const source = result.data
-		workspaceFinanceUsingDemoData.value = source.isDemo == true
-		workspaceFinanceRows.value = Array.isArray(source.items) ? source.items : []
-		workspaceFinanceTotalAmount.value = source.totalAmount != null ? String(source.totalAmount) : ''
-	} catch (e) {
-		workspaceFinanceRows.value = []
-		workspaceFinanceUsingDemoData.value = false
-		workspaceFinanceTotalAmount.value = ''
-		workspaceFinanceError.value = '网络数据加载失败，请稍后重试'
-	} finally {
-		workspaceFinanceLoading.value = false
-	}
 }
 
 // 判断牵线记录中的会员是否为会员专区（VIP）会员，用于卡片上的 VIP 徽章。
@@ -3066,14 +3038,14 @@ const loadWorkspaceMeetings = async () => {
 					name: applicant.name != null ? String(applicant.name) : '未命名会员',
 					gender: applicant.gender != null ? String(applicant.gender) : '未填写',
 					isVip: applicant.isVip === true || applicant.isVip === 1,
-					avatar: applicant.avatar != null && String(applicant.avatar).length > 0 ? String(applicant.avatar) : getIntroductionFallbackAvatar(applicant.id, String(applicant.gender), String(applicant.name))
+					avatar: resolvePersonAvatar(applicant.avatar, getIntroductionFallbackAvatar(applicant.id, String(applicant.gender), String(applicant.name)))
 				},
 				target: {
 					id: target.id != null ? String(target.id) : '',
 					name: target.name != null ? String(target.name) : '未命名会员',
 					gender: target.gender != null ? String(target.gender) : '未填写',
 					isVip: target.isVip === true || target.isVip === 1,
-					avatar: target.avatar != null && String(target.avatar).length > 0 ? String(target.avatar) : getIntroductionFallbackAvatar(target.id, String(target.gender), String(target.name))
+					avatar: resolvePersonAvatar(target.avatar, getIntroductionFallbackAvatar(target.id, String(target.gender), String(target.name)))
 				}
 			}
 		})
@@ -3471,9 +3443,10 @@ const scrollWorkspaceTop = () => {
 }
 
 const openWorkspace = async (title: string, kind: string, initialTab: string = '') => {
+	offlineOrdersVisible.value = false
 	workspaceTitle.value = kind == 'activity' ? '活动报名管理' : title
 	workspaceKind.value = kind
-	workspaceActiveTab.value = initialTab.length > 0 ? initialTab : (kind == 'income-placeholder' ? '支出明细' : (kind == 'commission' ? (title == '财务明细' ? '财务明细' : '分成明细') : (kind == 'lead' ? '客源线索' : (kind == 'news' ? '喜讯' : '全部'))))
+	workspaceActiveTab.value = initialTab.length > 0 ? initialTab : (kind == 'income-placeholder' ? '支出明细' : (kind == 'commission' ? '分成明细' : (kind == 'lead' ? '客源线索' : (kind == 'news' ? '喜讯' : '全部'))))
 	workspaceKeyword.value = ''
 	workspaceVisible.value = true
 	if (kind == 'entry') {
@@ -3499,13 +3472,12 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'lead') await loadWorkspaceLeads()
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
-	// 「线上分成」与「财务明细」各读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
+	// 「线上分成」读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
 	if (kind == 'commission' && title == '我的分成') {
 		await loadWorkspaceCommissionEntries()
 		await loadWorkspaceCommissionBalance()
 		await loadWorkspaceCommissionLevel()
 	}
-	if (kind == 'commission' && title == '财务明细') await loadWorkspaceOfflineIncome()
 	if (kind == 'news') workspaceTitle.value = '红娘喜讯'
 }
 
@@ -3541,8 +3513,8 @@ const handleManagementCenterAction = (name: string) => {
 		openWorkspace('我的分成', 'commission')
 		return
 	}
-	if (name == 'metric:offline_performance') {
-		openWorkspace('财务明细', 'income-placeholder')
+	if (name == 'metric:offline_performance' || name == '线下开单明细' || name == '查看线下开单明细') {
+		openOfflineOrders()
 		return
 	}
 	if (name == 'metric:pending_introduction') {
@@ -3736,6 +3708,10 @@ const goBack = () => {
 }
 
 const handlePageBack = () => {
+	if (offlineOrdersVisible.value) {
+		closeOfflineOrders()
+		return
+	}
 	if (pendingReviewVisible.value) {
 		closePendingReview()
 		return
