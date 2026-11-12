@@ -1277,8 +1277,11 @@ export async function getMatchmakerMemberContact(id: string) {
   }
 }
 
-export async function getMatchmakerMemberMatchCandidates(id: string) {
-  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/match-candidates', method: 'GET', data: { page: 1, page_size: 50 } })
+/** 匹配候选：服务端先按该会员的择偶要求缩小，filters 与「会员资料管理」的资料筛选同一口径（JSON 字符串，空串表示不带条件）。 */
+export async function getMatchmakerMemberMatchCandidates(id: string, filters: string = '', page: number = 1) {
+  const data: any = { page: page, page_size: 50 }
+  if (filters.length > 0) data['filters'] = filters
+  return request({ url: '/matchmaker/workbench/members/' + encodeURIComponent(id) + '/match-candidates', method: 'GET', data: data })
 }
 
 export async function getMatchmakerMemberMatchHistory(id: string) {

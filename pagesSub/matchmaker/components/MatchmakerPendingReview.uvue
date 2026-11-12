@@ -88,7 +88,7 @@
         <view class="filter-head">
           <view>
             <text class="filter-title">条件筛选</text>
-            <text class="filter-subtitle">按会员资料缩小查看范围</text>
+            <text class="filter-subtitle">{{ matchFilterActive() ? '未修改的条件按该会员择偶要求匹配' : '按会员资料缩小查看范围' }}</text>
           </view>
           <view class="filter-close" @tap="closeMemberFilter"><text>✕</text></view>
         </view>
@@ -171,19 +171,20 @@
       <view class="subpage-head">
         <text class="subpage-title">匹配合适的人</text>
       </view>
-      <scroll-view scroll-y class="subpage-list" :show-scrollbar="false">
+      <scroll-view scroll-y class="subpage-list subpage-list-match" :show-scrollbar="false" @scrolltolower="loadMoreCandidates">
         <view class="match-member">
+          <view class="match-member-top">
           <view class="match-member-ava"><image v-if="selected.avatar" :src="avatarSrc(selected.avatar)" mode="aspectFill" /><text v-else>{{ avatarText(selected.nickname) }}</text></view>
           <view class="match-member-copy">
             <view class="mcard-name-row"><text class="mcard-name">{{ selected.nickname }}</text><text class="match-member-no">会员(G{{ selected.user_id }})</text></view>
             <text class="mcard-meta">{{ memberMeta(selected) }}</text>
           </view>
-        </view>
-
-        <view class="match-pref">
+          </view>
+          <view class="match-pref">
           <text class="match-pref-title">根据该会员的择偶要求：</text>
           <view class="match-pref-chips">
             <view v-for="chip in preferenceChips" :key="chip" class="match-chip"><text>{{ chip }}</text></view>
+          </view>
           </view>
         </view>
 
@@ -192,7 +193,15 @@
           <text class="match-tip-copy">状态为"停止相亲"、"已经脱单"的会员资料不会显示在匹配结果中。</text>
         </view>
 
-        <view v-if="matchLoading" class="state-card"><text>正在匹配合适人选…</text></view>
+        <view v-if="!matchLoading" class="match-result-head">
+          <text class="match-result-label">符合条件的有</text>
+          <text class="match-result-count">{{ matchTotal }}</text>
+          <text class="match-result-label">位</text>
+        </view>
+        <text v-if="!matchLoading && !matchFilterSupported" class="match-result-notice">当前后端尚未支持资料筛选，以下结果未按要求缩小。</text>
+
+        <view v-if="matchLoading && matchPage == 1" class="state-card"><text>正在匹配合适人选…</text></view>
+        <view v-else-if="matchError != ''" class="state-card" @tap="loadCandidates(selected)"><text>{{ matchError }}，点击重试</text></view>
         <view v-else-if="candidates.length == 0" class="state-card"><text>暂无符合条件的会员资料</text></view>
         <view v-for="row in candidates" :key="row.user_id" class="candidate-card">
           <view class="mcard-body">
@@ -203,12 +212,18 @@
             <view class="mcard-info">
               <view class="mcard-name-row"><text class="mcard-name">{{ row.nickname }}</text></view>
               <text class="cand-no">编号:G{{ row.user_id }}</text>
+              <text class="mcard-meta">{{ memberMeta(row) }}</text>
               <view class="mcard-owner"><text class="mcard-owner-glyph">❥</text><text class="mcard-owner-label">服务红娘：</text><text class="mcard-owner-value">{{ row.matchmaker_name || '待分派' }}</text></view>
             </view>
             <view class="cand-ark"><text>公开相亲</text></view>
           </view>
         </view>
+        <view v-if="matchHasMore" class="state-card" @tap="loadMoreCandidates"><text>{{ matchLoading ? '加载中…' : '加载更多' }}</text></view>
       </scroll-view>
+      <!-- 与会员资料管理同一枚筛选悬浮按钮、同一个条件抽屉。 -->
+      <view class="review-float-actions">
+        <view class="fab-filter" @tap="onFilter"><text class="fab-filter-glyph">☲</text><text>筛选</text></view>
+      </view>
     </view>
 
     <!-- ============ 红娘说 / 修改红娘 / 弃因 / 联系 / 跟进 面板 ============ -->
@@ -418,6 +433,16 @@ const introductions = ref<any[]>([])
 const matchLoading = ref(false)
 const candidates = ref<any[]>([])
 const preference = ref<any>(null)
+const matchTotal = ref(0)
+const matchPage = ref(1)
+const matchHasMore = ref(false)
+const matchError = ref('')
+const matchChangedKeys = ref<string[]>([])
+const appliedMatchChangedKeys = ref<string[]>([])
+// 匹配子页和资料列表共用同一套筛选条件，但各记各的已应用值：
+// 资料列表常按性别筛过，若把「性别=男」带进男会员的匹配页，服务端与异性相吸条件相与就必然 0 条。
+const appliedMatchFilter = ref<any>(createMemberFilter())
+const matchFilterSupported = ref(true)
 
 const sheet = ref('')
 const noteDraft = ref('')
@@ -508,9 +533,9 @@ const visibleIntroductions = computed(() => {
 const preferenceChips = computed(() => {
   const chips: string[] = []
   const pref = preference.value
-  if (pref != null && pref.age_min != null && pref.age_max != null) chips.push('年龄' + pref.age_min + '-' + pref.age_max)
+  if (pref != null && (pref.age_min != null || pref.age_max != null)) chips.push('年龄' + (pref.age_min != null ? pref.age_min : '不限') + '-' + (pref.age_max != null ? pref.age_max : '不限'))
   else chips.push('年龄不限')
-  if (pref != null && pref.height_min != null && pref.height_max != null) chips.push('身高' + pref.height_min + '-' + pref.height_max)
+  if (pref != null && (pref.height_min != null || pref.height_max != null)) chips.push('身高' + (pref.height_min != null ? pref.height_min : '不限') + '-' + (pref.height_max != null ? pref.height_max : '不限'))
   else chips.push('身高不限')
   if (pref != null && pref.income_min != null) chips.push('收入' + pref.income_min + '以上')
   else chips.push('收入不限')
@@ -549,11 +574,11 @@ const marriedText = (value: any): string => {
   return '婚况未填'
 }
 const educationLabel = (code: number): string => {
-  if (code == 1) return '博士及以上'
-  if (code == 2) return '硕士及以上'
+  if (code == 1) return '高中及以上'
+  if (code == 2) return '大专及以上'
   if (code == 3) return '本科及以上'
-  if (code == 4) return '大专及以上'
-  if (code == 5) return '高中及以上'
+  if (code == 4) return '硕士及以上'
+  if (code == 5) return '博士及以上'
   return '学历不限'
 }
 const memberMeta = (member: any): string => {
@@ -634,13 +659,22 @@ const memberFromWorkbench = (row: any): any => {
   return mapped
 }
 
+/** 抽屉里 18 条条件只把「已选定」的发给服务端，与 /workbench/members 的 filters JSON 同一口径。 */
+const nonEmptyFilterValues = (source: any): any => {
+  const selected: any = {}
+  for (const key of Object.keys(source)) {
+    const value = String(source[key] || '')
+    if (value.length > 0) selected[key] = value
+  }
+  return selected
+}
+
 const loadWorkbenchMembers = async (tab: string, append: boolean = false): Promise<void> => {
   const data: any = { page: append ? memberPage.value + 1 : 1, page_size: 30, member_pool: 'all' }
   if (tab == 'PENDING') data['review_status'] = tab
   if (tab == 'REJECTED') data['abandoned'] = true
   if (keyword.value.trim().length > 0) data['search'] = keyword.value.trim()
-  const selected: any = {}
-  for (const key of Object.keys(appliedMemberFilter.value)) { const value = String(appliedMemberFilter.value[key] || ''); if (value.length > 0) selected[key] = value }
+  const selected: any = nonEmptyFilterValues(appliedMemberFilter.value)
   if (tab == 'mine') selected['mine'] = '1'
   if (tab == 'vip_online') selected['online_vip'] = '1'
   if (tab == 'vip_offline') selected['offline_vip'] = '1'
@@ -712,6 +746,13 @@ const loadMembers = async () => {
 }
 
 const filterValueText = (key: string): string => {
+  if (matchFilterActive() && matchChangedKeys.value.indexOf(key) < 0 && preference.value != null) {
+    const pref = preference.value
+    if (key == 'ageRange' && (pref.age_min != null || pref.age_max != null)) return (pref.age_min != null ? pref.age_min : '不限') + ' — ' + (pref.age_max != null ? pref.age_max : '不限')
+    if (key == 'heightRange' && (pref.height_min != null || pref.height_max != null)) return (pref.height_min != null ? pref.height_min : '不限') + ' — ' + (pref.height_max != null ? pref.height_max : '不限')
+    if (key == 'education' && pref.education_min != null) return educationLabel(Number(pref.education_min))
+    if (key == 'income' && pref.income_min != null) return String(pref.income_min) + '以上'
+  }
   const value = String(memberFilter.value[key] || '')
   if (isRangeFilter(key) && value.indexOf('range:') == 0) {
     const parts = value.split(':')
@@ -730,6 +771,11 @@ const toggleMemberFilter = (key: string) => {
     const parts = value.indexOf('range:') == 0 ? value.split(':') : []
     rangeDraftMin.value = parts.length > 1 ? parts[1] : ''
     rangeDraftMax.value = parts.length > 2 ? parts[2] : ''
+    if (matchFilterActive() && matchChangedKeys.value.indexOf(key) < 0 && preference.value != null) {
+      const pref = preference.value
+      if (key == 'ageRange') { rangeDraftMin.value = pref.age_min != null ? String(pref.age_min) : ''; rangeDraftMax.value = pref.age_max != null ? String(pref.age_max) : '' }
+      if (key == 'heightRange') { rangeDraftMin.value = pref.height_min != null ? String(pref.height_min) : ''; rangeDraftMax.value = pref.height_max != null ? String(pref.height_max) : '' }
+    }
   }
 }
 
@@ -763,16 +809,23 @@ const applyRange = (key: string) => {
     return
   }
   memberFilter.value[key] = rangeDraftMin.value.length == 0 && rangeDraftMax.value.length == 0 ? '' : 'range:' + rangeDraftMin.value + ':' + rangeDraftMax.value
+  markMatchFilterChanged(key)
   expandedFilterKey.value = ''
 }
 
 const selectMemberFilter = (key: string, value: string) => {
   memberFilter.value[key] = value
+  markMatchFilterChanged(key)
   expandedFilterKey.value = ''
 }
 const selectFilterRegion = (key: string, event: any) => {
   const parts = event.detail.value as string[]
   memberFilter.value[key] = parts.join(' ')
+  markMatchFilterChanged(key)
+}
+
+const markMatchFilterChanged = (key: string) => {
+  if (matchFilterActive() && matchChangedKeys.value.indexOf(key) < 0) matchChangedKeys.value = [...matchChangedKeys.value, key]
 }
 
 const closeMemberFilter = () => {
@@ -780,8 +833,21 @@ const closeMemberFilter = () => {
   expandedFilterKey.value = ''
 }
 
-const resetMemberFilter = () => { memberFilter.value = createMemberFilter(); expandedFilterKey.value = '' }
-const confirmMemberFilter = () => { appliedMemberFilter.value = { ...memberFilter.value }; closeMemberFilter(); loadMembers() }
+const resetMemberFilter = () => { memberFilter.value = createMemberFilter(); expandedFilterKey.value = ''; if (matchFilterActive()) matchChangedKeys.value = ['gender', 'ageRange', 'heightRange', 'education', 'income', 'marital', 'residence'] }
+// 同一个抽屉服务两个视图：匹配子页改的是候选列表，资料列表改的是会员卡片，互不串味。
+const matchFilterActive = (): boolean => subview.value == 'match' && selected.value != null
+const confirmMemberFilter = () => {
+  const snapshot: any = { ...memberFilter.value }
+  closeMemberFilter()
+  if (matchFilterActive()) {
+    appliedMatchFilter.value = snapshot
+    appliedMatchChangedKeys.value = [...matchChangedKeys.value]
+    if (selected.value != null) loadCandidates(selected.value)
+  } else {
+    appliedMemberFilter.value = snapshot
+    loadMembers()
+  }
+}
 
 const selectTab = (key: string) => {
   activeTab.value = key
@@ -886,19 +952,37 @@ const openMatch = (member: any) => {
   subview.value = 'match'
   candidates.value = []
   preference.value = null
+  matchTotal.value = 0
+  matchHasMore.value = false
+  appliedMatchFilter.value = createMemberFilter()
+  appliedMatchChangedKeys.value = []
   loadCandidates(member)
 }
-const loadCandidates = async (member: any) => {
+const loadCandidates = async (member: any, append: boolean = false) => {
+  if (matchLoading.value || member == null) return
   matchLoading.value = true
-  const result = await getMatchmakerMemberMatchCandidates(String(member.user_id))
+  if (!append) { matchPage.value = 1; candidates.value = []; matchHasMore.value = false }
+  matchError.value = ''
+  const chosen: any = nonEmptyFilterValues(appliedMatchFilter.value)
+  for (const key of appliedMatchChangedKeys.value) chosen[key] = String(appliedMatchFilter.value[key] || '')
+  const hasConditions = Object.keys(chosen).length > 0
+  const nextPage = append ? matchPage.value + 1 : 1
+  const result = await getMatchmakerMemberMatchCandidates(String(member.user_id), hasConditions ? JSON.stringify(chosen) : '', nextPage)
   if (result.success && result.data != null) {
-    candidates.value = Array.isArray(result.data.items) ? result.data.items : []
+    const rows = Array.isArray(result.data.items) ? result.data.items : []
+    candidates.value = append ? [...candidates.value, ...rows] : rows
+    matchPage.value = nextPage
+    matchHasMore.value = result.data.has_more == true
     preference.value = result.data.preference != null ? result.data.preference : null
+    matchTotal.value = result.data.total != null ? Number(result.data.total) : candidates.value.length
+    // 旧后端不认 filters 参数，会照样返回全量列表；靠 filter_version 判定，不把没缩小的结果当成筛选结果。
+    matchFilterSupported.value = Number(result.data.filter_version || 0) >= 1
   } else {
-    notify(result.message || '匹配候选加载失败')
+    matchError.value = result.message || '匹配候选加载失败'
   }
   matchLoading.value = false
 }
+const loadMoreCandidates = () => { if (matchHasMore.value && !matchLoading.value && selected.value != null) loadCandidates(selected.value, true) }
 
 const closeSubpage = () => {
   subview.value = ''
@@ -1329,7 +1413,8 @@ const onEnterMember = () => {
 }
 const onFilter = () => {
   closeMenu()
-  memberFilter.value = { ...appliedMemberFilter.value }
+  memberFilter.value = { ...(matchFilterActive() ? appliedMatchFilter.value : appliedMemberFilter.value) }
+  if (matchFilterActive()) matchChangedKeys.value = [...appliedMatchChangedKeys.value]
   filterVisible.value = true
 }
 
@@ -1564,13 +1649,14 @@ onMounted(() => {
 .intro-time { color: var(--muted); font-size: 18rpx; }
 
 /* match page */
-.match-member { margin-bottom: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: row; align-items: center; gap: 18rpx; }
+.match-member { margin-bottom: 18rpx; padding: 22rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.match-member-top { display: flex; flex-direction: row; align-items: center; gap: 18rpx; }
 .match-member-ava { width: 92rpx; height: 92rpx; border-radius: 26rpx; background: var(--accent-bg); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .match-member-ava image { width: 92rpx; height: 92rpx; border-radius: 26rpx; }
 .match-member-ava text { color: var(--accent2); font-size: 32rpx; font-weight: 800; }
 .match-member-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9rpx; }
 .match-member-no { color: var(--muted); font-size: 19rpx; }
-.match-pref { margin-bottom: 18rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: var(--surface); box-shadow: var(--shadow-sm); }
+.match-pref { padding-top: 22rpx; }
 .match-pref-title { color: var(--ink); font-size: 23rpx; font-weight: 800; }
 .match-pref-chips { margin-top: 14rpx; display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
 .match-chip { padding: 8rpx 16rpx; border-radius: 999rpx; background: var(--accent-bg); }
@@ -1578,6 +1664,12 @@ onMounted(() => {
 .match-tip { margin-bottom: 18rpx; padding: 20rpx 22rpx; border-radius: 20rpx; background: var(--review-orange-soft); display: flex; flex-direction: column; gap: 8rpx; }
 .match-tip-title { color: var(--review-orange); font-size: 21rpx; font-weight: 800; }
 .match-tip-copy { color: var(--ink2); font-size: 19rpx; line-height: 1.5; }
+/* 底部留白避开筛选悬浮按钮，否则最后一张候选卡被 FAB 压住。 */
+.subpage-list-match { padding-bottom: 180rpx; }
+.match-result-head { margin-bottom: 14rpx; display: flex; flex-direction: row; align-items: flex-end; gap: 8rpx; }
+.match-result-label { color: var(--ink); font-size: 24rpx; font-weight: 800; }
+.match-result-count { color: var(--accent); font-size: 34rpx; font-weight: 800; line-height: 1; }
+.match-result-notice { margin-bottom: 14rpx; color: var(--review-orange); font-size: 19rpx; line-height: 1.5; }
 .candidate-card { margin-bottom: 16rpx; padding: 22rpx 24rpx; border: 1rpx solid var(--line); border-radius: 28rpx; background: var(--surface); box-shadow: var(--shadow-md); }
 .candidate-card .mcard-body { margin-top: 0; }
 .cand-no { color: var(--muted); font-size: 19rpx; }

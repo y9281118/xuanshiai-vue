@@ -7,7 +7,7 @@ const parser = require('@babel/parser')
 
 const page = fs.readFileSync(path.join(__dirname, '../pagesSub/matchmaker/components/MatchmakerPendingReview.uvue'), 'utf8')
 const source = page.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]
-const names = ['memberFromWorkbench', 'loadWorkbenchMembers', 'loadMoreMembers', 'loadMembers']
+const names = ['nonEmptyFilterValues', 'memberFromWorkbench', 'loadWorkbenchMembers', 'loadMoreMembers', 'loadMembers']
 const body = parser.parse(source, { sourceType: 'module', plugins: ['typescript'] }).program.body
 const selected = body.filter(node => names.includes(node.declarations?.[0]?.id?.name)).map(node => source.slice(node.start, node.end)).join('\n')
 const compiled = babel.transformSync(selected, { filename: 'vip.ts', configFile: false, babelrc: false, plugins: ['@babel/plugin-transform-typescript'] }).code
