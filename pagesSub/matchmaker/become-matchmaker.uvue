@@ -2669,7 +2669,7 @@ const loadWorkspaceMatches = async () => {
 			workspaceMatchesError.value = result.message != null ? String(result.message) : '牵线记录加载失败'
 			return
 		}
-		const statusLabels: any = { PENDING: '待牵线', IN_PROGRESS: '牵线中', SUCCEEDED: '牵线成功', FAILED: '牵线失败' }
+		const statusLabels: any = { PENDING: '待牵线', IN_PROGRESS: '牵线中', SUCCEEDED: '牵线成功', FAILED: '牵线失败', CLOSED: '已关闭' }
 		const statusTones: any = { PENDING: 'pending', IN_PROGRESS: 'progress', SUCCEEDED: 'succeeded', FAILED: 'failed' }
 		const owner = managementCenterSnapshot.value != null && managementCenterSnapshot.value.identity != null
 			? String(managementCenterSnapshot.value.identity.name || '服务红娘')

@@ -637,7 +637,7 @@ export async function uploadWorkspaceLeadPhoto(filePath: string) {
 
 function normalizeWorkspaceIntroductionStatus(value: any): string {
   const status = value != null ? String(value) : ''
-  return status == 'PENDING' || status == 'IN_PROGRESS' || status == 'SUCCEEDED' || status == 'FAILED' ? status : 'PENDING'
+  return status == 'PENDING' || status == 'IN_PROGRESS' || status == 'SUCCEEDED' || status == 'FAILED' || status == 'CLOSED' ? status : 'PENDING'
 }
 
 function normalizeWorkspaceIntroductionPerson(value: any) {
@@ -662,7 +662,17 @@ export async function getMatchmakerWorkspaceIntroductions() {
   // 牵线记录不做本机演示兜底：假记录的会员编号进不了主页也读不到联系方式，空列表就交给页面显示空状态。
   if (!result.success || result.data == null) return result
   const source = result.data
-  const items = Array.isArray(source.items) ? source.items : []
+  const items: any[] = Array.isArray(source.items) ? source.items.slice() : []
+  let more = source.has_more === true
+  let page = 1
+  while (more && page < 1000 && !USE_MOCK) {
+    page += 1
+    const next = await request({ url: '/matchmaker/workbench/introductions', method: 'GET', data: { page: page, page_size: 100 } })
+    if (!next.success || next.data == null) return next
+    const nextItems = Array.isArray(next.data.items) ? next.data.items : []
+    items.push(...nextItems)
+    more = next.data.has_more === true
+  }
   return {
     success: true,
     data: {

@@ -12,10 +12,10 @@ function extract(source, names, context) {
  const js = babel.transformSync(code, {filename:'workflow.ts',configFile:false,babelrc:false,plugins:['@babel/plugin-transform-typescript']}).code
  return vm.runInNewContext(js + '\n;({' + names.join(',') + '})', context)
 }
-let calls=[], response={success:true,data:{}}
+let calls=[], response={success:true,data:{}}, responses=[]
 const api = extract(read('api/matchmaker.uts'), ['normalizeWorkspaceIntroductionStatus','normalizeWorkspaceIntroductionPerson','getMatchmakerWorkspaceIntroductions','viewMatchmakerIntroductionContact','updateMatchmakerIntroductionStatus','createMatchmakerIntroduction'], {
  USE_MOCK:false, formatWorkspaceTime:value=>value || '',
- request:async options=>{calls.push(options);return response}
+ request:async options=>{calls.push(options);return responses.length ? responses.shift() : response}
 })
 const page = read('pagesSub/matchmaker/become-matchmaker.uvue')
 const source = page.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]
@@ -67,6 +67,14 @@ async function run() {
  const mapped=(await api.getMatchmakerWorkspaceIntroductions()).data
  assert.equal(mapped.workflowVersion,2); assert.equal(mapped.items[0].applicationResponse,'REJECTED')
  assert.equal(mapped.items[0].responseReason,'暂不考虑')
+ responses=[
+  {success:true,data:{workflow_version:2,items:[{id:1,status:'PENDING',from_user:{user_id:1},to_user:{user_id:2}}],total:2,has_more:true}},
+  {success:true,data:{items:[{id:2,status:'CLOSED',from_user:{user_id:1},to_user:{user_id:2}}],total:2,has_more:false}}
+ ]
+ const paged=(await api.getMatchmakerWorkspaceIntroductions()).data
+ assert.equal(paged.items.length,2)
+ assert.equal(paged.items[1].status,'CLOSED')
+ assert.equal(calls.at(-1).data.page,2)
  assert.match(page,/row\.status == 'PENDING'[\s\S]*?对方拒绝[\s\S]*?未回应/)
  assert.doesNotMatch(page,/markIntroductionContacted/)
  console.log('introduction workflow UI and API behavior checks passed')
