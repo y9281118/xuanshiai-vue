@@ -25,11 +25,11 @@ for (const selector of ['.cc-kind', '.cc-contact-field', '.cc-btn.copy', '.xsa-c
   assert.ok(source.includes(selector), `联系方式列表缺少样式 ${selector}`)
 }
 
-for (const token of ['var(--match-blush)', 'var(--match-coral)', 'var(--review-danger)']) {
+for (const token of ['var(--match-mist)', 'var(--accent)', 'var(--accent2)']) {
   assert.ok(source.includes(token), `联系方式弹窗必须使用红娘端色彩 Token：${token}`)
 }
 assert.match(source, /\.cc-badge\.phone,\r?\n\.cc-badge\.wechat/, '电话与微信图标必须使用统一的简约图标块')
-for (const excluded of ['var(--review-lilac)', 'var(--review-purple)', 'var(--review-deep)', 'var(--accent2)', 'var(--sage)']) {
+for (const excluded of ['var(--review-lilac)', 'var(--review-purple)', 'var(--review-deep)', 'var(--sage)']) {
   const contactStyles = source.slice(source.indexOf('/* ===== 查看联系方式弹窗'), source.indexOf('/* ===== 录入客源线索'))
   assert.ok(!contactStyles.includes(excluded), `联系方式弹窗不应使用 ${excluded}`)
 }
