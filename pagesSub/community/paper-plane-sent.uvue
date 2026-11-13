@@ -8,15 +8,30 @@
 
 		<scroll-view class="content" scroll-y>
 			<view v-if="sentPlanes.length > 0" class="sent-list">
-				<view v-for="item in sentPlanes" :key="item.id" class="sent-card">
+				<view v-for="item in sentPlanes" :key="item.id" class="sent-card" @click="openDetail(item)">
 					<view class="sent-card-head">
-						<view class="sent-type"><text>✈</text><text>{{ item.type == 'voice' ? '语音纸飞机' : '文字纸飞机' }}</text></view>
+						<view class="sent-type"><text>✈</text><text>{{ item.typeLabel }}</text></view>
 						<text class="sent-time">{{ item.timeText }}</text>
 					</view>
-					<text class="sent-content">{{ item.type == 'voice' ? '一段语音纸飞机' : item.content }}</text>
+					<text class="sent-content">{{ item.summary }}</text>
+
+					<view v-if="item.type == 'voice'" class="voice-bar" @click.stop="toggleVoice(item)">
+						<text class="voice-play">{{ playingId == item.id ? '■' : '▶' }}</text>
+						<text class="voice-wave">▂▄▆▄▂▆▄▂</text>
+						<text class="voice-duration">{{ item.durationText }}</text>
+					</view>
+					<text v-if="item.type == 'voice' && !item.voicePlayable" class="voice-unavailable">这条是旧版模拟录音，无音频源；重新放飞一条即可试听</text>
+
+					<view v-if="item.images.length > 0" class="sent-images">
+						<image v-for="(img, idx) in item.images" :key="idx" class="sent-image" :src="img" mode="aspectFill" @click.stop="previewImages(item.images, idx)"></image>
+					</view>
+
 					<view class="sent-card-foot">
-						<text>{{ item.replyCount > 0 ? item.replyCount + ' 人回应了这架纸飞机' : '还没有收到回应' }}</text>
-						<text class="sent-status">{{ item.replyCount > 0 ? '已送达' : '飞行中' }}</text>
+						<text>{{ item.replyText }}</text>
+						<view class="sent-foot-right">
+							<text class="sent-status">{{ item.statusText }}</text>
+							<text class="sent-more">查看详情 ›</text>
+						</view>
 					</view>
 				</view>
 			</view>
@@ -29,6 +44,44 @@
 		</scroll-view>
 
 		<view class="retention-note"><text>只保留最近五天扔出去的纸飞机</text></view>
+
+		<view v-if="detailVisible" class="detail-mask" @click="closeDetail">
+			<view class="detail-sheet" @click.stop>
+				<view class="detail-head">
+					<text class="detail-title">{{ detail.typeLabel }}</text>
+					<text class="detail-close" @click="closeDetail">✕</text>
+				</view>
+				<text class="detail-meta">{{ detail.timeText }} · {{ detail.city }} · {{ detail.anonymous ? '匿名放飞' : '实名放飞' }}</text>
+
+				<scroll-view class="detail-body" scroll-y>
+					<text v-if="detail.content != ''" class="detail-content">{{ detail.content }}</text>
+
+					<view v-if="detail.type == 'voice'" class="detail-voice" @click="toggleVoice(detail)">
+						<text class="detail-voice-play">{{ playingId == detail.id ? '■' : '▶' }}</text>
+						<view class="detail-voice-info">
+							<text class="detail-voice-label">{{ playingId == detail.id ? '正在播放，点击停止' : '试听我的录音' }}</text>
+							<text class="detail-voice-duration">{{ detail.durationText }}</text>
+						</view>
+						<text class="detail-voice-wave">▂▄▆▄▂▆▄▂</text>
+					</view>
+					<text v-if="detail.type == 'voice' && !detail.voicePlayable" class="voice-unavailable">这条是旧版模拟录音，无音频源；重新放飞一条即可试听</text>
+
+					<view v-if="detail.images.length > 0" class="detail-images">
+						<image v-for="(img, idx) in detail.images" :key="idx" class="detail-image" :src="img" mode="aspectFill" @click="previewImages(detail.images, idx)"></image>
+					</view>
+
+					<view class="detail-stats">
+						<text>{{ detail.replyText }}</text>
+						<text class="detail-status">{{ detail.statusText }}</text>
+					</view>
+				</scroll-view>
+
+				<view class="detail-actions">
+					<button class="detail-action" @click="goResponses">去看看回应</button>
+					<button class="detail-action primary" @click="closeDetail">完成</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
@@ -38,29 +91,137 @@
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
 	const sentPlanes = ref([] as any[])
+	const detailVisible = ref(false)
+	const playingId = ref(0)
 
-	onMounted(() => {
-		loadSentPlanes()
-	})
+	const emptyDetail = (): any => {
+		return {
+			id: 0,
+			type: 'text',
+			typeLabel: '文字纸飞机',
+			summary: '',
+			content: '',
+			time: 0,
+			timeText: '',
+			replyCount: 0,
+			replyText: '还没有收到回应',
+			statusText: '飞行中',
+			voiceUrl: '',
+			localVoicePath: '',
+			voicePlayable: false,
+			voiceDurationSec: 0,
+			durationText: '00:00',
+			images: [] as string[],
+			conversationId: 0,
+			anonymous: true,
+			city: '',
+			scope: 'city'
+		}
+	}
+	const detail = ref(emptyDetail())
 
-	onShow(() => {
-		loadSentPlanes()
-	})
+	let voiceAudio: any = null
+
+	const stopVoice = () => {
+		playingId.value = 0
+		if (voiceAudio != null) {
+			try {
+				voiceAudio.stop()
+				voiceAudio.destroy()
+			} catch (e) {}
+			voiceAudio = null
+		}
+	}
+
+	// mock 上传返回的是不可播放的 mock:// 地址，优先用录音留下的本地临时文件回放。
+	const voiceSource = (item: any): string => {
+		if (item == null) return ''
+		const local = item.localVoicePath != null ? '' + item.localVoicePath : ''
+		if (local != '' && local.indexOf('mock://') != 0) return local
+		const url = item.voiceUrl != null ? '' + item.voiceUrl : ''
+		if (url != '' && url.indexOf('mock://') != 0) return url
+		return ''
+	}
+
+	const toggleVoice = (item: any) => {
+		if (item == null) return
+		if (playingId.value == item.id) {
+			stopVoice()
+			return
+		}
+		const src = voiceSource(item)
+		if (src == '') {
+			uni.showToast({ title: '这条录音已失效，请重新录制', icon: 'none' })
+			return
+		}
+		stopVoice()
+		try {
+			voiceAudio = uni.createInnerAudioContext()
+			voiceAudio.src = src
+			voiceAudio.onEnded(() => { stopVoice() })
+			voiceAudio.onError(() => {
+				stopVoice()
+				uni.showToast({ title: '语音播放失败，请稍后再试', icon: 'none' })
+			})
+			playingId.value = item.id
+			voiceAudio.play()
+		} catch (e) {
+			stopVoice()
+			uni.showToast({ title: '语音播放失败，请稍后再试', icon: 'none' })
+		}
+	}
 
 	const loadSentPlanes = async () => {
 		try {
 			const res = await getSentPaperPlanes()
 			if (res != null && res.success && Array.isArray(res.data)) {
-				sentPlanes.value = res.data as any[]
+				const rows = res.data as any[]
+				sentPlanes.value = rows
+				if (detailVisible.value) {
+					const currentId = detail.value.id
+					for (let i = 0; i < rows.length; i++) {
+						if (rows[i].id == currentId) detail.value = rows[i]
+					}
+				}
 			}
 		} catch (e) {
 			console.error(e)
 		}
 	}
 
+	onMounted(() => { loadSentPlanes() })
+	onShow(() => { loadSentPlanes() })
+
+	const openDetail = (item: any) => {
+		if (item == null) return
+		detail.value = item
+		detailVisible.value = true
+	}
+
+	const closeDetail = () => {
+		detailVisible.value = false
+		stopVoice()
+	}
+
+	const previewImages = (urls: any, index: number) => {
+		const list = urls as string[]
+		if (list == null || list.length == 0) return
+		const current = index >= 0 && index < list.length ? list[index] : list[0]
+		uni.previewImage({ urls: list, current: current })
+	}
+
+	const goResponses = () => {
+		closeDetail()
+		// 「我发出的」由「我的纸飞机」会话列表进入，返回即可看到回应。
+		uni.navigateBack()
+	}
+
 	const goBack = () => {
 		uni.navigateBack()
 	}
+
+	onHide(() => { stopVoice() })
+	onUnload(() => { stopVoice() })
 </script>
 
 <style scoped>
@@ -82,10 +243,45 @@
 	.sent-time { font-size: 10px; color: #A49AAF; }
 	.sent-content { display: block; margin-top: 11px; font-size: 16px; line-height: 1.55; font-family: var(--serif); color: #382B4D; }
 	.sent-card-foot { display: flex; flex-direction: row; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 11px; border-top: 1px solid #F0EBF7; color: #968CA3; font-size: 11px; }
+	.sent-foot-right { display: flex; flex-direction: row; align-items: center; gap: 8px; }
 	.sent-status { padding: 3px 7px; border-radius: 7px; background: #F1E9FF; color: #7250BB; font-size: 10px; font-weight: 800; }
+	.sent-more { color: #7450C8; font-size: 11px; font-weight: 700; }
 	.empty-state { min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; }
 	.empty-icon { width: 62px; height: 62px; display: flex; align-items: center; justify-content: center; border-radius: 21px; background: #EAE2FF; color: #8260CC; font-size: 28px; }
 	.empty-title { margin-top: 3px; font-size: 16px; font-weight: 800; color: #4B3C62; }
 	.empty-desc { font-size: 12px; color: #A49AAF; }
 	.retention-note { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding: 15px 12px calc(15px + env(safe-area-inset-bottom)); background: rgba(255, 255, 255, 0.96); border-top: 1px solid #E8E1F1; color: #AAA1B1; font-size: 11px; }
+
+	/* 列表内语音条：不进详情也能直接试听 */
+	.voice-bar { display: flex; flex-direction: row; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 13px; border-radius: 14px; background: #F3EDFF; border: 1px solid #E4D8FA; }
+	.voice-play { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 15px; background: #7450C8; color: #FFFFFF; font-size: 13px; }
+	.voice-wave { flex: 1; color: #9A7BD6; font-size: 15px; letter-spacing: 2px; }
+	.voice-duration { color: #7450C8; font-size: 12px; font-weight: 700; }
+	.voice-unavailable { display: block; margin-top: 6px; color: #B39BC8; font-size: 10px; }
+	.sent-images { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+	.sent-image { width: 72px; height: 72px; border-radius: 10px; background: #F1ECFA; }
+
+	/* 详情弹层 */
+	.detail-mask { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 90; display: flex; align-items: flex-end; justify-content: center; background: rgba(36, 20, 62, 0.45); }
+	.detail-sheet { width: 100%; max-height: 78%; display: flex; flex-direction: column; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; border-radius: 24px 24px 0 0; background: #FFFFFF; box-shadow: 0 -12px 34px rgba(48, 27, 90, 0.18); }
+	.detail-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+	.detail-title { font-size: 19px; font-weight: 800; color: #24143E; }
+	.detail-close { width: 30px; height: 30px; line-height: 30px; text-align: center; border-radius: 15px; background: #F2EDFB; color: #7450C8; font-size: 15px; }
+	.detail-meta { display: block; margin-top: 6px; color: #A49AAF; font-size: 11px; }
+	.detail-body { flex: 1; min-height: 0; margin-top: 16px; }
+	.detail-content { display: block; font-size: 16px; line-height: 1.7; font-family: var(--serif); color: #382B4D; }
+	.detail-voice { display: flex; flex-direction: row; align-items: center; gap: 13px; margin-top: 12px; padding: 15px; border-radius: 17px; background: linear-gradient(135deg, #F3EDFF, #EDE4FF); border: 1px solid #E4D8FA; }
+	.detail-voice-play { display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 21px; background: #7450C8; color: #FFFFFF; font-size: 16px; }
+	.detail-voice-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+	.detail-voice-label { color: #5635A1; font-size: 14px; font-weight: 700; }
+	.detail-voice-duration { color: #9A8AAE; font-size: 11px; }
+	.detail-voice-wave { color: #9A7BD6; font-size: 15px; letter-spacing: 1px; }
+	.detail-images { display: flex; flex-direction: row; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+	.detail-image { width: 92px; height: 92px; border-radius: 12px; background: #F1ECFA; }
+	.detail-stats { display: flex; flex-direction: row; align-items: center; justify-content: space-between; margin-top: 18px; padding-top: 13px; border-top: 1px solid #F0EBF7; color: #968CA3; font-size: 12px; }
+	.detail-status { padding: 3px 8px; border-radius: 8px; background: #F1E9FF; color: #7250BB; font-size: 10px; font-weight: 800; }
+	.detail-actions { display: flex; flex-direction: row; gap: 10px; margin-top: 18px; }
+	.detail-action { flex: 1; height: 42px; line-height: 42px; border-radius: 21px; background: #F2EDFB; color: #5635A1; font-size: 14px; font-weight: 700; }
+	.detail-action::after { border: none; }
+	.detail-action.primary { background: #7450C8; color: #FFFFFF; }
 </style>
