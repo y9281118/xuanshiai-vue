@@ -945,6 +945,32 @@ export function notificationCategoryOf(row: any): string {
   return notificationCategoryOfType(raw)
 }
 
+/**
+ * 社区通知页展示的分类。后端仍是七桶（NOTIFICATION_CATEGORIES），但
+ * 「私信」（会话 / 消息 / 撤回）与「匹配」（申请认识及其结果）两类提醒
+ * 由「消息」页承接：不在社区通知里建 Tab，也不进「全部」列表和角标，
+ * 避免同一件事两处重复提醒、以及社区入口角标永远清不掉。
+ * 这里只做展示侧收敛，不改动后端写入与分类映射。
+ */
+export const COMMUNITY_NOTIFICATION_CATEGORIES: string[] = [
+  'comment', 'like', 'follow', 'activity', 'system'
+]
+
+/** 是否属于社区通知页可见分类。 */
+export function isCommunityNotificationCategory(category: string): boolean {
+  const list = COMMUNITY_NOTIFICATION_CATEGORIES
+  for (let i = 0; i < list.length; i++) {
+    if (list[i] == category) return true
+  }
+  return false
+}
+
+/** 一条通知是否应在社区通知页出现（列表过滤与角标共用同一口径）。 */
+export function isCommunityNotificationVisible(row: any): boolean {
+  if (row == null) return false
+  return isCommunityNotificationCategory(notificationCategoryOf(row))
+}
+
 function feedModeFromTab(tab: string, filter: string): any {
   // 返回 { mode, filter, sort, mergeLiked? }
   // mergeLiked 恒 false：并集走 BE mode=following_and_liked，禁止客户端假分页
@@ -1955,7 +1981,9 @@ function normalizeNotificationPage(raw: any, page: number, pageSize: number): an
   const items: any[] = []
   for (let i = 0; i < rawItems.length; i++) {
     const item = mapNotification(rawItems[i])
-    if (item != null) items.push(item)
+    // 私信 / 匹配两类由消息页承接，不进社区通知。分页仍按服务端全量 total
+    // 推进（不重算 total），因此最多多翻一页，不会漏掉更旧的可见通知。
+    if (item != null && isCommunityNotificationVisible(item)) items.push(item)
   }
   const total = Number(src.total != null ? src.total : items.length)
   const current = Number(src.page != null ? src.page : page)
@@ -1978,7 +2006,8 @@ function normalizeNotificationPage(raw: any, page: number, pageSize: number): an
  * 服务端已有（`app/services/notifications.py` 的 `NOTIFICATION_CATEGORY_BY_TYPE`），
  * 这里必须把 category 透传下去，让筛选与分页都在库内完成。
  *
- * @param category 语义分类 like/comment/follow/message/match/activity/system，空串表示全部
+ * @param category 社区可见分类 like/comment/follow/activity/system，空串表示全部；
+ *                 message/match 属消息页承接范围，即使显式传入也返回空列表。
  */
 export async function getCommunityNotifications(
   page: number = 1,
@@ -1994,6 +2023,7 @@ export async function getCommunityNotifications(
       // mock 数据只有 type、没有 category；与真接口共用同一份分类兜底。
       const cat = notificationCategoryOf(item)
       if (category != '' && cat != category) continue
+      if (!isCommunityNotificationVisible(item)) continue
       matched.push(item)
     }
     const start = (page - 1) * pageSize
@@ -2027,11 +2057,27 @@ export async function getOfficialCommunityActivities() {
 }
 
 /**
+ * 社区通知页的「全部」未读数：服务端总未读扣掉消息页承接的私信 / 匹配两类。
+ * 用减法而不是把可见分类相加，是为了保留后端「未登记类型一律 system」的口径，
+ * 避免新增事件类型被漏计；同时与社区入口角标保持同源。
+ */
+function visibleUnreadTotal(total: number, byCategory: any): number {
+  const hidden: string[] = ['message', 'match']
+  let excluded = 0
+  for (let i = 0; i < hidden.length; i++) {
+    const value = byCategory[hidden[i]]
+    if (value != null) excluded += Number(value)
+  }
+  const rest = total - excluded
+  return rest > 0 ? rest : 0
+}
+
+/**
  * 分类未读汇总（`GET /notifications/unread-summary`）。
  *
  * 服务端按 `NOTIFICATION_CATEGORY_BY_TYPE` 聚合，同一份映射也用于列表筛选，
- * 因此「Tab 角标」与「Tab 里的条目」不会各算一套。旧实现只能拿到总未读数，
- * 分类角标无从校验。
+ * 因此「Tab 角标」与「Tab 里的条目」不会各算一套。`visibleTotal` 额外给出
+ * 社区通知页与社区入口应该展示的未读数（排除私信 / 匹配）。
  */
 export async function getUnreadNotificationSummary() {
   if (USE_MOCK) {
@@ -2045,7 +2091,12 @@ export async function getUnreadNotificationSummary() {
       const key = notificationCategoryOf(item)
       byCategory[key] = (byCategory[key] != null ? (byCategory[key] as number) : 0) + 1
     }
-    return okRes({ total: total, categories: byCategory, byCategory: byCategory })
+    return okRes({
+      total: total,
+      visibleTotal: visibleUnreadTotal(total, byCategory),
+      categories: byCategory,
+      byCategory: byCategory
+    })
   }
 
   const res = await request({ url: '/notifications/unread-summary', method: 'GET' })
@@ -2057,8 +2108,10 @@ export async function getUnreadNotificationSummary() {
   for (let i = 0; i < keys.length; i++) {
     byCategory[keys[i]] = Number(rawByCategory[keys[i]])
   }
+  const total = Number(src.total != null ? src.total : 0)
   return okRes({
-    total: Number(src.total != null ? src.total : 0),
+    total: total,
+    visibleTotal: visibleUnreadTotal(total, byCategory),
     categories: src.categories != null ? src.categories : {},
     byCategory: byCategory
   })
@@ -2066,13 +2119,17 @@ export async function getUnreadNotificationSummary() {
 
 export async function getUnreadNotificationCount() {
   // 优先走汇总接口：少一次列表查询，且与分类角标同源。
+  // 社区入口只统计社区通知页可见的分类；私信 / 匹配由消息页承接，
+  // 若沿用服务端 total，角标会包含用户在本页永远看不到的提醒，清不掉。
   const res = await getUnreadNotificationSummary()
   if (res.success && res.data != null) {
-    const total = res.data.total != null ? res.data.total : 0
-    return okRes({ count: total })
+    const data = res.data as any
+    const count = data.visibleTotal != null ? Number(data.visibleTotal) : (data.total != null ? Number(data.total) : 0)
+    return okRes({ count: count })
   }
   // 兜底：后端若尚未部署 unread-summary（旧版本返回 404），仍用列表接口取总
-  // unread_count，避免首页红点静默消失。部署到位后此分支自然不再命中。
+  // unread_count，避免首页红点静默消失。该旧接口没有分类维度，角标无法排除
+  // 消息类未读；部署到位后此分支自然不再命中。
   const legacy = await request({
     url: '/notifications',
     method: 'GET',

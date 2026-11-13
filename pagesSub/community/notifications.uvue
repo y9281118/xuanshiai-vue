@@ -1,8 +1,9 @@
 <template>
 	<view class="page">
-		<!-- 与服务端 NOTIFICATION_CATEGORIES 一一对应：7 个分类各一个入口，
-		     外加「全部」跨分类混排。分类 Tab 必须齐全，否则该分类的通知在
-		     页面上不可见、而首页角标仍把它算进总数（角标清不掉的根因）。 -->
+		<!-- 社区通知只保留 评论 / 点赞 / 关注 / 活动 / 系统 五个分类，外加「全部」跨分类混排。
+		     私信（会话 / 消息）与匹配（申请认识）两类提醒由「消息」页承接，不在这里建 Tab，
+		     也不进「全部」列表与角标，避免同一件事两处重复提醒、角标清不掉。
+		     可见分类统一由 api 层的 COMMUNITY_NOTIFICATION_CATEGORIES 收口。 -->
 		<scroll-view class="tabs" scroll-x>
 			<view class="tabs-inner">
 				<view
@@ -37,22 +38,7 @@
 					<text class="tab-text">关注</text>
 					<text class="tab-badge" v-if="unreadOf('follow') > 0">{{ unreadOf('follow') }}</text>
 				</view>
-				<view
-					class="tab"
-					:class="{ active: currentTab === 'message' }"
-					@click="switchTab('message')"
-				>
-					<text class="tab-text">私信</text>
-					<text class="tab-badge" v-if="unreadOf('message') > 0">{{ unreadOf('message') }}</text>
-				</view>
-				<view
-					class="tab"
-					:class="{ active: currentTab === 'match' }"
-					@click="switchTab('match')"
-				>
-					<text class="tab-text">匹配</text>
-					<text class="tab-badge" v-if="unreadOf('match') > 0">{{ unreadOf('match') }}</text>
-				</view>
+				<!-- 私信、匹配两类提醒由「消息」页承接，不在此建分类入口。 -->
 				<view
 					class="tab"
 					:class="{ active: currentTab === 'activity' }"
@@ -71,7 +57,7 @@
 				</view>
 			</view>
 		</scroll-view>
-		<view class="toolbar" v-if="items.length > 0">
+		<view class="toolbar" v-if="visibleList.length > 0">
 			<text class="mark-all text-accent" @click="markAll">全部已读</text>
 		</view>
 		<scroll-view class="list" scroll-y @scrolltolower="loadMore">
@@ -86,10 +72,14 @@
 				@action="load"
 			/>
 			<XsaEmpty
-				v-else-if="visibleList.length == 0"
+				v-else-if="visibleList.length == 0 && !hasMore"
 				:text="emptyText"
 				:description="emptyDesc"
 			/>
+			<!-- 「全部」下整页都是消息页承接的分类时仍可继续翻页，不误报空态。 -->
+			<view class="state" v-else-if="visibleList.length == 0">
+				<text class="text-muted">正在查找更多通知...</text>
+			</view>
 			<view
 				class="item"
 				:class="{ unread: !n.read }"
@@ -120,7 +110,8 @@
 		getUnreadNotificationSummary,
 		markNotificationRead,
 		markAllNotificationsRead,
-		notificationCategoryOf
+		notificationCategoryOf,
+		isCommunityNotificationVisible
 	} from '@/api'
 
 	// 每页条数：与服务端 page_size 上限（50）留余量，滚动到底再续拉。
@@ -134,7 +125,8 @@
 	const page = ref(1)
 	const hasMore = ref(false)
 	// 分类未读角标：与列表筛选同源于服务端 NOTIFICATION_CATEGORY_BY_TYPE。
-	// total 供「全部」Tab 使用，保证角标与「全部」列表条数同源。
+	// unreadTotal 取汇总接口的 visibleTotal（已排除私信 / 匹配），保证「全部」
+	// 角标、社区入口角标与「全部」列表条数同源，不会出现清不掉的角标。
 	const unreadByCategory = ref({} as any)
 	const unreadTotal = ref(0)
 
@@ -160,10 +152,14 @@
 		load()
 	}
 
-	// 分页与筛选都在服务端完成，这里只在「全部」以外做一次兜底守卫：
-	// 旧后端会忽略未知查询参数返回混排列表，不能让别的分类串进当前 Tab。
-	// 分类口径统一走 api 层的 notificationCategoryOf（与后端映射同源）。
+	// 分页与筛选都在服务端完成，这里只做展示侧兜底守卫：
+	// 旧后端会忽略未知查询参数返回混排列表，不能让别的分类串进当前 Tab，
+	// 也不能让消息页承接的两类回到社区通知。分类口径统一走 api 层的
+	// notificationCategoryOf / isCommunityNotificationVisible。
 	const matchesTab = (n: any, tab: string): boolean => {
+		// 兜底守卫：即使旧后端忽略查询参数返回混排列表，消息页承接的两类
+		// 也不得出现在社区通知里（列表口径与 api 层一致）。
+		if (!isCommunityNotificationVisible(n)) return false
 		if (tab == 'all') return true
 		return notificationCategoryOf(n) == tab
 	}
@@ -187,8 +183,6 @@
 		if (currentTab.value == 'comment') return '暂无评论'
 		if (currentTab.value == 'like') return '暂无点赞'
 		if (currentTab.value == 'follow') return '暂无关注'
-		if (currentTab.value == 'message') return '暂无私信提醒'
-		if (currentTab.value == 'match') return '暂无匹配通知'
 		if (currentTab.value == 'activity') return '暂无活动通知'
 		return '暂无系统通知'
 	})
@@ -197,11 +191,9 @@
 		if (currentTab.value == 'comment') return '收到的评论会出现在这里'
 		if (currentTab.value == 'like') return '收到的点赞会出现在这里'
 		if (currentTab.value == 'follow') return '有人关注你时会出现在这里'
-		if (currentTab.value == 'message') return '私信与会话申请提醒会出现在这里'
-		if (currentTab.value == 'match') return '匹配成功与认识申请结果会出现在这里'
 		if (currentTab.value == 'activity') return '活动报名、审核、签到进展与社区动态提醒会出现在这里'
 		if (currentTab.value == 'system') return '举报、申诉与审核结果会出现在这里'
-		return '评论、点赞、关注、私信、匹配、活动与系统通知都在这里'
+		return '评论、点赞、关注、活动与系统通知都在这里；私信与申请认识请到消息页查看'
 	})
 
 	onMounted(() => {
@@ -215,7 +207,9 @@
 			if (res.success && res.data != null) {
 				const payload = res.data as any
 				unreadByCategory.value = payload.byCategory != null ? payload.byCategory : {}
-				unreadTotal.value = payload.total != null ? Number(payload.total) : 0
+				unreadTotal.value = payload.visibleTotal != null
+					? Number(payload.visibleTotal)
+					: (payload.total != null ? Number(payload.total) : 0)
 			}
 		} catch (e) {}
 	}
@@ -242,31 +236,48 @@
 		} finally {
 			loading.value = false
 		}
+		await ensureVisible()
 	}
 
 	const loadMore = async () => {
 		if (loading.value || loadingMore.value || !hasMore.value) return
 		loadingMore.value = true
-		const next = page.value + 1
 		try {
-			const res = await getCommunityNotifications(next, PAGE_SIZE, currentCategory())
-			if (res.success && res.data != null) {
+			// 服务端分页仍按全量通知推进；连续几页都只含消息页承接的分类时，
+			// 自动续拉到出现可见通知或到底，避免列表停在「还有更多」却不增长。
+			let guard = 0
+			while (hasMore.value && guard < 8) {
+				guard += 1
+				const before = visibleList.value.length
+				const next = page.value + 1
+				const res = await getCommunityNotifications(next, PAGE_SIZE, currentCategory())
+				if (!res.success || res.data == null) {
+					// 续拉失败就停下，避免滚动到底反复请求。
+					hasMore.value = false
+					break
+				}
 				const payload = res.data as any
 				const incoming = payload.items != null ? (payload.items as any[]) : []
-				const merged = items.value as any[]
+				const merged: any[] = []
+				const prev = items.value as any[]
+				for (let i = 0; i < prev.length; i++) merged.push(prev[i])
 				for (let i = 0; i < incoming.length; i++) merged.push(incoming[i])
 				items.value = merged
 				page.value = next
 				hasMore.value = payload.hasMore == true
-			} else {
-				// 续拉失败就停下，避免滚动到底反复请求。
-				hasMore.value = false
+				if (visibleList.value.length > before || !hasMore.value) break
 			}
 		} catch (e) {
 			hasMore.value = false
 		} finally {
 			loadingMore.value = false
 		}
+	}
+
+	// 首屏整页都是消息页承接的分类时，交给 loadMore 自动续拉到有可见通知或到底。
+	const ensureVisible = async () => {
+		if (notificationError.value) return
+		if (visibleList.value.length == 0 && hasMore.value) await loadMore()
 	}
 
 	const open = async (n: any) => {
@@ -305,6 +316,7 @@
 			// 只带 session_id，不带对方 userId，没法直接进 /pagesSub/chat/detail。
 			// 以前这一支落到「该通知关联内容已不可查看」；现在统一回消息列表——
 			// 会话预览已按撤回态重算（显示「消息已撤回」，不露原文）。
+			// 私信 / 会话类通知现已由消息页承接，本分支仅作旧数据兼容保留。
 			uni.switchTab({ url: '/pages/message/message' })
 		} else {
 			uni.showToast({ title: '该通知关联内容已不可查看', icon: 'none' })

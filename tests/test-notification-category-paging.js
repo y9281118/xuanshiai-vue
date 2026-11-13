@@ -139,20 +139,29 @@ assert.ok(
   '归一化要认服务端 category，否则 match_application 不会落进匹配 Tab',
 )
 
-// 「7 类全建」：分类 Tab 必须覆盖后端 NOTIFICATION_CATEGORIES 的每一项，
-// 否则该分类的通知在页面上不可见，而首页角标仍把它算进总数（清不掉的根因）。
-const TABS = ['all', 'comment', 'like', 'follow', 'message', 'match', 'activity', 'system']
+// 社区可见分类 Tab 全覆盖（+ 全部）：后端仍是七桶，但私信 / 匹配由「消息」页
+// 承接，社区页只建 5 类入口，列表与「全部」角标同步排除这两类，
+// 否则社区入口角标会包含本页看不到的提醒（清不掉的根因）。
+const TABS = ['all', 'comment', 'like', 'follow', 'activity', 'system']
 for (const tab of TABS) {
   assert.ok(page.includes(`switchTab('${tab}')`), `缺少 ${tab} Tab 入口`)
   assert.ok(page.includes(`unreadOf('${tab}')`), `${tab} Tab 缺少未读角标`)
 }
 assert.ok(
   page.includes('if (key == \'all\') return unreadTotal.value'),
-  '「全部」角标必须用汇总 total，才能与首页角标同源',
+  '「全部」角标必须用汇总里的社区口径总数，才能与社区入口角标同源',
 )
 assert.ok(
-  /const payload = res\.data as any[\s\S]{0,200}?unreadTotal\.value = payload\.total != null \? Number\(payload\.total\) : 0/.test(page),
-  'loadUnread 必须把 summary.total 落进 unreadTotal',
+  /const payload = res\.data as any[\s\S]{0,260}?unreadTotal\.value = payload\.visibleTotal/.test(page),
+  'loadUnread 必须把 summary.visibleTotal 落进 unreadTotal',
+)
+assert.ok(
+  api.includes('function visibleUnreadTotal'),
+  '汇总必须扣掉消息页承接的两类未读',
+)
+assert.ok(
+  /getUnreadNotificationCount\(\)[\s\S]{0,600}?data\.visibleTotal/.test(api),
+  '社区入口角标必须与通知页共用社区口径总数',
 )
 assert.ok(
   !/tab == 'activity' && n\.isOfficialActivity != true/.test(page),
@@ -165,8 +174,12 @@ assert.ok(
   '页面需要读取分类未读汇总来渲染角标',
 )
 assert.ok(
-  page.includes("unreadOf('match')"),
-  '匹配 Tab 要有自己的未读角标，便于核对「已匹配但看不到」',
+  !page.includes("unreadOf('match')") && !page.includes("unreadOf('message')"),
+  '私信 / 匹配 Tab 已移除，不得再渲染对应角标',
+)
+assert.ok(
+  page.includes('isCommunityNotificationVisible(n)'),
+  '页面必须对消息页承接的两类做兜底过滤',
 )
 assert.ok(
   page.includes('const unreadOf = (key: string): number =>'),
@@ -198,8 +211,13 @@ if (notifPy == null) {
     ['activity', 'comment', 'follow', 'like', 'match', 'message', 'system'],
     '后端七桶与本用例假设不一致，需同步前端 Tab',
   )
-  for (const category of backendCategories) {
-    assert.ok(page.includes(`switchTab('${category}')`), `后端分类 ${category} 没有对应 Tab`)
+  // 后端七桶保持不变，但社区页只承接其中 5 类；message/match 必须没有 Tab。
+  const communityTabs = ['comment', 'like', 'follow', 'activity', 'system']
+  for (const category of communityTabs) {
+    assert.ok(page.includes(`switchTab('${category}')`), `社区可见分类 ${category} 没有对应 Tab`)
+  }
+  for (const hidden of ['message', 'match']) {
+    assert.ok(!page.includes(`switchTab('${hidden}')`), `${hidden} 由消息页承接，社区页不得建 Tab`)
   }
 
   const mapStart = notifPy.indexOf('NOTIFICATION_CATEGORY_BY_TYPE')
@@ -234,4 +252,4 @@ assert.ok(
   '页面的分类判断必须复用 api 层的口径，避免两套映射漂移',
 )
 
-console.log('通知分类分页契约（8 个 Tab / 服务端 category / 滚动续拉 / 分类未读角标）测试通过')
+console.log('通知分类分页契约（6 个 Tab / 社区可见分类 / 服务端 category / 滚动续拉 / 分类未读角标）测试通过')
