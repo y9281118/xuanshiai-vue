@@ -215,7 +215,7 @@
 					<view class="sheet-divider"></view>
 					<view class="sheet-row">
 						<text class="sheet-row-label">职业</text>
-						<picker class="sheet-row-right" mode="selector" :range="occupationOptions" :value="occupationPickerIndex" @change="onOccupationChange"><text class="sheet-row-value">{{ occupationText == '' ? '请选择' : occupationText }}</text><text class="sheet-row-arrow">›</text></picker>
+						<picker class="sheet-row-right" mode="selector" :range="occupationOptions" :value="occupationPickerIndex" @change="onOccupationChange"><text class="sheet-row-value">{{ occupationPickerIndex == occupationOptions.length - 1 ? '其他' : (occupationText == '' ? '请选择' : occupationText) }}</text><text class="sheet-row-arrow">›</text></picker>
 					</view>
 					<view v-if="occupationPickerIndex == occupationOptions.length - 1" class="sheet-row sheet-row-sub">
 						<text class="sheet-row-label">职业名称</text>
@@ -614,6 +614,7 @@
 		formData.value.hometownDistrictCode = textValue(data.hometown_district_code)
 		formData.value.hometown = locationTextByCodes(data.hometown_province_code, data.hometown_city_code, data.hometown_district_code) || textValue(data.hometown)
 		formData.value.occupation = textValue(data.occupation)
+		occupationOtherSelected.value = false
 		formData.value.industry = textValue(data.industry)
 		formData.value.company = textValue(data.company)
 		formData.value.zodiac = textValue(data.zodiac)
@@ -1107,8 +1108,10 @@
 	})
 	// 职业：枚举内命中则回显该项；不在枚举里的历史值（早期自由填写）归到「其他」，
 	// 由下方的「职业名称」输入框继续编辑，避免打开选择器就把旧值抹掉。
+	const occupationOtherSelected = ref(false)
 	const occupationText = computed(() => textValue(formData.value.occupation))
 	const occupationPickerIndex = computed(() => {
+		if (occupationOtherSelected.value) return occupationOptions.length - 1
 		const current = occupationText.value
 		if (current == '') return 0
 		const index = occupationOptions.indexOf(current)
@@ -1248,6 +1251,7 @@
 	}
 	const onOccupationChange = (event: any) => {
 		const index = Number(event.detail.value)
+		occupationOtherSelected.value = index == occupationOptions.length - 1
 		if (index <= 0) {
 			formData.value.occupation = ''
 			return

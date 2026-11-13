@@ -891,7 +891,7 @@ function formatCommissionNumber(value: any): string {
 /**
  * 「分成级别」页面数据：级别总览、本人当前级别与按消费项目的分成标准。
  * 全部取服务端配置（后台「总店红娘 → 分成配置」维护同一份 commission_level），
- * 前端不写死级别与金额；后台未指派级别或未配置规则时返回空值，由页面显示占位与空状态。
+ * 级别由后台档案决定；后台未指派级别时，按页面约定显示初级分成。
  */
 export async function getMatchmakerCommissionStandards() {
   const result = await request({ url: '/matchmaker/workbench/commission-standards', method: 'GET' })
@@ -909,7 +909,7 @@ export async function getMatchmakerCommissionStandards() {
         condition: row.promotion_condition != null && String(row.promotion_condition).length > 0 ? String(row.promotion_condition) : '--',
         extra: row.platform_extra_amount != null ? formatCommissionNumber(row.platform_extra_amount) + '元' : '--'
       })),
-      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '--',
+      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '初级分成',
       events: rawEvents.map((row: any) => ({
         key: row.name != null ? String(row.name) : '',
         name: row.name != null && String(row.name).length > 0 ? String(row.name) : '分成事件',
