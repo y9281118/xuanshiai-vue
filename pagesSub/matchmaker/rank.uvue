@@ -4,7 +4,7 @@
 			<view class="page-content">
 				<view class="rank-head">
 					<text class="rank-head-title">红娘排行榜</text>
-					<text class="rank-head-sub">按已完成服务数量排序</text>
+					<text class="rank-head-sub">按服务会员数量排序</text>
 				</view>
 
 				<view v-if="loading" class="state-box">
