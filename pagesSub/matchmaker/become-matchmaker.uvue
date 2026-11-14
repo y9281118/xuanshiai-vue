@@ -1123,7 +1123,8 @@ import {
 	getMatchmakerCommissionStandards,
 	getMatchmakerWorkspaceActivitySignups,
 	getMatchmakerMemberContact,
-	submitMatchmakerApplication
+	submitMatchmakerApplication,
+	getActivities
 } from '@/api'
 import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
@@ -3662,6 +3663,27 @@ const serviceNavVisible = ref(false)
 const openPage = (url: string) => {
 	uni.navigateTo({ url: url, fail: () => showToast('页面打开失败，请稍后重试') })
 }
+const openingServiceActivity = ref(false)
+// 服务导航中的「相亲活动」应直接进入可报名活动详情；仅在没有活动或读取失败时回到列表。
+const openServiceActivityDetail = async () => {
+	if (openingServiceActivity.value) return
+	openingServiceActivity.value = true
+	try {
+		const result = await getActivities('recruiting')
+		const activities: any[] = result.success && Array.isArray(result.data) ? result.data : []
+		const first = activities.length > 0 ? activities[0] : null
+		const activityId = first != null ? Number(first.id) : 0
+		if (activityId > 0) {
+			openPage('/pagesSub/community/activity-detail?id=' + String(activityId))
+			return
+		}
+		openPage('/pagesSub/community/activity-list')
+	} catch (e) {
+		openPage('/pagesSub/community/activity-list')
+	} finally {
+		openingServiceActivity.value = false
+	}
+}
 // 「我的账号」：红娘管理中心子页面——会员端「我的」页的精简版，共用账号数据但页面独立。
 const openMyAccount = () => {
 	uni.navigateTo({
@@ -3673,7 +3695,7 @@ const onServiceNavSelect = (key: string) => {
 	serviceNavVisible.value = false
 	if (key == 'member_zone') { uni.reLaunch({ url: '/pages/index/index?tab=2', fail: () => showToast('会员分区打开失败，请稍后重试') }); return }
 	if (key == 'filter') { openPendingReview(''); return }
-	if (key == 'activity') { openPage('/pagesSub/community/activity-list'); return }
+	if (key == 'activity') { openServiceActivityDetail(); return }
 	if (key == 'news') { openWorkspace('红娘喜讯', 'news'); return }
 	if (key == 'custom') { openPage('/pagesSub/matchmaker/custom'); return }
 	if (key == 'vip') { openPage('/pagesSub/profileExtra/vip'); return }
