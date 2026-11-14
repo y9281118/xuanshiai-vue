@@ -251,6 +251,8 @@ export {
   getUnreadNotificationCount,
   getUnreadNotificationSummary,
   notificationCategoryOf,
+  COMMUNITY_NOTIFICATION_CATEGORIES,
+  isCommunityNotificationVisible,
   markNotificationRead,
   markAllNotificationsRead,
   getCommunityQuotas,
