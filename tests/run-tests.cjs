@@ -34,6 +34,7 @@ const core = [
   'test-lead-auto-name.js',
   'test-matchmaker-vip-tabs.js',
   'test-matchmaker-offline-orders.js',
+  'test-matchmaker-service-nav-activity.cjs',
   'test-pending-review-counter.js',
   'test-matchmaker-homepage-edit.js',
   'test-good-news-contract.js',
