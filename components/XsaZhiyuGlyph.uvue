@@ -1,0 +1,12 @@
+<template>
+	<image :src="src" :style="{ width: size, height: size }" mode="aspectFit" />
+</template>
+
+<script setup lang="uts">
+interface Props {
+	src: string
+	size?: string
+}
+
+withDefaults(defineProps<Props>(), { size: '96rpx' })
+</script>

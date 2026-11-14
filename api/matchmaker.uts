@@ -3,7 +3,7 @@
  * 包含：服务红娘、热心红娘、私人定制
  */
 
-import { request, MATCHMAKER_REMOTE_MODE, hasRemoteMatchmakerEndpoint, remoteMatchmakerUnavailable, getRemoteCommissionEntries, createRemoteWithdrawal } from './matchmaker-remote.uts'
+import { request, MATCHMAKER_REMOTE_MODE, hasRemoteMatchmakerEndpoint, remoteMatchmakerUnavailable, createRemoteWithdrawal } from './matchmaker-remote.uts'
 import { API_BASE_URL, USE_MOCK, getAccessToken, clearAuthTokens, buildApiUrl, resolveMediaUrl } from './config.uts'
 import {
   mockMatchmakerManagementCenterAccess,
@@ -804,14 +804,6 @@ function sumDemoAmounts(rows: any[]): number {
  * 与后台「总店红娘-分成明细」同一口径；合计剔除冲正行，与工作台概览的线上分成一致。
  */
 export async function getMatchmakerWorkspaceCommissionEntries(page: number = 1, pageSize: number = 100) {
-  if (MATCHMAKER_REMOTE_MODE) {
-    const result = await getRemoteCommissionEntries()
-    if (!result.success || !Array.isArray(result.data)) return result
-    const rows = result.data as any[]
-    const labels: any = { PENDING: '待入账', AVAILABLE: '已入账', FROZEN: '冻结中', REVERSED: '已冲正' }
-    const total = rows.filter((row: any) => row.status != 'REVERSED').reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0)
-    return { success: true, data: { items: rows.map((row: any) => ({ id: String(row.id), time: formatWorkspaceTime(row.created_at), name: '订单 #' + String(row.order_id), avatar: '', item: '服务分成', amount: signedWorkspaceMoney(row.amount), status: row.status, statusLabel: labels[row.status] || String(row.status), orderNo: '' })), total: rows.length, page: 1, pageSize: rows.length, hasMore: false, totalAmount: '￥' + formatWorkspaceMoney(total), isDemo: false }, code: result.code, message: result.message }
-  }
   const result = await request({
     url: '/matchmaker/workbench/commission-entries',
     method: 'GET',
@@ -879,6 +871,14 @@ export async function getMatchmakerWorkspaceCommissionEntries(page: number = 1, 
   }
 }
 
+/** 红娘工作台活动及本人范围内的报名，只使用后端实际记录。 */
+export async function getMatchmakerWorkspaceActivitySignups(activityId: number, page: number, keyword: string, filterKey: string) {
+  const params: any = { page: page, page_size: 20, filter_key: filterKey }
+  if (activityId > 0) params.activity_id = activityId
+  if (keyword.trim().length > 0) params.keyword = keyword.trim()
+  return await request({ url: '/matchmaker/workbench/activity-signups', method: 'GET', data: params })
+}
+
 /** 分成标准金额只做显示归一：整数不带小数位，其余保留两位；取不到一律 '--'，不按 0 渲染。 */
 function formatCommissionNumber(value: any): string {
   if (value == null) return '--'
@@ -890,7 +890,7 @@ function formatCommissionNumber(value: any): string {
 /**
  * 「分成级别」页面数据：级别总览、本人当前级别与按消费项目的分成标准。
  * 全部取服务端配置（后台「总店红娘 → 分成配置」维护同一份 commission_level），
- * 级别由后台档案决定；后台未指派级别时，按页面约定显示初级分成。
+ * 级别由后台档案决定；后台未指派级别时显示未配置。
  */
 export async function getMatchmakerCommissionStandards() {
   const result = await request({ url: '/matchmaker/workbench/commission-standards', method: 'GET' })
@@ -908,7 +908,7 @@ export async function getMatchmakerCommissionStandards() {
         condition: row.promotion_condition != null && String(row.promotion_condition).length > 0 ? String(row.promotion_condition) : '--',
         extra: row.platform_extra_amount != null ? formatCommissionNumber(row.platform_extra_amount) + '元' : '--'
       })),
-      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '初级分成',
+      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '--',
       events: rawEvents.map((row: any) => ({
         key: row.name != null ? String(row.name) : '',
         name: row.name != null && String(row.name).length > 0 ? String(row.name) : '分成事件',

@@ -383,6 +383,7 @@ export {
   getMatchmakerWorkspaceMeetingRequests,
   getMatchmakerWorkspaceCommissionEntries,
   getMatchmakerCommissionStandards,
+  getMatchmakerWorkspaceActivitySignups,
   getMatchmakerOfflineOrders,
   getMatchmakerWorkspaceIdentity,
   getMatchmakerWorkspaceGoodNews,

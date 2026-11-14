@@ -335,7 +335,7 @@
 				</view>
 			</view>
 
-			<view class="scroll-bottom-spacer" :class="{ 'spacer-matchmaker': fromMatchmaker }"></view>
+			<view class="scroll-bottom-spacer" :class="{ 'spacer-matchmaker': fromMatchmaker || matchmakerActions }"></view>
 		</scroll-view>
 
 			<!-- 知遇悬浮入口：点开聚合能力；红娘代看模式隐藏 -->
@@ -356,7 +356,7 @@
 				<view class="primary-action edit-only-btn" @tap="goEdit"><text class="primary-action-text">编辑资料</text></view>
 			</view>
 			<!-- 底部操作栏：与首页推荐页同款（分享 + 申请认识 + 收藏爱心）；红娘查看资料时改用红娘操作栏 -->
-			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == ''" class="float-bar">
+			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !matchmakerActions && !detailLoading && detailError == ''" class="float-bar">
 				<view class="share-btn" @tap="onShare"><text class="ic ic-sys ic-fenxiang share-icon"></text></view>
 				<view class="chat-btn" @tap="onMatch"><text class="ic ic-home ic-hello chat-icon"></text><text class="chat-text">申请认识</text></view>
 				<view class="like-btn" @tap="onLike">
@@ -366,12 +366,14 @@
 			</view>
 
 			<!-- 红娘查看会员主页时的底部操作栏：权限提示 + 编辑资料 + 红娘中心 -->
-			<view v-if="fromMatchmaker && !isPreview && !detailLoading && detailError == ''" class="mm-bar">
+			<view v-if="(fromMatchmaker || matchmakerActions) && !isPreview && !detailLoading && detailError == ''" class="mm-bar">
+				<view class="mm-bar-inner">
 				<view class="mm-bar-alert"><text class="mm-bar-alert-mark">!</text></view>
 				<text class="mm-bar-alert-text">您在以红娘权限查看资料</text>
 				<view class="mm-bar-actions">
 					<view class="mm-bar-btn mm-bar-btn-edit" @tap="onMatchmakerEditMember"><text>编辑资料</text><text class="mm-bar-btn-arrow">›</text></view>
 					<view class="mm-bar-btn mm-bar-btn-center" @tap="onMatchmakerCenter"><text>红娘中心</text><text class="mm-bar-btn-arrow">›</text></view>
+				</view>
 				</view>
 			</view>
 
@@ -423,6 +425,8 @@ const isOwnProfile = ref(false)
 const isPreview = ref(false)
 // 红娘从资料待审进入时跳过 VIP 解锁墙/额度限制（后端 view_profile 已豁免）。
 const fromMatchmaker = ref(false)
+// 保留普通会员主页的数据口径，仅切换从红娘工作台进入时的底部操作。
+const matchmakerActions = ref(false)
 const isLikedUser = ref(false)
 const showAiGuide = ref(false)
 const scrollAnchor = ref('')
@@ -1051,6 +1055,7 @@ onMounted(async () => {
 	const options = currentPage.options
 	isPreview.value = options.preview === 'true' || options.preview === true
 	fromMatchmaker.value = options.matchmakerView === '1' || options.matchmakerView === 'true' || options.matchmakerView === true
+	matchmakerActions.value = options.matchmakerActions === '1'
 
 	let parsed = 0
 	if (options.userId != null && options.userId != '') {
@@ -1066,7 +1071,7 @@ onMounted(async () => {
 		}
 	} catch (e) {}
 	// guest=1：明确以「访客资料」打开（推荐/广场卡片入口），即使 userId 与登录账号相同也不按本人主页处理
-	const guestForced = options.guest === 'true' || options.guest === true
+	const guestForced = options.guest === '1' || options.guest === 'true' || options.guest === true
 	isOwnProfile.value = !guestForced && (options.own === 'true' || options.own === true || isPreview.value || (viewerId > 0 && viewerId == parsed))
 	user.value.id = parsed
 	applyUserId.value = parsed
@@ -1148,7 +1153,7 @@ const onMatchmakerEditMember = () => {
 }
 const onMatchmakerCenter = () => {
 	uni.navigateTo({
-		url: '/pagesSub/matchmaker/become-matchmaker',
+		url: '/pagesSub/matchmaker/become-matchmaker?workspace=center',
 		fail: () => uni.showToast({ title: '打开红娘中心失败', icon: 'none' })
 	})
 }
@@ -1545,14 +1550,15 @@ const onLike = async () => {
 .spacer-matchmaker { height: 560rpx; }
 
 /* 红娘查看会员主页：底部权限提示 + 编辑资料 / 红娘中心 */
-.mm-bar { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; flex-direction: row; align-items: center; gap: 10rpx; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); background-color: var(--surface); border-top: 1rpx solid var(--line); box-shadow: 0 -4rpx 20rpx rgba(17, 23, 24, 0.06); }
-.mm-bar-alert { width: 32rpx; height: 32rpx; border-radius: 8rpx; background-color: var(--match-blush); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mm-bar { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); background-color: var(--surface); box-shadow: var(--shadow-md); }
+.mm-bar-inner { display: flex; flex-direction: row; align-items: center; gap: 8rpx; padding: 8rpx 10rpx 8rpx 16rpx; border-radius: 999rpx; background-color: var(--accent-bg); }
+.mm-bar-alert { width: 32rpx; height: 32rpx; border-radius: 50%; background-color: var(--accent2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .detail-ai-float { position: fixed; right: 20rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 160rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
-.mm-bar-alert-mark { color: var(--match-coral); font-size: 21rpx; font-weight: 800; }
-.mm-bar-alert-text { flex: 1; min-width: 0; color: var(--ink2); font-size: 21rpx; }
-.mm-bar-actions { display: flex; flex-direction: row; align-items: center; gap: 12rpx; flex-shrink: 0; }
-.mm-bar-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4rpx; height: 62rpx; padding: 0 22rpx; border-radius: 999rpx; }
-.mm-bar-btn text { color: var(--paper); font-size: 23rpx; font-weight: 800; }
+.mm-bar-alert-mark { color: var(--paper); font-size: 21rpx; font-weight: 800; }
+.mm-bar-alert-text { flex: 1; min-width: 0; color: var(--accent2); font-size: 20rpx; font-weight: 700; white-space: nowrap; }
+.mm-bar-actions { display: flex; flex-direction: row; align-items: center; gap: 8rpx; flex-shrink: 0; }
+.mm-bar-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4rpx; height: 62rpx; padding: 0 16rpx; border-radius: 999rpx; }
+.mm-bar-btn text { color: var(--paper); font-size: 22rpx; font-weight: 800; }
 .mm-bar-btn-arrow { font-size: 22rpx !important; }
 .mm-bar-btn-edit { background-color: var(--accent2); }
 .mm-bar-btn-center { background-color: var(--match-coral); }

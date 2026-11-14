@@ -24,6 +24,8 @@ const REMOTE_OPERATIONS: string[] = [
   "GET /matchmaker/management-center/dashboard",
   "GET /matchmaker/workbench/profile",
   "GET /matchmaker/workbench/commission-standards",
+  "GET /matchmaker/workbench/commission-entries",
+  "GET /matchmaker/workbench/activity-signups",
   "PATCH /matchmaker/workbench/profile",
   "GET /matchmaker/workbench/homepage",
   "PATCH /matchmaker/workbench/homepage",

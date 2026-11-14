@@ -80,7 +80,7 @@
 					<view class="join-entry-row">
 						<view class="join-entry" @click="handleBecomeMatchmaker">
 							<image class="join-entry-icon" src="/static/icons/join-matchmaker.webp" mode="aspectFit"></image>
-							<text class="join-entry-label">我要做红娘</text>
+							<text class="join-entry-label">{{ matchmakerEntryLabel }}</text>
 						</view>
 						<view class="join-entry" @click="handleBecomePartner">
 							<image class="join-entry-icon" src="/static/icons/join-partner.webp" mode="aspectFit"></image>
@@ -139,7 +139,7 @@
 					<view v-if="currentTabValue === 'custom'" class="join-entry-row">
 						<view class="join-entry" @click="handleBecomeMatchmaker">
 							<image class="join-entry-icon" src="/static/icons/join-matchmaker.webp" mode="aspectFit"></image>
-							<text class="join-entry-label">我要做红娘</text>
+							<text class="join-entry-label">{{ matchmakerEntryLabel }}</text>
 						</view>
 						<view class="join-entry" @click="handleBecomePartner">
 							<image class="join-entry-icon" src="/static/icons/join-partner.webp" mode="aspectFit"></image>
@@ -184,8 +184,27 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	import {
 		getServiceMatchmakers,
 		getVolunteerMatchmakers,
-		getCustomPlans
+		getCustomPlans,
+		getMatchmakerManagementCenterAccess
 	} from '@/api'
+	import { getAccessToken } from '@/api/config.uts'
+
+	const matchmakerEntryStatus = ref('loading')
+	const matchmakerEntryLabel = computed(() => matchmakerEntryStatus.value == 'active' ? '红娘管理中心' : (matchmakerEntryStatus.value == 'loading' ? '正在核验' : (matchmakerEntryStatus.value == 'error' ? '重新核验' : '我要做红娘')))
+	let matchmakerAccessRequest = 0
+	const refreshMatchmakerAccess = async () => {
+		const requestId = ++matchmakerAccessRequest
+		const token = getAccessToken()
+		if (token == '') { matchmakerEntryStatus.value = 'inactive'; return }
+		matchmakerEntryStatus.value = 'loading'
+		try {
+			const result = await getMatchmakerManagementCenterAccess()
+			if (requestId != matchmakerAccessRequest || token != getAccessToken()) return
+			matchmakerEntryStatus.value = result.success && result.data != null ? (result.data.canAccess == true ? 'active' : 'inactive') : 'error'
+		} catch (e) {
+			if (requestId == matchmakerAccessRequest) matchmakerEntryStatus.value = 'error'
+		}
+	}
 
 	const tabs = ['服务红娘', '私人定制', '喜讯']
 	const tabValues = ['service', 'custom', 'news']
@@ -478,6 +497,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	})
 
 	onShow(() => {
+		refreshMatchmakerAccess()
 		if (matchmakerPageMounted) reloadPage()
 		startHeroNet()
 	})
@@ -606,8 +626,10 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	}
 
 	const handleBecomeMatchmaker = () => {
+		if (matchmakerEntryStatus.value == 'loading') return
+		if (matchmakerEntryStatus.value == 'error') { refreshMatchmakerAccess(); return }
 		uni.navigateTo({
-			url: '/pagesSub/matchmaker/become-matchmaker'
+			url: matchmakerEntryStatus.value == 'active' ? '/pagesSub/matchmaker/become-matchmaker?workspace=center' : '/pagesSub/matchmaker/become-matchmaker'
 		})
 	}
 
