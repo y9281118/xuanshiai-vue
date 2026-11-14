@@ -80,16 +80,16 @@
 		<!-- 互动栏 -->
 		<view class="card-footer" @click.stop>
 			<view class="action-item" @click="handleLike">
-				<text class="ic ic-social action-icon" :class="{ liked: liked }">{{ likeIcon }}</text>
+				<image v-if="!liked" class="action-icon like-img" src="/static/icons/like-line.svg" mode="aspectFit"></image>
+				<image v-else class="action-icon like-img" :class="{ liked: liked }" src="/static/icons/like-fill-pink.svg" mode="aspectFit"></image>
 				<text class="text text-muted" :class="{ liked: liked }" v-if="likeCount > 0">{{ likeCount }}</text>
 			</view>
 			<view class="action-item" @click="handleComment">
 				<text class="ic ic-social action-icon">{{ commentIcon }}</text>
 				<text class="text text-muted" v-if="commentCount > 0">{{ commentCount }}</text>
 			</view>
-			<view class="action-item" @click="handleShare">
-				<text class="icon">↗</text>
-				<text class="text text-muted">分享</text>
+			<view class="action-item share-item" @click="handleShare">
+				<image class="share-icon" src="/static/icons/share-arrow-line.svg" mode="aspectFit"></image>
 			</view>
 			<button
 				v-if="!isSelf"
@@ -182,7 +182,6 @@ const emit = defineEmits<{
 const liked = ref(props.dynamic.liked === true)
 const likeCount = ref(props.dynamic.likeCount != null ? props.dynamic.likeCount : 0)
 const followed = ref(props.dynamic.followed === true)
-const likeIcon = String.fromCharCode(0xec8c)
 const commentIcon = String.fromCharCode(0xe679)
 const applyStatus = ref(props.dynamic.applyStatus != null ? props.dynamic.applyStatus : 'none')
 
@@ -751,12 +750,15 @@ const handleOpen = () => {
 	color: var(--muted);
 }
 
-.action-icon.liked {
-	color: var(--danger);
+.like-img {
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+	transition: transform 0.15s ease;
 }
 
-.action-icon.liked {
-	animation: heartBeat 0.3s ease;
+.like-img.liked {
+	animation: thumbPulse 0.3s ease;
 }
 
 .action-item .text.liked {
@@ -818,6 +820,21 @@ const handleOpen = () => {
 
 .ic-home {
 	font-family: "iconfont-home" !important;
+}
+
+/* 分享按钮：与个人中心「推荐给好友」同款弧形箭头，改为细线 SVG。
+   颜色 #7B8282 与全局 --muted（评论 / 未点赞图标）一致；
+   描边在 18px 显示时约 0.98px，与社交字体评论气泡实测 0.93px 对齐。 */
+.share-icon {
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+}
+
+/* 去掉「分享」文字后补回点击热区，负 margin 抵消视觉位移 */
+.share-item {
+	padding: 8px 10px;
+	margin: -8px -10px;
 }
 
 </style>

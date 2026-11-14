@@ -170,30 +170,56 @@
 						</view>
 					</view>
 
-					<!-- 爆灯：名片下方。免费额度制，不涉及支付；理由仅本地展示。
-					     自己的名片、预览态、红娘代看都不展示。 -->
+					<!-- 爆灯：名片下方，按图二定稿。CTA 走真实免费每日额度、站内通知，不涉及支付。
+					     人数/头像/定价为设计占位，卡片底部标注「示意·待后端」；后端无「谁给Ta爆灯」列表接口，
+					     头像行点击仅提示服务尚未开放。自己的名片、预览态、红娘代看都不展示。 -->
 					<view class="vip-section-card spotlight-card" v-if="!isOwnProfile && !isPreview && !fromMatchmaker">
 						<view class="spotlight-head">
-							<text class="spotlight-title">为 Ta 爆灯</text>
-							<text class="spotlight-remain" v-if="spotlightRemaining > 0">今日还剩 {{ spotlightRemaining }} 次</text>
-							<text class="spotlight-remain" v-else-if="spotlightRemaining == 0">今日次数已用完</text>
-						</view>
-						<text class="spotlight-desc">让 Ta 在消息列表里更早看到你 · 不代替申请认识</text>
-						<view class="spotlight-reasons">
-							<view
-								v-for="reason in SPOTLIGHT_REASONS"
-								:key="reason"
-								class="spotlight-reason"
-								:class="{ 'spotlight-reason-active': reason == spotlightReason }"
-								@tap="spotlightReason = reason"
-							>
-								<text class="spotlight-reason-text">{{ reason }}</text>
+							<view class="spotlight-title-group">
+								<view class="spotlight-flame"></view>
+								<text class="spotlight-title">爆灯嘉宾</text>
+								<text class="spotlight-count">{{ spotlightGuestCount }}人</text>
 							</view>
 						</view>
+						<view class="spotlight-ava-row" @tap="openSpotlightList">
+							<view class="spotlight-ava" :class="{ 'spotlight-ava-me': spotlightDone }">
+								<text v-if="spotlightDone" class="spotlight-ava-me-text">我</text>
+								<view v-else class="spotlight-ava-person"><view class="spotlight-ava-head"></view><view class="spotlight-ava-body"></view></view>
+							</view>
+							<view class="spotlight-ava" v-for="n in spotlightGuestPlaceholders" :key="n">
+								<view class="spotlight-ava-person"><view class="spotlight-ava-head"></view><view class="spotlight-ava-body"></view></view>
+							</view>
+							<text class="spotlight-ava-more">+{{ spotlightGuestExtra }}人</text>
+						</view>
+						<text class="spotlight-desc">非常中意Ta？爆灯后系统将立即站内通知对方，您的头像将显示在此处，让Ta第一时间注意到你！</text>
+						<view class="spotlight-benefits">
+							<view class="spotlight-benefit">
+								<text class="spotlight-benefit-icon">ϟ</text>
+								<text class="spotlight-benefit-title">快速触达</text>
+								<text class="spotlight-benefit-desc">即时站内通知</text>
+							</view>
+							<view class="spotlight-benefit">
+								<text class="spotlight-benefit-icon">◉</text>
+								<text class="spotlight-benefit-title">展示曝光</text>
+								<text class="spotlight-benefit-desc">头像展示在爆灯栏</text>
+							</view>
+							<view class="spotlight-benefit">
+								<text class="spotlight-benefit-icon">♡</text>
+								<text class="spotlight-benefit-title">增加好感</text>
+								<text class="spotlight-benefit-desc">更容易被留意</text>
+							</view>
+						</view>
+						<view class="spotlight-quota">
+							<text class="spotlight-quota-label">单次爆灯</text>
+							<text class="spotlight-quota-value">¥{{ spotlightAmount }}</text>
+							<text class="spotlight-quota-unit">电费</text>
+						</view>
 						<view class="spotlight-button" :class="{ 'spotlight-button-disabled': !canSpotlight }" @tap="onSpotlight">
+							<view class="spotlight-bulb" v-if="canSpotlight"><view class="spotlight-bulb-glass"></view><view class="spotlight-bulb-base"></view></view>
 							<text class="spotlight-button-text">{{ spotlightButtonText }}</text>
 						</view>
 						<text class="spotlight-error" v-if="spotlightError != ''">{{ spotlightError }}</text>
+						<text class="spotlight-pending-note">爆灯人数与头像为示意，正式定价待后端接入 · 当前免费体验</text>
 					</view>
 				</view>
 			</view>
@@ -259,26 +285,51 @@
 					<!-- 爆灯：锁定态同样保留入口（未开 VIP 也能爆灯）。 -->
 					<view class="locked-section-card spotlight-card" v-if="!isOwnProfile && !isPreview && !fromMatchmaker">
 						<view class="spotlight-head">
-							<text class="spotlight-title">为 Ta 爆灯</text>
-							<text class="spotlight-remain" v-if="spotlightRemaining > 0">今日还剩 {{ spotlightRemaining }} 次</text>
-							<text class="spotlight-remain" v-else-if="spotlightRemaining == 0">今日次数已用完</text>
-						</view>
-						<text class="spotlight-desc">让 Ta 在消息列表里更早看到你 · 不代替申请认识</text>
-						<view class="spotlight-reasons">
-							<view
-								v-for="reason in SPOTLIGHT_REASONS"
-								:key="reason"
-								class="spotlight-reason"
-								:class="{ 'spotlight-reason-active': reason == spotlightReason }"
-								@tap="spotlightReason = reason"
-							>
-								<text class="spotlight-reason-text">{{ reason }}</text>
+							<view class="spotlight-title-group">
+								<view class="spotlight-flame"></view>
+								<text class="spotlight-title">爆灯嘉宾</text>
+								<text class="spotlight-count">{{ spotlightGuestCount }}人</text>
 							</view>
 						</view>
+						<view class="spotlight-ava-row" @tap="openSpotlightList">
+							<view class="spotlight-ava" :class="{ 'spotlight-ava-me': spotlightDone }">
+								<text v-if="spotlightDone" class="spotlight-ava-me-text">我</text>
+								<view v-else class="spotlight-ava-person"><view class="spotlight-ava-head"></view><view class="spotlight-ava-body"></view></view>
+							</view>
+							<view class="spotlight-ava" v-for="n in spotlightGuestPlaceholders" :key="n">
+								<view class="spotlight-ava-person"><view class="spotlight-ava-head"></view><view class="spotlight-ava-body"></view></view>
+							</view>
+							<text class="spotlight-ava-more">+{{ spotlightGuestExtra }}人</text>
+						</view>
+						<text class="spotlight-desc">非常中意Ta？爆灯后系统将立即站内通知对方，您的头像将显示在此处，让Ta第一时间注意到你！</text>
+						<view class="spotlight-benefits">
+							<view class="spotlight-benefit">
+								<text class="spotlight-benefit-icon">ϟ</text>
+								<text class="spotlight-benefit-title">快速触达</text>
+								<text class="spotlight-benefit-desc">即时站内通知</text>
+							</view>
+							<view class="spotlight-benefit">
+								<text class="spotlight-benefit-icon">◉</text>
+								<text class="spotlight-benefit-title">展示曝光</text>
+								<text class="spotlight-benefit-desc">头像展示在爆灯栏</text>
+							</view>
+							<view class="spotlight-benefit">
+								<text class="spotlight-benefit-icon">♡</text>
+								<text class="spotlight-benefit-title">增加好感</text>
+								<text class="spotlight-benefit-desc">更容易被留意</text>
+							</view>
+						</view>
+						<view class="spotlight-quota">
+							<text class="spotlight-quota-label">单次爆灯</text>
+							<text class="spotlight-quota-value">¥{{ spotlightAmount }}</text>
+							<text class="spotlight-quota-unit">电费</text>
+						</view>
 						<view class="spotlight-button" :class="{ 'spotlight-button-disabled': !canSpotlight }" @tap="onSpotlight">
+							<view class="spotlight-bulb" v-if="canSpotlight"><view class="spotlight-bulb-glass"></view><view class="spotlight-bulb-base"></view></view>
 							<text class="spotlight-button-text">{{ spotlightButtonText }}</text>
 						</view>
 						<text class="spotlight-error" v-if="spotlightError != ''">{{ spotlightError }}</text>
+						<text class="spotlight-pending-note">爆灯人数与头像为示意，正式定价待后端接入 · 当前免费体验</text>
 					</view>
 
 				</view>
@@ -289,7 +340,8 @@
 
 			<!-- 知遇悬浮入口：点开聚合能力；红娘代看模式隐藏 -->
 			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == ''" class="detail-ai-float" @tap="openZhiyuHub">
-				<XsaZhiyuMark size="112rpx" />
+				<!-- 与首页同款：动画版知遇（雪碧图逐帧），无文字标签 -->
+				<XsaZhiyuVideo size="144rpx" :show-label="false" />
 			</view>
 			<view v-if="showAiGuide && !fromMatchmaker" class="ai-guide-bubble" @tap="dismissAiGuide"><text class="ai-guide-text">点知遇，看看能怎么了解对方</text></view>
 			<!-- 知遇说话气泡：引导气泡消失后才开始自动弹出，避免两块气泡打架；红娘代看模式隐藏 -->
@@ -353,12 +405,13 @@ import XsaSpotlightSuccessSheet from '@/pagesSub/userExtra/components/XsaSpotlig
 import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
+import XsaZhiyuVideo from '@/components/XsaZhiyuVideo.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getUserDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
 import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import { LOCATION_TREE as locationJson } from '../data/location.uts'
-import { sendSuperlike } from '@/api/spotlight.uts'
+import { sendSuperlike, SPOTLIGHT_AMOUNT } from '@/api/spotlight.uts'
 import { guardRealName } from '@/utils/realNameGate.uts'
 import { incomeDisplayText, locationDisplayByCodes, educationLabel as educationLabelOf, CERT_TAGS_COLLAPSED_COUNT } from '@/utils/profile-field-display.uts'
 import { recordProfileView, rollbackProfileView } from '@/utils/quota.uts'
@@ -381,9 +434,12 @@ const applyVisible = ref(false)
 const applyUserId = ref(1)
 const spotlightSuccessVisible = ref(false)
 const spotlightTarget = ref({ id: 0, name: '', avatar: '', meta: '' })
-// 免费额度爆灯：理由仅本地展示（后端 superlike 无 reason 字段），剩余次数取接口回包。
-const SPOTLIGHT_REASONS: string[] = ['真诚欣赏', '条件契合', '想认识一下']
-const spotlightReason = ref('真诚欣赏')
+// 免费额度爆灯：CTA 走真实 sendSuperlike（当前免费体验）。
+// 待后端：爆灯人数/头像列表/正式定价接口未上线，下列为图二定稿的设计占位，UI 已用「示意」标注，非真实数据。
+const spotlightGuestCount = 32
+const spotlightGuestExtra = 26
+const spotlightGuestPlaceholders = 4
+const spotlightAmount = SPOTLIGHT_AMOUNT
 const spotlightRemaining = ref(-1)
 const spotlightSending = ref(false)
 const spotlightDone = ref(false)
@@ -1187,6 +1243,11 @@ const closeSpotlightSuccess = () => {
 	spotlightTarget.value = { id: 0, name: '', avatar: '', meta: '' }
 }
 
+// 头像行入口：图二的「爆灯用户列表」依赖「谁给该用户爆灯」接口，后端未上线，明确提示尚未开放。
+const openSpotlightList = () => {
+	uni.showToast({ title: '爆灯用户列表服务尚未开放', icon: 'none' })
+}
+
 /**
  * 免费额度爆灯：走 POST /discovery/superlikes/{id}，额度扣减与「收到爆灯」通知都在后端完成，
  * 前端不做支付、也不做二次履约。额度默认普通号 1 次/天、VIP 3 次/天。
@@ -1439,35 +1500,54 @@ const onLike = async () => {
 .spot-price { display: flex; flex-direction: row; align-items: baseline; justify-content: center; gap: 10rpx; }
 .spot-price-label, .spot-price-unit { color: var(--ink2); font-size: 23rpx; }
 .spot-price-value { color: var(--ink); font-family: var(--serif); font-size: 40rpx; font-weight: 800; }
-/* 爆灯卡片：沿用名片页青瓷绿家族（--sage / --sage-soft），与已上线的
-   XsaSpotlightSuccessSheet 同源；比底部「申请认识」实心绿更轻，符合「爆灯不做主路径」。 */
-.spotlight-card { display: flex; flex-direction: column; gap: 16rpx; }
-.spotlight-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
-.spotlight-title { color: var(--ink); font-size: 30rpx; font-weight: 700; }
-.spotlight-remain { color: var(--sage); font-size: 22rpx; font-weight: 600; }
-.spotlight-desc { color: var(--muted); font-size: 22rpx; line-height: 1.5; }
-.spotlight-reasons { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12rpx; }
-.spotlight-reason {
-	display: flex; align-items: center; justify-content: center;
-	padding: 8rpx 20rpx; border-radius: 999rpx;
-	background-color: var(--canvas);
-	border: 1rpx solid var(--line);
+/* 爆灯卡片：按图二定稿的「爆灯嘉宾」暖橙火焰视觉。颜色全部复用全局 token
+   （--review-orange / --plane-yellow / --review-orange-soft / --warm / --muted），不引入新色值。
+   火焰/人形/灯泡均为 CSS 绘制，图标用单色字形；人数/头像/定价为设计占位，已在卡片底部标注「示意·待后端」。
+   CTA 仍走真实免费 sendSuperlike，不做支付。 */
+.spotlight-card {
+	--spot-flame: var(--review-orange);
+	--spot-amber: var(--plane-yellow);
+	--spot-cream: var(--review-orange-soft);
+	display: flex; flex-direction: column; gap: 24rpx; padding: 32rpx;
 }
-.spotlight-reason-active { background-color: var(--sage-soft); border-color: var(--sage-soft); }
-.spotlight-reason-text { color: var(--muted); font-size: 22rpx; }
-.spotlight-reason-active .spotlight-reason-text { color: var(--sage); font-weight: 700; }
-.spotlight-button { display: flex; align-items: center; justify-content: center; height: 88rpx; border-radius: 44rpx; background-color: var(--sage-soft); }
-.spotlight-button-text { color: var(--sage); font-size: 28rpx; font-weight: 700; }
-.spotlight-button-disabled { background-color: var(--warm); }
+.spotlight-head { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.spotlight-title-group { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.spotlight-flame { width: 24rpx; height: 24rpx; background-color: var(--spot-flame); border-radius: 0 50% 50% 50%; transform: rotate(45deg); flex-shrink: 0; }
+.spotlight-title { color: var(--ink); font-size: 32rpx; font-weight: 700; }
+.spotlight-count { color: var(--spot-flame); font-size: 26rpx; font-weight: 700; margin-left: 4rpx; }
+.spotlight-ava-row { display: flex; flex-direction: row; align-items: center; gap: 12rpx; }
+.spotlight-ava { display: flex; align-items: center; justify-content: center; width: 84rpx; height: 84rpx; flex-shrink: 0; border-radius: 50%; background-color: var(--warm); overflow: hidden; }
+.spotlight-ava-person { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 100%; height: 100%; padding-bottom: 14rpx; gap: 4rpx; }
+.spotlight-ava-head { width: 26rpx; height: 26rpx; border-radius: 50%; background-color: var(--muted); }
+.spotlight-ava-body { width: 44rpx; height: 24rpx; border-radius: 22rpx 22rpx 6rpx 6rpx; background-color: var(--muted); }
+.spotlight-ava-me { background: linear-gradient(135deg, var(--spot-flame), var(--spot-amber)); }
+.spotlight-ava-me-text { color: var(--text-invert); font-size: 32rpx; font-weight: 700; }
+.spotlight-ava-more { color: var(--ink); font-size: 26rpx; font-weight: 700; margin-left: 8rpx; flex-shrink: 0; }
+.spotlight-desc { color: var(--muted); font-size: 24rpx; line-height: 1.6; }
+.spotlight-benefits { display: flex; flex-direction: row; gap: 12rpx; }
+.spotlight-benefit { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10rpx; padding: 28rpx 8rpx; border-radius: 16rpx; background-color: var(--spot-cream); }
+.spotlight-benefit-icon { color: var(--spot-flame); font-size: 38rpx; line-height: 1; }
+.spotlight-benefit-title { color: var(--ink); font-size: 26rpx; font-weight: 700; }
+.spotlight-benefit-desc { color: var(--muted); font-size: 20rpx; text-align: center; line-height: 1.35; }
+.spotlight-quota { display: flex; flex-direction: row; align-items: baseline; justify-content: center; gap: 10rpx; }
+.spotlight-quota-label, .spotlight-quota-unit { color: var(--ink2); font-size: 24rpx; }
+.spotlight-quota-value { color: var(--spot-flame); font-family: var(--serif); font-size: 48rpx; font-weight: 800; }
+.spotlight-button { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 12rpx; height: 96rpx; border-radius: 48rpx; background: linear-gradient(90deg, var(--spot-flame), var(--spot-amber)); box-shadow: var(--shadow-md); }
+.spotlight-bulb { display: flex; flex-direction: column; align-items: center; }
+.spotlight-bulb-glass { width: 24rpx; height: 24rpx; border: 3rpx solid var(--text-invert); border-radius: 50%; }
+.spotlight-bulb-base { width: 12rpx; height: 7rpx; background-color: var(--text-invert); border-radius: 0 0 3rpx 3rpx; margin-top: 2rpx; }
+.spotlight-button-text { color: var(--text-invert); font-size: 30rpx; font-weight: 700; }
+.spotlight-button-disabled { background: var(--warm); box-shadow: none; }
 .spotlight-button-disabled .spotlight-button-text { color: var(--muted); }
 .spotlight-error { color: var(--match-coral); font-size: 22rpx; line-height: 1.5; }
+.spotlight-pending-note { color: var(--muted); font-size: 19rpx; text-align: center; line-height: 1.4; }
 .scroll-bottom-spacer { height: 420rpx; }
 .spacer-matchmaker { height: 560rpx; }
 
 /* 红娘查看会员主页：底部权限提示 + 编辑资料 / 红娘中心 */
 .mm-bar { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; flex-direction: row; align-items: center; gap: 10rpx; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); background-color: var(--surface); border-top: 1rpx solid var(--line); box-shadow: 0 -4rpx 20rpx rgba(17, 23, 24, 0.06); }
 .mm-bar-alert { width: 32rpx; height: 32rpx; border-radius: 8rpx; background-color: var(--match-blush); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.detail-ai-float { position: fixed; right: 20rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 136rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
+.detail-ai-float { position: fixed; right: 20rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 160rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
 .mm-bar-alert-mark { color: var(--match-coral); font-size: 21rpx; font-weight: 800; }
 .mm-bar-alert-text { flex: 1; min-width: 0; color: var(--ink2); font-size: 21rpx; }
 .mm-bar-actions { display: flex; flex-direction: row; align-items: center; gap: 12rpx; flex-shrink: 0; }
@@ -1484,7 +1564,7 @@ const onLike = async () => {
 .primary-action { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; height: 88rpx; border-radius: 44rpx; background-color: var(--accent); box-shadow: var(--shadow-sm); }
 .edit-only-btn { flex: 0 0 480rpx; width: 480rpx; }
 .primary-action-text { color: var(--text-invert); font-size: 28rpx; font-weight: 700; }
-.ai-guide-bubble { position: fixed; right: 32rpx; bottom: calc(340rpx + env(safe-area-inset-bottom)); max-width: 440rpx; padding: 16rpx 24rpx; border-radius: 20rpx 20rpx 6rpx 20rpx; background: var(--warm-accent-dark); color: var(--text-invert); font-size: 24rpx; line-height: 1.5; box-shadow: var(--shadow-md); z-index: 60; }
+.ai-guide-bubble { position: fixed; right: 32rpx; bottom: calc(400rpx + env(safe-area-inset-bottom)); max-width: 440rpx; padding: 16rpx 24rpx; border-radius: 20rpx 20rpx 6rpx 20rpx; background: var(--warm-accent-dark); color: var(--text-invert); font-size: 24rpx; line-height: 1.5; box-shadow: var(--shadow-md); z-index: 60; }
 .ai-guide-text { color: var(--text-invert); font-size: 24rpx; }
 
 /* ==================== 底部操作栏（与首页推荐页同源；首页底栏 190rpx 含自绘 tabbar 区，本页无 tabbar，按 tabbar 高度换算下沉） ==================== */
@@ -1501,8 +1581,8 @@ const onLike = async () => {
 .heart-solid { color: var(--heart-red); }
 
 /* ==================== AI 分身悬浮按钮（3D 小猫形象，静态） ==================== */
-.detail-ai-float { position: fixed; right: 28rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 136rpx; height: 136rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
-.detail-ai-float-cat { width: 136rpx; height: 136rpx; flex: none; }
+.detail-ai-float { position: fixed; right: 20rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 160rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
+.detail-ai-float-cat { width: 160rpx; height: 160rpx; flex: none; }
 
 /* ==================== 详情页图标字体（与首页同源） ==================== */
 @font-face { font-family: "iconfont-home"; src: url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff2') format('woff2'), url('/static/婚恋小程序图标/首页推荐与匹配/iconfont.woff') format('woff'); }

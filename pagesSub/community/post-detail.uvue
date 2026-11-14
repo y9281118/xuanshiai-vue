@@ -28,27 +28,51 @@
 				<view v-if="comments.length == 0" class="empty-c">
 					<text class="text-muted">还没有评论，说一句真诚的话吧</text>
 				</view>
-<view :id="'comment-' + c.id" class="comment" :class="{ highlighted: highlightedCommentId == c.id }" v-for="c in comments" :key="c.id" @longpress="replyTo(c)">
-						<image class="avatar" :src="c.user.avatar" mode="aspectFill"></image>
-						<view class="body">
-							<view class="comment-row">
-								<text class="name">{{ c.user.name }}</text>
-								<text class="report-link" @click="onReportComment(c)">举报</text>
+				<view :id="'comment-' + c.id" class="comment" :class="{ highlighted: highlightedCommentId == c.id }" v-for="c in comments" :key="c.id" @longpress.stop="openCommentActions(c)">
+					<image class="avatar" :src="c.user.avatar" mode="aspectFill"></image>
+					<view class="body">
+						<view class="comment-name-row">
+							<text class="name">{{ c.user.name }}</text>
+							<text v-if="isAuthorBadge(c)" class="author-badge">作者</text>
+						</view>
+						<text class="content">{{ c.content }}</text>
+						<view class="comment-foot">
+							<view class="foot-left">
+								<text class="foot-text">{{ c.dateText }}</text>
+								<text class="foot-text" v-if="c.location != ''">{{ c.location }}</text>
+								<text class="foot-reply" @click.stop="replyTo(c)">回复</text>
 							</view>
-							<text class="content">{{ c.content }}</text>
-							<view class="comment-foot">
-								<text class="time text-muted">{{ c.timeText }}</text>
-								<text class="like-btn" @click="replyTo(c)">回复</text>
-								<text class="like-btn" v-if="c.canDelete" @click="removeComment(c)">删除</text>
-								<text class="like-btn" :class="{ on: c.liked }" @click="onLikeComment(c)">
-									{{ c.liked ? '已赞' : '点赞' }} {{ c.likeCount > 0 ? c.likeCount : '' }}
-								</text>
+							<view class="foot-right" @click.stop="onLikeComment(c)">
+								<image v-if="!c.liked" class="like-icon" src="/static/icons/like-line.svg" mode="aspectFit"></image>
+								<image v-else class="like-icon" src="/static/icons/like-fill-pink.svg" mode="aspectFit"></image>
+								<text class="like-count">{{ c.likeCount > 0 ? c.likeCount : '' }}</text>
+							</view>
 						</view>
-						<view :id="'comment-' + r.id" class="reply" :class="{ highlighted: highlightedCommentId == r.id }" v-for="r in c.replies" :key="r.id" @click="replyTo(r)" @longpress="replyTo(r)">
-							<view class="reply-head"><text class="reply-name">{{ r.user.name }}</text><text v-if="r.replyToUserName" class="reply-to">回复 @{{ r.replyToUserName }}</text></view>
-							<text class="reply-content">{{ r.content }}</text>
+						<view v-if="c.likedByAuthor" class="author-liked-wrap"><text class="author-liked">作者赞过</text></view>
+						<view :id="'comment-' + r.id" class="reply" :class="{ highlighted: highlightedCommentId == r.id }" v-for="r in c.replies" :key="r.id" @click.stop="replyTo(r)" @longpress.stop="openCommentActions(r)">
+							<image class="reply-avatar" :src="r.user.avatar" mode="aspectFill"></image>
+							<view class="reply-body">
+								<view class="reply-head">
+									<text class="reply-name">{{ r.user.name }}</text>
+									<text v-if="isAuthorBadge(r)" class="author-badge">作者</text>
+									<text v-if="r.replyToUserName" class="reply-to">回复 @{{ r.replyToUserName }}</text>
+								</view>
+								<text class="reply-content">{{ r.content }}</text>
+								<view class="reply-foot">
+									<view class="foot-left">
+										<text class="foot-text">{{ r.dateText }}</text>
+										<text class="foot-text" v-if="r.location != ''">{{ r.location }}</text>
+										<text class="foot-reply" @click.stop="replyTo(r)">回复</text>
+									</view>
+									<view class="foot-right" @click.stop="onLikeComment(r)">
+										<image v-if="!r.liked" class="like-icon" src="/static/icons/like-line.svg" mode="aspectFit"></image>
+										<image v-else class="like-icon" src="/static/icons/like-fill-pink.svg" mode="aspectFit"></image>
+										<text class="like-count">{{ r.likeCount > 0 ? r.likeCount : '' }}</text>
+									</view>
+								</view>
+							</view>
 						</view>
-						<text class="like-btn" v-if="c.replyCount > (c.replies != null ? c.replies.length : 0)" @click="loadReplies(c)">加载更多回复</text>
+						<text class="expand-replies" v-if="c.replyCount > (c.replies != null ? c.replies.length : 0)" @click.stop="loadReplies(c)">—— 展开 {{ c.replyCount - (c.replies != null ? c.replies.length : 0) }} 条回复</text>
 					</view>
 				</view>
 				<text class="like-btn load-more" v-if="commentHasMore" @click="loadMoreComments">加载更多评论</text>
@@ -82,6 +106,29 @@
 					@close="reportVisible = false"
 					@blocked="onBlocked"
 				/>
+				<XsaSheet :visible="actionVisible" :show-handle="false" @close="actionVisible = false">
+					<view class="comment-action-sheet">
+						<view v-if="canDeleteComment(actionTarget)" class="comment-action-row" @click="onCommentActionDelete">
+							<text class="comment-action-label danger">删除</text>
+						</view>
+						<view v-if="canReportComment(actionTarget)" class="comment-action-row" @click="onCommentActionReport">
+							<text class="comment-action-label">举报</text>
+						</view>
+						<view class="comment-action-row cancel" @click="actionVisible = false">
+							<text class="comment-action-label cancel-label">取消</text>
+						</view>
+					</view>
+				</XsaSheet>
+				<XsaSheet :visible="moreVisible" :show-handle="false" @close="moreVisible = false">
+					<view class="comment-action-sheet">
+						<view class="comment-action-row" @click="onMoreActionReport">
+							<text class="comment-action-label">举报</text>
+						</view>
+						<view class="comment-action-row cancel" @click="moreVisible = false">
+							<text class="comment-action-label cancel-label">取消</text>
+						</view>
+					</view>
+				</XsaSheet>
 	</view>
 </template>
 
@@ -90,6 +137,7 @@
 	import XsaEmpty from '@/components/XsaEmpty.uvue'
 	import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 	import XsaReportSheet from '@/components/XsaReportSheet.uvue'
+	import XsaSheet from '@/components/XsaSheet.uvue'
 import {
 			getDynamicDetail,
 			likeDynamic,
@@ -135,6 +183,7 @@ import {
 	const applyVisible = ref(false)
 	const applyUserId = ref(0)
 	const reportVisible = ref(false)
+	const moreVisible = ref(false)
 	const reportTargetType = ref('post')
 	const reportTargetId = ref(0)
 	const reportUserId = ref(0)
@@ -145,6 +194,10 @@ import {
 	const commentScrollTarget = ref('')
 	const highlightedCommentId = ref(0)
 	const commentTargetMissing = ref(false)
+	// 长按评论后的底部操作菜单
+	const actionVisible = ref(false)
+	const actionTarget = ref(null as any)
+	const lastLongPressAt = ref(0)
 	const unfollowPendingUserId = ref(0)
 
 	onLoad((q: any) => {
@@ -263,7 +316,12 @@ const load = async () => {
 		commentTargetMissing.value = true
 		uni.showToast({ title: '该评论已不可查看', icon: 'none' })
 	}
-	const replyTo = (comment: any) => { if (comment.isDeleted == true) return; replyTarget.value = comment }
+	const replyTo = (comment: any) => {
+		if (comment.isDeleted == true) return
+		// 长按松手后微信可能补发一次 click，350ms 内忽略，避免「长按却跳去回复」
+		if (Date.now() - lastLongPressAt.value < 350) return
+		replyTarget.value = comment
+	}
 	// 删除后必须把节点真正从树里摘掉：
 	// 旧实现只把正文替换成「该评论已删除」并置 isDeleted，导致评论仍占位、
 	// 其下回复照旧渲染、评论总数也不减——用户会认为"删了没生效"。
@@ -540,9 +598,15 @@ const onApply = (userId: number) => {
 					})
 					return
 				}
+				// 别人的动态：⋯ 先弹底部菜单（举报/取消），点举报再进举报面板
 				reportTargetType.value = 'post'
 				reportTargetId.value = dynamicId
 				reportUserId.value = userId
+				moreVisible.value = true
+			}
+			const onMoreActionReport = () => {
+				// 先关菜单再开举报面板，避免两个遮罩叠在一起
+				moreVisible.value = false
 				reportVisible.value = true
 			}
 
@@ -553,6 +617,54 @@ const onApply = (userId: number) => {
 				const uid = c.user != null && c.user.id != null ? (c.user.id as number) : 0
 				reportUserId.value = uid
 				reportVisible.value = true
+			}
+
+			// 作者胶囊：后端 is_post_author 优先，mock / 旧数据回退到帖子作者 id 比对
+			const isAuthorBadge = (c: any): boolean => {
+				if (c == null) return false
+				if (c.isPostAuthor == true) return true
+				const p = post.value as any
+				if (p == null) return false
+				const author = p.user != null ? p.user : {}
+				const aid = Number(author.id != null ? author.id : (author.userId != null ? author.userId : (p.userId != null ? p.userId : 0)))
+				const cid = c.user != null && c.user.id != null ? Number(c.user.id) : 0
+				return aid > 0 && aid == cid
+			}
+			// 删除：评论本人 或 帖子作者（后端 can_delete 已按同一口径放开）
+			const canDeleteComment = (c: any): boolean => {
+				if (c == null || c.isDeleted == true) return false
+				return isOwnPost.value || c.canDelete == true
+			}
+			// 举报：不能举报自己
+			const canReportComment = (c: any): boolean => {
+				if (c == null || c.isDeleted == true) return false
+				const uid = c.user != null && c.user.id != null ? Number(c.user.id) : 0
+				return viewerId.value > 0 && uid > 0 && uid != viewerId.value
+			}
+			const openCommentActions = (c: any) => {
+				if (c == null || c.isDeleted == true) return
+				lastLongPressAt.value = Date.now()
+				actionTarget.value = c
+				actionVisible.value = true
+			}
+			const onCommentActionDelete = () => {
+				const c = actionTarget.value as any
+				actionVisible.value = false
+				if (c == null) return
+				uni.showModal({
+					title: '删除评论',
+					content: '删除后不可恢复，确定删除这条评论吗？',
+					success: async (modal: any) => {
+						if (modal != null && modal.confirm == true) await removeComment(c)
+					}
+				})
+			}
+			const onCommentActionReport = () => {
+				const c = actionTarget.value as any
+				// 先关菜单再开举报面板，避免两个遮罩叠在一起
+				actionVisible.value = false
+				if (c == null) return
+				onReportComment(c)
 			}
 
 			const onBlocked = (_userId: number) => {
@@ -599,6 +711,8 @@ const onApply = (userId: number) => {
 		color: var(--plane-purple-deep);
 		font-size: 12px;
 	}
+
+	/* ===== 评论区 v2：灰昵称 + 粉作者胶囊 + 黑正文 + 左右两组底行 ===== */
 	.comment {
 		display: flex;
 		flex-direction: row;
@@ -612,10 +726,11 @@ const onApply = (userId: number) => {
 		border-color: var(--plane-yellow);
 	}
 	.avatar {
-		width: 36px;
-		height: 36px;
+		width: 44px;
+		height: 44px;
 		border-radius: 50%;
 		background: var(--soft);
+		border: 1px solid var(--line);
 		flex-shrink: 0;
 	}
 	.body {
@@ -625,35 +740,178 @@ const onApply = (userId: number) => {
 		flex-direction: column;
 		gap: 4px;
 	}
+	.comment-name-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+	}
 	.name {
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--ink);
+		font-size: 15px;
+		font-weight: 500;
+		color: var(--muted);
+	}
+	.author-badge {
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: #FCEEF4;
+		color: #E86C9A;
+		font-size: 11px;
+		font-weight: 600;
 	}
 	.content {
 		margin-top: 2px;
 		font-size: 15px;
-		line-height: 1.5;
+		line-height: 1.7;
 		color: var(--ink);
+		word-break: break-all;
 	}
-	.time {
-		font-size: 11px;
-	}
-	.comment-foot {
+	.comment-foot, .reply-foot {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
 		justify-content: space-between;
 		margin-top: 6px;
 	}
+	.foot-left {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+	}
+	.foot-right {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 0 6px 12px;
+	}
+	.foot-text {
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.foot-reply {
+		font-size: 13px;
+		color: var(--muted);
+		padding: 6px 2px;
+	}
+	.like-icon {
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0;
+	}
+	.like-count {
+		font-size: 13px;
+		color: var(--muted);
+		min-width: 16px;
+	}
+	.author-liked-wrap {
+		display: flex;
+		flex-direction: row;
+		margin-top: 6px;
+	}
+	.author-liked {
+		padding: 4px 10px;
+		border-radius: 999px;
+		background: #F3F4F3;
+		color: var(--muted);
+		font-size: 11px;
+	}
+
+	/* 楼中楼：缩进流式，不再是浅底卡片 */
+	.reply {
+		display: flex;
+		flex-direction: row;
+		gap: 9px;
+		margin-top: 12px;
+	}
+	.reply-avatar {
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--soft);
+		border: 1px solid var(--line);
+		flex-shrink: 0;
+	}
+	.reply-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.reply-head {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 7px;
+	}
+	.reply-name {
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.reply-to {
+		font-size: 11px;
+		color: var(--muted);
+	}
+	.reply-content {
+		display: block;
+		font-size: 14px;
+		line-height: 1.65;
+		color: var(--ink);
+		word-break: break-all;
+	}
+	.reply-foot {
+		margin-top: 4px;
+	}
+	.expand-replies {
+		display: block;
+		margin-top: 10px;
+		padding: 6px 0;
+		font-size: 13px;
+		color: var(--muted);
+	}
+
+	/* 长按菜单（挂在页面级 XsaSheet 的 slot 里） */
+	.comment-action-sheet {
+		display: flex;
+		flex-direction: column;
+	}
+	.comment-action-row {
+		height: 54px;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		border-bottom: 1px solid var(--line);
+	}
+	.comment-action-row.cancel {
+		border-bottom: none;
+		margin-top: 8px;
+		background: var(--surface);
+		border-radius: 14px;
+	}
+	.comment-action-label {
+		font-size: 16px;
+		color: var(--muted);
+	}
+	.comment-action-label.danger {
+		color: #E85D5D;
+	}
+	.comment-action-label.cancel-label {
+		color: var(--ink);
+		font-weight: 600;
+	}
+
 	.like-btn {
 		font-size: 12px;
 		color: var(--muted);
 		padding: 4px 0 4px 10px;
 	}
-	.like-btn.on {
-		color: var(--accent);
-		font-weight: 600;
+	.load-more {
+		display: block;
+		padding: 12px 16px;
+		text-align: center;
 	}
 	.composer {
 		display: flex;
@@ -674,12 +932,6 @@ const onApply = (userId: number) => {
 		border-radius: 999px;
 		font-size: 14px;
 	}
-	.reply { margin: 9px 0 0; padding: 10px 12px; background: var(--paper); border-left: 3px solid var(--accent-bg); border-radius: 4px 12px 12px 4px; }
-	.reply-head { display: flex; flex-direction: row; align-items: center; gap: 7px; margin-bottom: 3px; }
-	.reply-name { font-size: 12px; font-weight: 700; color: var(--accent2); }
-	.reply-to { font-size: 11px; color: var(--muted); }
-	.reply-content { display: block; font-size: 13px; line-height: 1.5; color: var(--ink2); word-break: break-all; }
-	.load-more { display: block; padding: 12px 16px; text-align: center; }
 	.send {
 		height: 40px;
 		padding: 0 14px;
@@ -696,16 +948,4 @@ const onApply = (userId: number) => {
 	.pad {
 		height: 24px;
 	}
-
-		.comment-row {
-			display: flex;
-			flex-direction: row;
-			justify-content: space-between;
-			align-items: center;
-		}
-		.report-link {
-			font-size: 12px;
-			color: var(--text-muted, #999);
-			padding: 2px 4px;
-		}
 </style>
