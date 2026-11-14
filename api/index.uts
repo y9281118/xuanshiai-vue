@@ -349,7 +349,10 @@ export {
 export {
   SPOTLIGHT_AMOUNT,
   sendSuperlike,
-  paySpotlight
+  getSpotlightPrice,
+  createSpotlightOrder,
+  getSpotlightOrder,
+  paySpotlightOrder
 } from './spotlight.uts'
 
 

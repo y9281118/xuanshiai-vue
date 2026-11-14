@@ -211,7 +211,7 @@
 						</view>
 						<view class="spotlight-quota">
 							<text class="spotlight-quota-label">单次爆灯</text>
-							<text class="spotlight-quota-value">¥{{ spotlightAmount }}</text>
+							<text class="spotlight-quota-value">¥{{ spotlightPrice }}</text>
 							<text class="spotlight-quota-unit">电费</text>
 						</view>
 						<view class="spotlight-button" :class="{ 'spotlight-button-disabled': !canSpotlight }" @tap="onSpotlight">
@@ -219,7 +219,7 @@
 							<text class="spotlight-button-text">{{ spotlightButtonText }}</text>
 						</view>
 						<text class="spotlight-error" v-if="spotlightError != ''">{{ spotlightError }}</text>
-						<text class="spotlight-pending-note">爆灯人数与头像为示意，正式定价待后端接入 · 当前免费体验</text>
+						<text class="spotlight-pending-note">爆灯人数与头像为示意，列表接口尚未开放 · 单价与扣款由服务端计算</text>
 					</view>
 				</view>
 			</view>
@@ -321,7 +321,7 @@
 						</view>
 						<view class="spotlight-quota">
 							<text class="spotlight-quota-label">单次爆灯</text>
-							<text class="spotlight-quota-value">¥{{ spotlightAmount }}</text>
+							<text class="spotlight-quota-value">¥{{ spotlightPrice }}</text>
 							<text class="spotlight-quota-unit">电费</text>
 						</view>
 						<view class="spotlight-button" :class="{ 'spotlight-button-disabled': !canSpotlight }" @tap="onSpotlight">
@@ -329,7 +329,7 @@
 							<text class="spotlight-button-text">{{ spotlightButtonText }}</text>
 						</view>
 						<text class="spotlight-error" v-if="spotlightError != ''">{{ spotlightError }}</text>
-						<text class="spotlight-pending-note">爆灯人数与头像为示意，正式定价待后端接入 · 当前免费体验</text>
+						<text class="spotlight-pending-note">爆灯人数与头像为示意，列表接口尚未开放 · 单价与扣款由服务端计算</text>
 					</view>
 
 				</view>
@@ -377,6 +377,16 @@
 
 		<XsaApplySheet :visible="applyVisible" :user-id="applyUserId" @close="applyVisible = false" @success="onApplySuccess" />
 		<XsaSpotlightSuccessSheet :visible="spotlightSuccessVisible" :target="spotlightTarget" @close="closeSpotlightSuccess" />
+		<!-- 付费爆灯：免费额度用完后的支付面板。金额取服务端订单返回值，不用前端常量。 -->
+		<XsaPaymentSheet
+			:visible="spotlightPayVisible"
+			:amount="spotlightPayAmount"
+			:loading="spotlightPayLoading"
+			confirm-text="确认支付并爆灯"
+			:notice="'今日免费爆灯次数已用完，本次为付费爆灯，支付成功后立即送达。'"
+			@close="closeSpotlightPay"
+			@confirm="onSpotlightPayConfirm"
+		/>
 
 		<XsaAiMatchSheet
 			:visible="matchVisible"
@@ -402,6 +412,7 @@
 import { ref, computed } from 'vue'
 import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 import XsaSpotlightSuccessSheet from '@/pagesSub/userExtra/components/XsaSpotlightSuccessSheet.uvue'
+import XsaPaymentSheet from '@/pagesSub/userExtra/components/XsaPaymentSheet.uvue'
 import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
@@ -411,7 +422,7 @@ import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus
 import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import { LOCATION_TREE as locationJson } from '../data/location.uts'
-import { sendSuperlike, SPOTLIGHT_AMOUNT } from '@/api/spotlight.uts'
+import { sendSuperlike, SPOTLIGHT_AMOUNT, getSpotlightPrice, createSpotlightOrder, paySpotlightOrder, SpotlightPaymentOrder } from '@/api/spotlight.uts'
 import { guardRealName } from '@/utils/realNameGate.uts'
 import { incomeDisplayText, locationDisplayByCodes, educationLabel as educationLabelOf, CERT_TAGS_COLLAPSED_COUNT } from '@/utils/profile-field-display.uts'
 import { recordProfileView, rollbackProfileView } from '@/utils/quota.uts'
@@ -434,16 +445,22 @@ const applyVisible = ref(false)
 const applyUserId = ref(1)
 const spotlightSuccessVisible = ref(false)
 const spotlightTarget = ref({ id: 0, name: '', avatar: '', meta: '' })
-// 免费额度爆灯：CTA 走真实 sendSuperlike（当前免费体验）。
-// 待后端：爆灯人数/头像列表/正式定价接口未上线，下列为图二定稿的设计占位，UI 已用「示意」标注，非真实数据。
+// 爆灯双通道：每日免费额度（sendSuperlike）用完后走付费（createSpotlightOrder → paySpotlightOrder）。
+// 待后端：爆灯人数/头像列表接口未上线，下列为图二定稿的设计占位，UI 已用「示意」标注，非真实数据。
 const spotlightGuestCount = 32
 const spotlightGuestExtra = 26
 const spotlightGuestPlaceholders = 4
-const spotlightAmount = SPOTLIGHT_AMOUNT
+// 单价以后端 GET /spotlights/price 为准（运行期配置 finance.spotlight_price）。
+// SPOTLIGHT_AMOUNT 只在拉取失败时兜底展示；真正扣款金额取订单返回的 amount。
+const spotlightPrice = ref(SPOTLIGHT_AMOUNT)
 const spotlightRemaining = ref(-1)
 const spotlightSending = ref(false)
 const spotlightDone = ref(false)
 const spotlightError = ref('')
+const spotlightPayVisible = ref(false)
+const spotlightPayLoading = ref(false)
+const spotlightPayAmount = ref(SPOTLIGHT_AMOUNT)
+let spotlightPendingOrderNo = ''
 const visitorCount = ref<number | null>(null)
 const user = ref({
 	id: 0,
@@ -1111,6 +1128,8 @@ onMounted(async () => {
 	}
 	await load()
 	detailLoadedOnce = true
+	// 爆灯单价：只影响爆灯卡片上的数字，不阻塞首屏；本人主页/预览/红娘代看不展示爆灯卡片。
+	if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value) refreshSpotlightPrice()
 	if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value && uni.getStorageSync('xsa_ai_avatar_guide_shown') != true) showAiGuide.value = true
 	if (options.anchor != null && ('' + options.anchor) != '') {
 		const anchorId = '' + options.anchor
@@ -1251,18 +1270,21 @@ const onZhiyuHubSelect = (key: string) => {
 		})
 	}
 }
-/** 爆灯按钮是否可点：本人/预览态不展示，发送中、今日额度用完、本次已送出都不可点。 */
+/**
+ * 爆灯按钮是否可点：本人/预览态不展示，发送中、本次已送出不可点。
+ * 注意：`spotlightRemaining == 0` **不再**置灰——额度用完后按钮转为付费爆灯入口，
+ * 由 onSpotlight 走 createSpotlightOrder → paySpotlightOrder，不再拦在这里。
+ */
 const canSpotlight = computed((): boolean => {
 	if (isOwnProfile.value || isPreview.value) return false
 	if (spotlightSending.value || spotlightDone.value) return false
-	if (spotlightRemaining.value == 0) return false
 	return true
 })
 
 const spotlightButtonText = computed((): string => {
 	if (spotlightSending.value) return '发送中...'
 	if (spotlightDone.value) return '爆灯已送出'
-	if (spotlightRemaining.value == 0) return '今日爆灯次数已用完'
+	if (spotlightRemaining.value == 0) return '今日免费次数已用完 · ¥' + spotlightPrice.value + ' 立即爆灯'
 	if (spotlightRemaining.value > 0) return '我要爆灯 · 今日还剩 ' + spotlightRemaining.value + ' 次'
 	return '我要爆灯'
 })
@@ -1278,12 +1300,128 @@ const openSpotlightList = () => {
 }
 
 /**
- * 免费额度爆灯：走 POST /discovery/superlikes/{id}，额度扣减与「收到爆灯」通知都在后端完成，
- * 前端不做支付、也不做二次履约。额度默认普通号 1 次/天、VIP 3 次/天。
+ * 免费额度爆灯：走 POST /discovery/superlikes/{id}，额度扣减与「收到爆灯」通知都在后端完成。
+ * 额度默认普通号 1 次/天、VIP 3 次/天；后端在额度不足时还会尝试用积分兑换一次。
+ * 额度彻底用完时不再拦在按钮上，转 openSpotlightPay() 走付费通道。
  */
 // 幂等键在本页实例内复用：网络超时重试时复用同一 key，避免后端已落库却被再扣一次额度。
 // 页面实例 = 一个爆灯对象（详情页按目标用户新开页面栈），所以这个粒度是正确的。
 let spotlightRequestKey = ''
+
+/** 当前爆灯对象的展示信息，支付面板与成功弹窗共用。 */
+const buildSpotlightTarget = (targetId: number) => {
+	return {
+		id: targetId,
+		name: '' + user.value.name,
+		avatar: '' + user.value.avatar,
+		meta: '' + user.value.age + '岁 · ' + user.value.job
+	}
+}
+
+const closeSpotlightPay = () => {
+	if (spotlightPayLoading.value) return
+	spotlightPayVisible.value = false
+	spotlightPendingOrderNo = ''
+}
+
+/**
+ * 拉取爆灯单价（公开接口，读运行期配置 finance.spotlight_price）。
+ * 失败时保持 SPOTLIGHT_AMOUNT 兜底展示即可，不弹错、不阻塞页面：
+ * 这里只影响文案里的数字，真正的扣款金额始终由服务端订单决定。
+ */
+const refreshSpotlightPrice = async () => {
+	try {
+		const res = await getSpotlightPrice()
+		if (res.success === true && res.data != null) {
+			const amount = Number(res.data)
+			if (amount > 0) spotlightPrice.value = amount
+		}
+	} catch (e) {}
+}
+
+/**
+ * 付费爆灯：先建单、再弹支付面板。
+ * 顺序刻意是「建单 → 展示」而不是「展示 → 建单」：单价来自运行期配置 finance.spotlight_price，
+ * 只有订单返回的 amount 才是真正要扣的钱，先建单才能保证面板上的数字与实际扣款一致，
+ * 也避免运营调价后前端还拿 SPOTLIGHT_AMOUNT 弹确认框（历史上出过 9.9 / 5.00 的口径分裂）。
+ * 实名门禁由后端 create_spotlight_order 校验（与免费路径同一条规则），失败直接提示、不弹面板。
+ */
+const openSpotlightPay = async () => {
+	const targetId = Number(user.value.id)
+	if (!(targetId > 0)) return
+	spotlightSending.value = true
+	spotlightError.value = ''
+	try {
+		const res = await createSpotlightOrder(buildSpotlightTarget(targetId))
+		if (res.success !== true || res.data == null) {
+			const message = res != null && res.message != null ? '' + res.message : ''
+			const status = res != null && res.code != null ? Number(res.code) : 0
+			if (message.indexOf('实名') >= 0 || status == 403) {
+				spotlightError.value = '爆灯需要先完成实名认证'
+			} else if (message != '') {
+				spotlightError.value = message
+			} else {
+				spotlightError.value = '创建爆灯订单失败，请稍后重试'
+			}
+			uni.showToast({ title: spotlightError.value, icon: 'none' })
+			return
+		}
+		const order = res.data as SpotlightPaymentOrder
+		if (order.paymentStatus == 'paid') {
+			// 幂等命中已支付订单：直接按已送达处理，绝不能再收一次钱。
+			spotlightPendingOrderNo = ''
+			spotlightDone.value = true
+			spotlightSuccessVisible.value = true
+			return
+		}
+		spotlightPendingOrderNo = order.orderNo
+		spotlightPayAmount.value = order.amount
+		spotlightPayVisible.value = true
+	} catch (e) {
+		spotlightError.value = '网络异常，未能创建爆灯订单'
+		uni.showToast({ title: spotlightError.value, icon: 'none' })
+	} finally {
+		spotlightSending.value = false
+	}
+}
+
+/** 支付面板确认：预支付 → 调起微信 → 等回调把订单置为已支付。 */
+const onSpotlightPayConfirm = async () => {
+	if (spotlightPayLoading.value) return
+	const orderNo = spotlightPendingOrderNo
+	if (orderNo == '') {
+		spotlightPayVisible.value = false
+		return
+	}
+	const targetId = Number(user.value.id)
+	spotlightPayLoading.value = true
+	try {
+		const res = await paySpotlightOrder(orderNo, buildSpotlightTarget(targetId), spotlightPayAmount.value)
+		if (res.success !== true) {
+			const message = res != null && res.message != null ? '' + res.message : ''
+			// 用户主动取消支付不算错误：留在面板上让他自己决定，不弹红色提示。
+			const cancelled = message.indexOf('取消') >= 0
+			if (!cancelled) {
+				spotlightError.value = message != '' ? message : '支付未完成，请稍后重试'
+				uni.showToast({ title: spotlightError.value, icon: 'none' })
+			}
+			return
+		}
+		spotlightPayVisible.value = false
+		spotlightPendingOrderNo = ''
+		spotlightRemaining.value = 0
+		spotlightDone.value = true
+		spotlightSuccessVisible.value = true
+		const done = res.message != null ? '' + res.message : ''
+		// 「开通中」= 微信侧已扣款、服务端回调未到：告知用户不要重复支付，不要谎称已送达。
+		if (done != '' && done.indexOf('开通中') >= 0) uni.showToast({ title: done, icon: 'none' })
+	} catch (e) {
+		spotlightError.value = '网络异常，支付结果未确认，请勿重复支付'
+		uni.showToast({ title: spotlightError.value, icon: 'none' })
+	} finally {
+		spotlightPayLoading.value = false
+	}
+}
 
 const onSpotlight = async () => {
 	if (isOwnProfile.value) {
@@ -1291,21 +1429,27 @@ const onSpotlight = async () => {
 		return
 	}
 	if (!canSpotlight.value) return
+	// 今日免费额度已用完：转付费通道（后端另有积分兑换兜底，会在 429 之前先试一次）。
+	if (spotlightRemaining.value == 0) {
+		await openSpotlightPay()
+		return
+	}
 	const targetId = Number(user.value.id)
 	if (!(targetId > 0)) return
 	spotlightSending.value = true
 	spotlightError.value = ''
-	spotlightTarget.value = { id: targetId, name: '' + user.value.name, avatar: '' + user.value.avatar, meta: '' + user.value.age + '岁 · ' + user.value.job }
+	spotlightTarget.value = buildSpotlightTarget(targetId)
 	if (spotlightRequestKey == '') spotlightRequestKey = 'sl-' + Date.now() + '-' + targetId
 	try {
 		const res = await sendSuperlike(targetId, spotlightRequestKey)
 		if (res.success !== true) {
 			const message = res != null && res.message != null ? '' + res.message : ''
 			const status = res != null && res.code != null ? Number(res.code) : 0
-			// 后端额度耗尽返回 429「今日爆灯次数已用完」，顺手把本地次数归零，按钮立即置灰。
+			// 后端额度耗尽返回 429「今日爆灯次数已用完」：把本地次数归零，
+			// 按钮文案随即变为「¥X 立即爆灯」，下次点击走付费，不再置灰拦死。
 			if (status == 429 || message.indexOf('用完') >= 0) {
 				spotlightRemaining.value = 0
-				spotlightError.value = '今日爆灯次数已用完'
+				spotlightError.value = '今日免费次数已用完，可 ¥' + spotlightPrice.value + ' 立即爆灯'
 			} else if (message.indexOf('实名') >= 0) {
 				spotlightError.value = '爆灯需要先完成实名认证'
 			} else if (message != '') {
@@ -1533,8 +1677,8 @@ const onLike = async () => {
 .spot-price-value { color: var(--ink); font-family: var(--serif); font-size: 40rpx; font-weight: 800; }
 /* 爆灯卡片：按图二定稿的「爆灯嘉宾」暖橙火焰视觉。颜色全部复用全局 token
    （--review-orange / --plane-yellow / --review-orange-soft / --warm / --muted），不引入新色值。
-   火焰/人形/灯泡均为 CSS 绘制，图标用单色字形；人数/头像/定价为设计占位，已在卡片底部标注「示意·待后端」。
-   CTA 仍走真实免费 sendSuperlike，不做支付。 */
+   火焰/人形/灯泡均为 CSS 绘制，图标用单色字形；人数/头像为设计占位，已在卡片底部标注「示意」。
+   CTA 双通道：免费额度内走 sendSuperlike，额度用完走付费爆灯（createSpotlightOrder → paySpotlightOrder）。 */
 .spotlight-card {
 	--spot-flame: var(--review-orange);
 	--spot-amber: var(--plane-yellow);

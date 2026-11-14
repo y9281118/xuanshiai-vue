@@ -93,6 +93,8 @@ const core = [
   // 支付链路：预支付/requestPayment/权益轮询契约。
   'test-payment-flow-contract.js',
   'test-top-placement-payment-flow.js',
+  // 爆灯双通道：免费额度 + 付费（单价同源 / 支付后轮询订单 / 额度耗尽不置灰）。
+  'test-spotlight-payment-flow.js',
   // 2026-11-11 张新洋负责项（Q4/Q15/Q18/Q57/Q58）前端修改方案 §11 无阻塞批。
   'test-card-basic-fields-contract.js',
   'test-user-dynamics-contract.js',
