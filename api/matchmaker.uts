@@ -54,7 +54,7 @@ function toMatchmakerCard(item: any, ranking: boolean = false) {
     title: '平台认证服务红娘',
     introduction: item.intro != null ? String(item.intro) : '',
     description: item.intro != null ? String(item.intro) : '',
-    serviceCount: ranking ? (item.served_member_count != null ? Number(item.served_member_count) : '--') : successCount,
+    serviceCount: item.served_member_count != null ? Number(item.served_member_count) : (ranking ? '--' : 0),
     successCount: ranking ? (item.successful_meeting_member_count != null ? Number(item.successful_meeting_member_count) : '--') : successCount,
     successRate: 0,
     tags: item.certification_tags != null ? item.certification_tags : [],
