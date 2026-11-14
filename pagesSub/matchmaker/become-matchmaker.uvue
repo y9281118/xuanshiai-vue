@@ -5,9 +5,10 @@
 			<view class="nav-back" @click="handlePageBack">
 				<view class="nav-back-chevron"></view>
 			</view>
-			<text class="nav-title">{{ offlineOrdersVisible ? '线下开单明细' : (pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘'))) }}</text>
+			<text class="nav-title">{{ withdrawalVisible ? '申请提现' : (offlineOrdersVisible ? '线下开单明细' : (pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')))) }}</text>
 			<!-- 工作区遮罩右上角只保留「保存」药丸；返回走左侧箭头（handlePageBack 会先关遮罩）。 -->
-			<view v-if="(pendingReviewVisible || workspaceVisible) && isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()"><text class="nav-help-text">保存</text></view>
+			<view v-if="withdrawalVisible" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
+			<view v-else-if="(pendingReviewVisible || workspaceVisible) && isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()"><text class="nav-help-text">保存</text></view>
 			<view v-else-if="workspaceVisible && workspaceKind == 'income-placeholder'" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
 			<view v-else-if="offlineOrdersVisible" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
 			<view v-else-if="!pendingReviewVisible && !workspaceVisible && managementCenterVisible" class="nav-entries">
@@ -23,8 +24,9 @@
 			</view>
 		</view>
 
+		<MatchmakerWithdrawal v-if="withdrawalVisible" />
 		<MatchmakerPendingReview
-			v-if="pendingReviewVisible"
+			v-else-if="pendingReviewVisible"
 			:initial-tab="pendingReviewInitialTab"
 			:refresh-token="pendingReviewRefreshToken"
 			@entry="openMemberEntryFromReview"
@@ -908,7 +910,7 @@
 					<view class="workspace-filter-chip" :class="{ active: meetingStatusChoice == 'ACCEPTED' }" @click="meetingStatusChoice = 'ACCEPTED'"><text>双方同意</text></view>
 				</view>
 
-				<view v-if="meetingStatusChoice == 'ACCEPTED'" class="workspace-filter-chips">
+				<view v-if="meetingStatusChoice == 'ACCEPTED'" class="workspace-filter-chips workspace-meeting-consent">
 					<view class="workspace-filter-chip" :class="{ active: meetingContactsConfirmed }" @tap="meetingContactsConfirmed = !meetingContactsConfirmed"><text>{{ meetingContactsConfirmed ? '✓ ' : '○ ' }}已联系双方</text></view>
 					<view class="workspace-filter-chip" :class="{ active: meetingApplicantAgreed }" @tap="meetingApplicantAgreed = !meetingApplicantAgreed"><text>{{ meetingApplicantAgreed ? '✓ ' : '○ ' }}申请人同意</text></view>
 					<view class="workspace-filter-chip" :class="{ active: meetingTargetAgreed }" @tap="meetingTargetAgreed = !meetingTargetAgreed"><text>{{ meetingTargetAgreed ? '✓ ' : '○ ' }}被邀请方同意</text></view>
@@ -934,7 +936,7 @@
 				<view v-if="meetingScheduleRow == null">
 					<view class="workspace-match-add-row" @tap="openMeetingMemberPicker('from')"><text class="workspace-match-add-label">名下会员</text><text>{{ meetingCreateApplicantName || '请选择申请人' }}</text></view>
 					<view class="workspace-match-add-row" @tap="openMeetingMemberPicker('to')"><text class="workspace-match-add-label">约会对象</text><text>{{ meetingCreateTargetName || '请选择被邀请方' }}</text></view>
-					<view class="workspace-filter-chips">
+					<view class="workspace-filter-chips workspace-meeting-consent">
 						<view class="workspace-filter-chip" :class="{ active: meetingCreateContacted }" @tap="meetingCreateContacted = !meetingCreateContacted"><text>{{ meetingCreateContacted ? '✓ ' : '○ ' }}已联系双方</text></view>
 						<view class="workspace-filter-chip" :class="{ active: meetingCreateApplicantAgreed }" @tap="meetingCreateApplicantAgreed = !meetingCreateApplicantAgreed"><text>{{ meetingCreateApplicantAgreed ? '✓ ' : '○ ' }}申请人同意</text></view>
 						<view class="workspace-filter-chip" :class="{ active: meetingCreateTargetAgreed }" @tap="meetingCreateTargetAgreed = !meetingCreateTargetAgreed"><text>{{ meetingCreateTargetAgreed ? '✓ ' : '○ ' }}被邀请方同意</text></view>
@@ -1081,6 +1083,7 @@ import MatchmakerGoodNews from '@/pagesSub/matchmaker/components/MatchmakerGoodN
 import { onShareAppMessage } from '@dcloudio/uni-app'
 import MatchmakerPendingReview from '@/pagesSub/matchmaker/components/MatchmakerPendingReview.uvue'
 import MatchmakerOfflineOrders from '@/pagesSub/matchmaker/components/MatchmakerOfflineOrders.uvue'
+import MatchmakerWithdrawal from '@/pagesSub/matchmaker/components/MatchmakerWithdrawal.uvue'
 import MatchmakerServiceNavSheet from '@/pagesSub/matchmaker/components/MatchmakerServiceNavSheet.uvue'
 import { getRemoteFinanceBalance } from '@/api/matchmaker-remote.uts'
 import {
@@ -1153,6 +1156,7 @@ const managementCenterVisible = ref(false)
 const pendingReviewVisible = ref(false)
 // 线下业绩独立页：与「财务明细」工作区互斥，不再共用同一个页面。
 const offlineOrdersVisible = ref(false)
+const withdrawalVisible = ref(false)
 const pendingReviewInitialTab = ref('PENDING')
 // 会员主页「编辑资料」入口深链：进入页面后自动打开资料待审列表
 const autoOpenPendingReview = ref(false)
@@ -2760,24 +2764,27 @@ const loadWorkspaceCommissionBalance = async () => {
 }
 
 const loadWorkspaceCommissionLevel = async () => {
-	workspaceCommissionLevelName.value = '--'
 	try {
 		const result = await getMatchmakerCommissionStandards()
 		if (!result.success || result.data == null) return
 		const levelName = result.data.currentLevelName
-		if (levelName != null && String(levelName).length > 0 && String(levelName) != '--') {
-			workspaceCommissionLevelName.value = String(levelName)
-		}
+		workspaceCommissionLevelName.value = levelName != null && String(levelName).length > 0 ? String(levelName) : '--'
 	} catch (e) {
 		// 级别取不到就留 '--'，不前端推算级别。
 	}
 }
 
+let commissionLevelTimer: any = null
+const stopCommissionLevelTimer = () => { if (commissionLevelTimer != null) clearInterval(commissionLevelTimer); commissionLevelTimer = null }
+const startCommissionLevelTimer = () => {
+	stopCommissionLevelTimer()
+	commissionLevelTimer = setInterval(() => {
+		if (workspaceVisible.value && workspaceKind.value == 'commission' && workspaceTitle.value == '我的分成') loadWorkspaceCommissionLevel()
+	}, 15000)
+}
+
 const openCommissionWithdrawal = () => {
-	uni.navigateTo({
-		url: '/pagesSub/matchmaker/promoter-center?page=withdraw',
-		fail: () => showToast('账户资金打开失败，请稍后重试')
-	})
+	withdrawalVisible.value = true
 }
 
 // 分成标准改为独立页面：级别与按项目分成一律由页面按后台配置渲染，不在工作区内写死。
@@ -3644,6 +3651,8 @@ onLoad((options: any) => {
 })
 
 onShow(async () => {
+	startCommissionLevelTimer()
+	if (workspaceVisible.value && workspaceKind.value == 'commission' && workspaceTitle.value == '我的分成') loadWorkspaceCommissionLevel()
 	if (managementCenterVisible.value) {
 		refreshPendingReviewCount()
 		startPendingReviewCountTimer()
@@ -3671,8 +3680,8 @@ onShow(async () => {
 	if (!managementCenterVisible.value && !pendingReviewVisible.value && !workspaceVisible.value) loadManagementAccess()
 })
 
-onHide(() => { stopPendingReviewCountTimer(); pendingReviewCountRequest += 1 })
-onUnload(() => { stopPendingReviewCountTimer(); pendingReviewCountRequest += 1 })
+onHide(() => { stopPendingReviewCountTimer(); stopCommissionLevelTimer(); pendingReviewCountRequest += 1 })
+onUnload(() => { stopPendingReviewCountTimer(); stopCommissionLevelTimer(); pendingReviewCountRequest += 1 })
 
 const guideToRequiredVerification = (message: string) => {
 	const needsPhone = message.indexOf('绑定手机号') >= 0
@@ -3708,6 +3717,7 @@ const goBack = () => {
 }
 
 const handlePageBack = () => {
+	if (withdrawalVisible.value) { withdrawalVisible.value = false; loadWorkspaceCommissionBalance(); return }
 	if (offlineOrdersVisible.value) {
 		closeOfflineOrders()
 		return
@@ -5892,6 +5902,20 @@ const submitApplication = async () => {
 	border-color: var(--accent);
 	color: var(--accent2);
 }
+
+/* 约会意愿三确认：等分整行，与上下表单行同宽。横向内边距收窄到 8rpx，
+ * 否则 320px 下「被邀请方同意」加前缀会超出三分之一格宽。 */
+.workspace-meeting-consent { flex-wrap: nowrap; }
+.workspace-meeting-consent .workspace-filter-chip {
+	flex: 1;
+	min-width: 0;
+	padding-left: 8rpx;
+	padding-right: 8rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.workspace-meeting-consent .workspace-filter-chip text { white-space: nowrap; }
 
 .intention-filter-chip {
 	max-width: 100%;

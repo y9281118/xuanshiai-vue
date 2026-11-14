@@ -1,0 +1,87 @@
+<template>
+	<view class="withdraw-page">
+		<scroll-view scroll-y class="withdraw-scroll" :show-scrollbar="false">
+			<view class="withdraw-content">
+				<view class="balance-line"><text>可提现余额</text><text class="balance-value">{{ balanceText }}</text><text>元</text><text v-if="balanceError" class="balance-retry" @tap="loadBalance">重新加载</text></view>
+				<view class="amount-line"><text>¥</text><input type="digit" maxlength="12" :value="amount" placeholder="输入提现金额" @input="onAmount" /></view>
+				<view class="divider"></view>
+				<view v-for="item in methods" :key="item.key" class="method-block" @tap="selectMethod(item.key)">
+					<view class="method-head"><view class="method-radio" :class="{ active: method == item.key }"><text v-if="method == item.key">✓</text></view><view class="method-icon" :class="item.key"><text>{{ item.icon }}</text></view><text class="method-title">{{ item.title }}</text></view>
+					<view class="method-body"><text class="method-copy">审核通过后转账至您的{{ item.destination }}，提现金额不得超过可提现余额。</text>
+						<view v-if="method == item.key" class="method-fields"><input :value="account" :placeholder="item.placeholder" maxlength="100" @input="onAccount"/><input :value="payee" placeholder="输入收款人姓名" maxlength="50" @input="onPayee"/><text class="method-hint">ⓘ 请核对上述信息准确无误</text></view>
+					</view>
+				</view>
+				<text class="unavailable">收款信息提交暂未开放，请联系平台客服。</text>
+			</view>
+		</scroll-view>
+		<view class="submit-bar"><view class="submit-button" @tap="submit"><text>确认提现</text></view></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+import { getRemoteFinanceBalance } from '@/api/matchmaker-remote.uts'
+const methods = [
+	{ key: 'wechat', icon: '微', title: '人工转账到提现微信', destination: '微信', placeholder: '输入微信账号' },
+	{ key: 'bank', icon: '卡', title: '提现到银行卡', destination: '银行卡', placeholder: '输入银行卡号' },
+	{ key: 'alipay', icon: '支', title: '提现到支付宝', destination: '支付宝', placeholder: '输入支付宝账号' }
+]
+const method = ref('wechat')
+const amount = ref('')
+const account = ref('')
+const payee = ref('')
+const balance = ref<number | null>(null)
+const balanceError = ref(false)
+const balanceText = computed((): string => balance.value == null ? '--' : Number(balance.value).toFixed(2))
+const onAmount = (event: any) => { amount.value = String(event.detail.value || '') }
+const onAccount = (event: any) => { account.value = String(event.detail.value || '') }
+const onPayee = (event: any) => { payee.value = String(event.detail.value || '') }
+const selectMethod = (key: string) => { if (method.value != key) { method.value = key; account.value = ''; payee.value = '' } }
+const loadBalance = async () => {
+	balanceError.value = false
+	try {
+		const result = await getRemoteFinanceBalance()
+		if (!result.success || result.data == null || result.data.available_amount == null || isNaN(Number(result.data.available_amount))) { balance.value = null; balanceError.value = true; return }
+		balance.value = Number(result.data.available_amount)
+	} catch (e) { balance.value = null; balanceError.value = true }
+}
+const submit = () => {
+	const value = amount.value.trim()
+	if (!/^[0-9]+(\.[0-9]{1,2})?$/.test(value) || Number(value) <= 0) { uni.showToast({ title: '请输入有效提现金额', icon: 'none' }); return }
+	if (balance.value == null) { uni.showToast({ title: '余额获取失败，请重试', icon: 'none' }); return }
+	if (Number(value) > Number(balance.value)) { uni.showToast({ title: '提现金额不能超过余额', icon: 'none' }); return }
+	if (account.value.trim().length == 0 || payee.value.trim().length == 0) { uni.showToast({ title: '请填写收款账号和姓名', icon: 'none' }); return }
+	uni.showToast({ title: '收款信息提交暂未开放', icon: 'none' })
+}
+onMounted(() => { loadBalance() })
+</script>
+
+<style>
+.withdraw-page { height: calc(100vh - 156rpx - var(--status-bar-height)); min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
+.withdraw-scroll { flex: 1; height: 0; }
+.withdraw-content { padding: 24rpx 32rpx 40rpx; display: flex; flex-direction: column; }
+.balance-line { display: flex; flex-direction: row; align-items: center; gap: 8rpx; color: var(--ink); font-size: 25rpx; font-weight: 700; }
+.balance-value, .balance-retry { color: var(--review-purple); }
+.balance-retry { margin-left: auto; font-size: 22rpx; }
+.amount-line { height: 106rpx; display: flex; flex-direction: row; align-items: center; gap: 20rpx; color: var(--ink); font-size: 30rpx; }
+.amount-line input { flex: 1; font-size: 29rpx; color: var(--ink); }
+.divider { height: 16rpx; background: var(--review-canvas); }
+.method-block { padding: 32rpx 0; border-bottom: 1rpx solid var(--line); }
+.method-head { display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
+.method-radio { width: 36rpx; height: 36rpx; border: 1rpx solid var(--line); border-radius: 50%; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+.method-radio.active { background: var(--review-purple); border-color: var(--review-purple); }
+.method-radio text { color: var(--surface); font-size: 24rpx; }
+.method-icon { width: 36rpx; height: 36rpx; border-radius: 9rpx; background: var(--accent); display: flex; align-items: center; justify-content: center; }
+.method-icon.bank { background: var(--review-orange); }
+.method-icon.alipay { background: var(--navy); }
+.method-icon text { color: var(--surface); font-size: 21rpx; font-weight: 700; }
+.method-title { flex: 1; color: var(--ink); font-size: 29rpx; font-weight: 800; }
+.method-body { margin-left: 52rpx; padding-top: 14rpx; display: flex; flex-direction: column; gap: 22rpx; }
+.method-copy { color: var(--ink2); font-size: 23rpx; line-height: 1.5; }
+.method-fields { display: flex; flex-direction: column; gap: 18rpx; }
+.method-fields input { height: 76rpx; padding: 0 22rpx; border-radius: 14rpx; background: var(--review-soft); font-size: 25rpx; color: var(--ink); }
+.method-hint { color: var(--review-purple); font-size: 22rpx; }
+.unavailable { margin-top: 24rpx; color: var(--muted); font-size: 22rpx; line-height: 1.5; }
+.submit-bar { padding: 18rpx 32rpx calc(env(safe-area-inset-bottom) + 18rpx); background: var(--surface); box-shadow: var(--shadow-sm); }
+.submit-button { height: 84rpx; border-radius: 16rpx; background: var(--review-lilac); display: flex; align-items: center; justify-content: center; }
+.submit-button text { color: var(--ink); font-size: 28rpx; font-weight: 800; }
+</style>

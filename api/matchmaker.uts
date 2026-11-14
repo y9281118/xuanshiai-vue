@@ -18,7 +18,7 @@ import {
 // 仅本机联调可在服务端尚未写入工作台记录时展示脱敏测试明细；部署环境始终只用服务端数据。
 // 真实模式下空数据、错误都不得替换为演示记录。
 
-function toMatchmakerCard(item: any) {
+function toMatchmakerCard(item: any, ranking: boolean = false) {
   const successCount = item.success_count != null ? Number(item.success_count) : 0
   const cases: any[] = []
   if (item.cases != null) {
@@ -55,8 +55,8 @@ function toMatchmakerCard(item: any) {
     title: '平台认证服务红娘',
     introduction: item.intro != null ? String(item.intro) : '',
     description: item.intro != null ? String(item.intro) : '',
-    serviceCount: successCount,
-    successCount,
+    serviceCount: ranking ? (item.served_member_count != null ? Number(item.served_member_count) : '--') : successCount,
+    successCount: ranking ? (item.successful_meeting_member_count != null ? Number(item.successful_meeting_member_count) : '--') : successCount,
     successRate: 0,
     tags: item.certification_tags != null ? item.certification_tags : [],
     badge: '平台认证',
@@ -891,7 +891,7 @@ function formatCommissionNumber(value: any): string {
 /**
  * 「分成级别」页面数据：级别总览、本人当前级别与按消费项目的分成标准。
  * 全部取服务端配置（后台「总店红娘 → 分成配置」维护同一份 commission_level），
- * 前端不写死级别与金额；后台未指派级别或未配置规则时返回空值，由页面显示占位与空状态。
+ * 级别由后台档案决定；后台未指派级别时，按页面约定显示初级分成。
  */
 export async function getMatchmakerCommissionStandards() {
   const result = await request({ url: '/matchmaker/workbench/commission-standards', method: 'GET' })
@@ -909,7 +909,7 @@ export async function getMatchmakerCommissionStandards() {
         condition: row.promotion_condition != null && String(row.promotion_condition).length > 0 ? String(row.promotion_condition) : '--',
         extra: row.platform_extra_amount != null ? formatCommissionNumber(row.platform_extra_amount) + '元' : '--'
       })),
-      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '--',
+      currentLevelName: currentLevel != null && currentLevel.name != null && String(currentLevel.name).length > 0 ? String(currentLevel.name) : '初级分成',
       events: rawEvents.map((row: any) => ({
         key: row.name != null ? String(row.name) : '',
         name: row.name != null && String(row.name).length > 0 ? String(row.name) : '分成事件',
@@ -1616,7 +1616,7 @@ export async function getVolunteerMatchmakers(page: number = 1, pageSize: number
     data: { page: page, page_size: pageSize }
   })
   if (result.success && result.data != null && result.data.items != null) {
-    result.data = (result.data.items as any[]).map((item: any) => toMatchmakerCard(item))
+    result.data = (result.data.items as any[]).map((item: any) => toMatchmakerCard(item, true))
   }
   return result
 }

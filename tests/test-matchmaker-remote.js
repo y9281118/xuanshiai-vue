@@ -23,6 +23,11 @@ async function run() {
  assert.equal(api.hasRemoteMatchmakerEndpoint('GET','/matchmaker/workbench/unsupported-feature'),false)
  assert.equal((await api.request({url:'/matchmaker/workbench/unsupported-feature'})).code,'REMOTE_FEATURE_UNAVAILABLE')
  assert.equal(calls.length,0)
+ assert.equal(api.hasRemoteMatchmakerEndpoint('GET','/matchmaker/workbench/commission-standards'),true)
+ assert.equal(api.hasRemoteMatchmakerEndpoint('POST','/matchmaker/workbench/commission-standards'),false)
+ await api.request({url:'/matchmaker/workbench/commission-standards',method:'GET'})
+ assert.equal(calls.at(-1).url,'/matchmaker/workbench/commission-standards')
+ calls = []
  token=''; assert.equal((await api.getRemoteFinanceBalance()).code,401); assert.equal(calls.length,0)
  await api.getRemoteServiceProducts(); assert.equal(calls.at(-1).skipAuth,true)
  token='remote-user'; await api.getRemoteServiceRequests(true,2)

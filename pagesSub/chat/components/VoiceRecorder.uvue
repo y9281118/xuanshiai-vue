@@ -33,6 +33,11 @@
 			<text v-if="recorderState == 'reviewing'" class="vr-status-text">转写完成,请确认</text>
 		</view>
 
+		<!-- 录完可回放自己的声音；只加试听，不改变原有转写/确认流程 -->
+		<view v-if="recorderState == 'reviewing'" class="vr-preview" @tap="toggleRecordPreview">
+			<text class="vr-preview-text">{{ recordPreviewPlaying ? '■ 停止试听' : '▶ 试听我的录音' }}</text>
+		</view>
+
 		<!-- 录音按钮(speaking 态不可点) -->
 		<view
 			class="vr-btn"
@@ -99,6 +104,10 @@ let startY = 0
 let speakTimer: number = 0
 let lastQuestionText = props.questionText
 let audioContext: any = null
+// 保留本次录音的本地临时路径，供 reviewing 态回放。
+let lastRecordedPath: string = ''
+let recordPreviewAudio: any = null
+const recordPreviewPlaying = ref(false)
 
 // 问题文本只做展示与转写上下文,播报由用户显式触发(公共场合不外放)
 watch(() => props.questionText, (newText: string, oldText: string) => {
@@ -184,6 +193,42 @@ const destroyAudioContext = () => {
 		emit('aiSpeakEnd')
 	}
 
+	// 回放用户自己刚录的本地临时文件；与 TTS 播报用的 audioContext 分开管理。
+	const stopRecordPreview = () => {
+		recordPreviewPlaying.value = false
+		if (recordPreviewAudio != null) {
+			try { recordPreviewAudio.stop() } catch (e) {}
+			try { recordPreviewAudio.destroy() } catch (e) {}
+			recordPreviewAudio = null
+		}
+	}
+
+	const toggleRecordPreview = () => {
+		if (recordPreviewPlaying.value) {
+			stopRecordPreview()
+			return
+		}
+		if (lastRecordedPath == '') {
+			uni.showToast({ title: '录音已失效，请重新录制', icon: 'none' })
+			return
+		}
+		stopRecordPreview()
+		try {
+			recordPreviewAudio = uni.createInnerAudioContext()
+			recordPreviewAudio.src = lastRecordedPath
+			recordPreviewAudio.onEnded(() => { stopRecordPreview() })
+			recordPreviewAudio.onError(() => {
+				stopRecordPreview()
+				uni.showToast({ title: '试听失败，请重录', icon: 'none' })
+			})
+			recordPreviewAudio.play()
+			recordPreviewPlaying.value = true
+		} catch (e) {
+			stopRecordPreview()
+			uni.showToast({ title: '试听失败，请重录', icon: 'none' })
+		}
+	}
+
 	const initRecorder = () => {
 	if (recorderManager != null) return
 	recorderManager = uni.getRecorderManager()
@@ -198,11 +243,13 @@ const destroyAudioContext = () => {
 		if (dragCancel.value) {
 			dragCancel.value = false
 			recorderState.value = 'idle'
+			lastRecordedPath = ''
 			emit('cancelled')
 			return
 		}
 		recorderState.value = 'transcribing'
 		const audioPath = res != null && res.tempFilePath != null ? String(res.tempFilePath) : ''
+		lastRecordedPath = audioPath
 		const result = await transcribeAudio(audioPath, lastQuestionText, props.questionFieldKey)
 		if (!result.success || result.text == null || result.text == '') {
 			recorderState.value = 'idle'
@@ -215,6 +262,7 @@ const destroyAudioContext = () => {
 	recorderManager.onError((err: any) => {
 		stopDurationTimer()
 		recorderState.value = 'idle'
+		lastRecordedPath = ''
 		uni.showToast({ title: '录音失败,请检查麦克风权限', icon: 'none' })
 	})
 }
@@ -240,6 +288,7 @@ const stopDurationTimer = () => {
 
 const onTouchStart = (e: any) => {
 	if (recorderState.value == 'speaking' || recorderState.value == 'transcribing' || recorderState.value == 'reviewing') return
+	stopRecordPreview()
 	initRecorder()
 	const touch = e.touches != null && e.touches.length > 0 ? e.touches[0] : null
 	startY = touch != null ? Number(touch.clientY) : 0
@@ -269,6 +318,7 @@ const stopRecorder = () => {
 const reset = () => {
 	stopSpeaking()
 	stopDurationTimer()
+	stopRecordPreview()
 	recorderState.value = 'idle'
 	dragCancel.value = false
 }
@@ -276,6 +326,7 @@ const reset = () => {
 onUnmounted(() => {
 	stopSpeaking()
 	stopDurationTimer()
+	stopRecordPreview()
 	destroyAudioContext()
 })
 
@@ -345,6 +396,10 @@ defineExpose({ reset, startSpeaking, skipSpeaking })
 .vr-status-text { font-size: 12px; color: var(--muted); }
 .vr-status-active { color: var(--accent2); font-weight: 600; }
 
+/* 录完试听自己的录音 */
+.vr-preview { margin-bottom: 12px; padding: 8px 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.vr-preview-text { font-size: 12px; font-weight: 700; color: var(--accent); }
+
 /* 录音按钮 */
 .vr-btn {
 	width: 64px; height: 64px; border-radius: 50%;
@@ -398,4 +453,6 @@ defineExpose({ reset, startSpeaking, skipSpeaking })
 .vr-atelier .vr-ic { color: var(--at-ink2, #5C4F3D); }
 .vr-atelier .vr-ic.vr-mic-icon-active { color: #FFF6E8; }
 .vr-atelier .vr-review-check { color: var(--at-fixed, #4E7D5B); }
+.vr-atelier .vr-preview { background: var(--at-card, #FFFCF5); border-color: var(--at-line, #E6DAC4); }
+.vr-atelier .vr-preview-text { color: var(--at-amber-deep, #8A5A1D); }
 </style>

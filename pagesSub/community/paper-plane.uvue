@@ -301,12 +301,18 @@
 				</view>
 
 				<view v-else class="composer-panel voice-panel">
-					<button class="record-button" :class="{ recording: recording }" @click="toggleRecording">
+					<button class="record-button" :class="{ recording: recording }" :disabled="voiceSending" @click="toggleRecording">
 						<text class="record-icon">{{ recording ? '■' : '●' }}</text>
 					</button>
-					<text class="record-title">{{ recording ? '正在录音 ' + recordTime : (recorded ? '录音已准备好' : '点击开始录音') }}</text>
-					<text class="record-hint">{{ recording ? '再次点击结束录音' : '声音会比文字更靠近一点' }}</text>
-					<button class="throw-button voice-send" :disabled="!recorded" @click="sendVoice">扔出去</button>
+					<text class="record-title">{{ recording ? '正在录音 ' + recordTime : (recorded ? '录音完成 · ' + voiceDurationLabel : '点击开始录音') }}</text>
+					<text class="record-hint">{{ recording ? '再次点击结束录音' : (recorded ? '先试听一下，满意再放飞' : '声音会比文字更靠近一点') }}</text>
+					<view v-if="recorded && !recording" class="voice-preview">
+						<button class="voice-preview-play" :class="{ playing: voicePreviewPlaying }" @click="toggleVoicePreview">
+							<text>{{ voicePreviewPlaying ? '■ 停止试听' : '▶ 试听我的录音' }}</text>
+						</button>
+						<button class="voice-preview-rerecord" :disabled="voiceSending" @click="resetVoiceRecord">重新录制</button>
+					</view>
+					<button class="throw-button voice-send" :disabled="!recorded || recording || voiceSending" @click="sendVoice">{{ voiceSending ? '正在放飞...' : '扔出去' }}</button>
 				</view>
 			</view>
 		</view>
@@ -315,7 +321,7 @@
 
 <script setup lang="uts">
 	import XsaSheet from '@/components/XsaSheet.uvue'
-	import { sendPaperPlane, getPaperPlanes, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, deleteCommunityMedia, getPointProducts, getPaperPlaneCatchSummary, catchPaperPlane } from '@/api'
+	import { sendPaperPlane, getPaperPlanes, getCommunityQuotas, purchasePaperPlaneChance, replyPaperPlane, getPaperPlaneUnreadCount, createCommunityCreateKey, discardCommunityCreateKey, uploadCommunityMedia, uploadMedia, deleteCommunityMedia, getPointProducts, getPaperPlaneCatchSummary, catchPaperPlane } from '@/api'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 
 	// 纸飞机身份必须按账号分键：旧版用全局 key，切换账号后会串出上一个账号的
@@ -391,6 +397,13 @@
 	const recording = ref(false)
 	const recorded = ref(false)
 	const recordSeconds = ref(0)
+	// 语音纸飞机：录完必须留住临时文件路径，否则既无法试听也无法上传。
+	const voiceFilePath = ref('')
+	const voiceDurationSec = ref(0)
+	const voiceSending = ref(false)
+	const voicePreviewPlaying = ref(false)
+	let voicePreviewAudio: any = null
+	let discardNextRecord = false
 	let recorderManager: any = null
 	let recordTimer: any = null
 
@@ -522,6 +535,10 @@
 		return (minute < 10 ? '0' + minute : '' + minute) + ':' + (second < 10 ? '0' + second : '' + second)
 	})
 
+	const voiceDurationLabel = computed(() => {
+		return Math.max(1, Math.min(60, voiceDurationSec.value)) + ' 秒'
+	})
+
 	onMounted(() => {
 		loadPaperPlaneProfile()
 		setupRecorder()
@@ -537,8 +554,12 @@
 	})
 
 	onUnload(() => {
-		if (recording.value) stopRecording()
+		if (recording.value) {
+			discardNextRecord = true
+			stopRecording()
+		}
 		clearRecordTimer()
+		stopVoicePreview()
 		stopNormalVoice()
 		cleanupPaperPlaneMedia()
 		discardPendingSendKey()
@@ -553,13 +574,33 @@
 		})
 		recorderManager.onStop((res: any) => {
 			recording.value = false
-			recorded.value = res != null && res.tempFilePath != null
 			clearRecordTimer()
+			if (discardNextRecord) {
+				discardNextRecord = false
+				resetVoiceRecord()
+				return
+			}
+			const path = res != null && res.tempFilePath != null ? '' + res.tempFilePath : ''
+			if (path == '') {
+				resetVoiceRecord()
+				return
+			}
+			// 微信 onStop 的 duration 单位是毫秒，部分运行环境给秒，两种都兼容；
+			// 本地计时器作为兜底，保证落在后端要求的 1-60 秒区间内。
+			let seconds = recordSeconds.value
+			if (res != null && res.duration != null) {
+				const raw = Number(res.duration)
+				if (raw > 0) seconds = raw > 1000 ? Math.round(raw / 1000) : Math.round(raw)
+			}
+			voiceFilePath.value = path
+			voiceDurationSec.value = Math.max(1, Math.min(60, seconds))
+			recorded.value = true
+			invalidatePendingSendKey()
 		})
 		recorderManager.onError(() => {
 			recording.value = false
-			recorded.value = false
 			clearRecordTimer()
+			resetVoiceRecord()
 			uni.showToast({ title: '录音失败，请检查麦克风权限', icon: 'none' })
 		})
 		// #endif
@@ -876,8 +917,7 @@
 		draft.value = ''
 		paperPlaneImages.value = []
 		discardPendingSendKey()
-		recorded.value = false
-		recordSeconds.value = 0
+		resetVoiceRecord()
 		composerVisible.value = true
 	}
 
@@ -892,14 +932,25 @@
 	}
 
 	const closeComposer = (preserveMedia: boolean = false) => {
-		if (recording.value) stopRecording()
-		if (!preserveMedia) cleanupPaperPlaneMedia()
+		if (recording.value) {
+			discardNextRecord = true
+			stopRecording()
+		}
+		stopVoicePreview()
+		if (!preserveMedia) {
+			cleanupPaperPlaneMedia()
+			resetVoiceRecord()
+		}
 		discardPendingSendKey()
 		composerVisible.value = false
 	}
 
 	const switchComposerTab = (tab: string) => {
-		if (recording.value) stopRecording()
+		if (recording.value) {
+			discardNextRecord = true
+			stopRecording()
+		}
+		stopVoicePreview()
 		composerTab.value = tab
 	}
 
@@ -1042,7 +1093,8 @@
 		const ids: string[] = []
 		const list = paperPlaneImages.value as PaperPlaneMedia[]
 		for (let i = 0; i < list.length; i++) ids.push('i' + list[i].mediaId + ':' + list[i].status)
-		return draft.value.trim() + '|' + ids.join(',')
+		// 重录会换掉临时文件路径，指纹必须跟着变，否则会复用上一次的幂等键。
+		return draft.value.trim() + '|v' + voiceFilePath.value + ':' + voiceDurationSec.value + '|' + ids.join(',')
 	}
 
 	const discardPendingSendKey = () => {
@@ -1146,7 +1198,11 @@
 			uni.showToast({ title: '录音功能暂不可用', icon: 'none' })
 			return
 		}
+		stopVoicePreview()
+		discardNextRecord = false
 		recorded.value = false
+		voiceFilePath.value = ''
+		voiceDurationSec.value = 0
 		recordSeconds.value = 0
 		recording.value = true
 		beginRecordTimer()
@@ -1164,14 +1220,131 @@
 	}
 
 	const toggleRecording = () => {
+		if (voiceSending.value) return
 		if (recording.value) stopRecording()
 		else startRecording()
 	}
 
-	const sendVoice = () => {
-		if (!recorded.value) return
-		closeComposer()
-		uni.showToast({ title: '录音已保存，音频发送接口待接入', icon: 'none' })
+	// 试听播的是录音返回的本地临时文件，与上传后拿到的远端 URL 无关；
+	// 播放结束、出错、关闭弹层、页面卸载都要销毁实例，避免多个音频叠播。
+	const stopVoicePreview = () => {
+		voicePreviewPlaying.value = false
+		if (voicePreviewAudio != null) {
+			try {
+				voicePreviewAudio.stop()
+				voicePreviewAudio.destroy()
+			} catch (e) {}
+			voicePreviewAudio = null
+		}
+	}
+
+	const toggleVoicePreview = () => {
+		if (voicePreviewPlaying.value) {
+			stopVoicePreview()
+			return
+		}
+		const path = voiceFilePath.value
+		if (path == '') {
+			uni.showToast({ title: '录音已失效，请重新录制', icon: 'none' })
+			return
+		}
+		stopVoicePreview()
+		try {
+			voicePreviewAudio = uni.createInnerAudioContext()
+			voicePreviewAudio.src = path
+			voicePreviewAudio.onEnded(() => { stopVoicePreview() })
+			voicePreviewAudio.onError(() => {
+				stopVoicePreview()
+				uni.showToast({ title: '试听失败，请重新录制', icon: 'none' })
+			})
+			voicePreviewPlaying.value = true
+			voicePreviewAudio.play()
+		} catch (e) {
+			stopVoicePreview()
+			uni.showToast({ title: '试听失败，请重新录制', icon: 'none' })
+		}
+	}
+
+	const resetVoiceRecord = () => {
+		stopVoicePreview()
+		recorded.value = false
+		voiceFilePath.value = ''
+		voiceDurationSec.value = 0
+		recordSeconds.value = 0
+		discardPendingSendKey()
+	}
+
+	const sendVoice = async () => {
+		if (!recorded.value || recording.value || voiceSending.value) return
+		const path = voiceFilePath.value
+		if (path == '') {
+			uni.showToast({ title: '录音已失效，请重新录制', icon: 'none' })
+			return
+		}
+		const duration = Math.max(1, Math.min(60, voiceDurationSec.value))
+		stopVoicePreview()
+
+		// 与文字分支共用一套幂等键：同一段录音重复点「扔出去」不会放飞两次。
+		const fingerprint = paperPlaneSendFingerprint()
+		if (pendingSendKey.value == '' || pendingSendFingerprint.value != fingerprint) {
+			discardPendingSendKey()
+			pendingSendKey.value = createCommunityCreateKey('paper-plane-voice')
+			pendingSendFingerprint.value = fingerprint
+		}
+
+		voiceSending.value = true
+		try {
+			// 语音必须走 /media/uploads（purpose=paper_plane_voice）：
+			// /community/media/uploads 的 media_type 只允许 image/video，传音频会被拒。
+			const uploaded = await uploadMedia(path, 'paper_plane_voice')
+			const voiceUrl = uploaded != null && uploaded.success && uploaded.data != null && uploaded.data.url != null
+				? '' + uploaded.data.url
+				: ''
+			if (voiceUrl == '') {
+				if (shouldDiscardPaperPlaneKey(uploaded)) discardPendingSendKey()
+				const uploadMsg = uploaded != null && uploaded.message != null && '' + uploaded.message != ''
+					? '' + uploaded.message
+					: '语音上传失败，请重试'
+				uni.showToast({ title: uploadMsg, icon: 'none' })
+				return
+			}
+
+			const res = await sendPaperPlane({
+				content: '',
+				voiceUrl: voiceUrl,
+				voiceDurationSec: duration,
+				// 本地临时文件随记录一起保存，供「我发出的」列表/详情试听。
+				// Mock 下上传返回的是不可播放的 mock:// 地址，真实模式不会提交该字段。
+				localVoicePath: path,
+				scope: 'city',
+				anonymous: true,
+				idempotencyKey: pendingSendKey.value
+			})
+			const data = res != null ? res.data : null
+			const bizOk = res != null && res.success && data != null && data.success != false
+			if (bizOk) {
+				if (data.quotas != null && data.quotas.remain != null) remain.value = data.quotas.remain
+				else remain.value = Math.max(0, remain.value - 1)
+				discardPendingSendKey()
+				resetVoiceRecord()
+				closeComposer(true)
+				uni.showToast({ title: '已放飞', icon: 'success' })
+			} else {
+				if (shouldDiscardPaperPlaneKey(res)) discardPendingSendKey()
+				const msg =
+					data != null && data.message != null
+						? '' + data.message
+						: res != null && res.message != null
+							? '' + res.message
+							: '放飞失败'
+				uni.showToast({ title: msg, icon: 'none' })
+				if (data != null && data.remain != null) remain.value = data.remain
+			}
+		} catch (e) {
+			uni.showToast({ title: '网络异常，请稍后再试', icon: 'none' })
+		} finally {
+			voiceSending.value = false
+		}
 	}
 </script>
 
@@ -1436,5 +1609,12 @@
 	.record-icon { font-size: 32px; }
 	.record-title { font-size: 16px; font-weight: 800; color: var(--ink); }
 	.record-hint { font-size: 12px; color: var(--muted); }
+	.record-button:disabled { opacity: 0.55; }
+	.voice-preview { display: flex; flex-direction: row; gap: 8px; width: 100%; margin-top: 4px; }
+	.voice-preview-play, .voice-preview-rerecord { flex: 1; height: 40px; margin: 0; border-radius: 12px; font-size: 12px; font-weight: 800; }
+	.voice-preview-play::after, .voice-preview-rerecord::after { border: none; }
+	.voice-preview-play { background: var(--plane-lilac); color: var(--plane-purple); }
+	.voice-preview-play.playing { background: var(--plane-pink); color: var(--text-invert); }
+	.voice-preview-rerecord { background: var(--bg-subtle); color: var(--muted); }
 	.voice-send { margin-top: 6px; }
 </style>

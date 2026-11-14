@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const vm = require('node:vm')
+const parser = require('@babel/parser')
+const babel = require('@babel/core')
+const source = fs.readFileSync('api/matchmaker.uts', 'utf8')
+const ast = parser.parse(source, { sourceType: 'module', plugins: ['typescript'] })
+const node = ast.program.body.find(item => item.type === 'FunctionDeclaration' && item.id.name === 'toMatchmakerCard')
+const code = babel.transformSync(source.slice(node.start, node.end), { filename: 'rank.ts', configFile: false, babelrc: false, plugins: ['@babel/plugin-transform-typescript'] }).code
+const convert = vm.runInNewContext(code + '\n;toMatchmakerCard', { resolveMediaUrl: value => value })
+const item = { user_id: 1, success_count: 9, served_member_count: 5, successful_meeting_member_count: 2 }
+const rank = convert(item, true)
+assert.equal(rank.serviceCount, 5)
+assert.equal(rank.successCount, 2)
+assert.equal(convert(item).successCount, 9)
+assert.equal(convert({ user_id: 1, success_count: 9 }, true).serviceCount, '--')
+console.log('ranking counts: separate service and completed-meeting people; older response shows unavailable')

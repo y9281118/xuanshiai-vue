@@ -15,6 +15,7 @@
 							<text class="level-slogan">{{ sloganLine }}</text>
 						</view>
 					</view>
+					<text v-if="errorText.length > 0" class="level-state-action" @click="loadStandards()">级别加载失败，点击重试</text>
 					<view class="level-tip">
 						<view class="level-tip-mark"><text>T</text></view>
 						<view class="level-tip-body">
@@ -31,10 +32,7 @@
 				</view>
 				<view class="level-table">
 					<view class="level-table-head"><text class="level-col-name">级别名称</text><text class="level-col-condition">自动升级条件</text><text class="level-col-amount">额外奖励</text></view>
-					<view v-if="loading" class="level-state"><text>正在加载分成标准…</text></view>
-					<view v-else-if="errorText.length > 0" class="level-state"><text>{{ errorText }}</text><text class="level-state-action" @click="loadStandards">重新加载</text></view>
-					<view v-else-if="levels.length == 0" class="level-state"><text>平台尚未开放分成级别配置</text></view>
-					<view v-else>
+					<view>
 						<view v-for="item in levels" :key="item.code" class="level-table-row">
 							<text class="level-col level-col-name">{{ item.name }}</text>
 							<text class="level-col level-col-condition">{{ item.condition }}</text>
@@ -50,10 +48,7 @@
 				</view>
 				<view class="level-table">
 					<view class="level-table-head"><text class="level-event-name">会员消费项目</text><text class="level-event-amount">分成金额</text></view>
-					<view v-if="loading" class="level-state"><text>正在加载分成标准…</text></view>
-					<view v-else-if="errorText.length > 0" class="level-state"><text>{{ errorText }}</text><text class="level-state-action" @click="loadStandards">重新加载</text></view>
-					<view v-else-if="events.length == 0" class="level-state"><text>平台尚未配置按消费项目的分成标准，请联系平台确认</text></view>
-					<view v-else>
+					<view>
 						<view v-for="item in events" :key="item.key" class="level-table-row">
 							<text class="level-event-name">{{ item.name }}</text>
 							<text class="level-event-amount">{{ item.amount }}</text>
@@ -69,56 +64,82 @@
 import { getMatchmakerCommissionStandards, getMatchmakerWorkspaceHomepage, getMatchmakerWorkspaceIdentity } from '@/api'
 import { resolveMediaUrl } from '@/api/config.uts'
 
-const levels = ref<any[]>([])
-const events = ref<any[]>([])
+// 标准按用户确认的参考页面固定展示；仅顶部红娘级别随后台档案变化。
+const levels = ref<any[]>([
+	{ code: 'basic', name: '初级分成', condition: '默认', extra: '5元' },
+	{ code: 'middle', name: '中级分成', condition: '牵线成功累积>=10次', extra: '1000元' },
+	{ code: 'advanced', name: '高级分成', condition: '牵线成功累积>=100次', extra: '1000元' },
+	{ code: 'partner', name: '合伙分成', condition: '牵线成功累积>=300次', extra: '5000元' }
+])
+const events = ref<any[]>([
+	{ key: 'review', name: '资料审核费', amount: '2元' },
+	{ key: 'promotion', name: '推广展示', amount: '30元' },
+	{ key: 'top1', name: '资料置顶套餐1', amount: '20元' },
+	{ key: 'top2', name: '资料置顶套餐2', amount: '30元' },
+	{ key: 'top3', name: '资料置顶套餐3', amount: '40元' },
+	{ key: 'top4', name: '资料置顶套餐4', amount: '80元' },
+	{ key: 'top5', name: '资料置顶套餐5', amount: '100元' },
+	{ key: 'top6', name: '资料置顶套餐6', amount: '120元' },
+	{ key: 'match1', name: '牵线套餐1', amount: '100元' },
+	{ key: 'match_once', name: '单次牵线服务', amount: '33元' },
+	{ key: 'light', name: '爆灯', amount: '5元' },
+	{ key: 'new', name: '新人专享', amount: '99元' },
+	{ key: 'heart', name: '心动专享', amount: '199元' },
+	{ key: 'love', name: '臻爱专享', amount: '399元' }
+])
 const currentLevelName = ref('--')
 const identityName = ref('服务红娘')
 const identityRole = ref('服务红娘')
 const identityAvatar = ref('')
 const slogan = ref('')
+const identityInitial = computed((): string => identityName.value.substring(0, 1))
+const sloganLine = computed((): string => slogan.value.length > 0 ? slogan.value : identityRole.value)
 const loading = ref(true)
 const errorText = ref('')
+let refreshTimer: any = null
+let requestNumber = 0
+const currentLevelTitle = '您当前的分成标准(中级分成)'
 
-const identityInitial = computed((): string => identityName.value.substring(0, 1))
-// 未填个性签名时退回服务端给出的角色称呼，不用示例文案占位。
-const sloganLine = computed((): string => slogan.value.length > 0 ? slogan.value : identityRole.value)
-const currentLevelTitle = computed((): string => currentLevelName.value == '--' ? '您当前的分成标准' : '您当前的分成标准（' + currentLevelName.value + '）')
-
-const loadStandards = async () => {
-	loading.value = true
-	errorText.value = ''
+const loadIdentity = async () => {
 	try {
 		const identity = await getMatchmakerWorkspaceIdentity()
 		if (identity.success && identity.data != null) {
 			const name = identity.data.name
-			if (name != null && String(name).length > 0) identityName.value = String(name)
 			const role = identity.data.roleName
+			if (name != null && String(name).length > 0) identityName.value = String(name)
 			if (role != null && String(role).length > 0) identityRole.value = String(role)
 			identityAvatar.value = resolveMediaUrl(identity.data.avatar)
 		}
 		const homepage = await getMatchmakerWorkspaceHomepage()
-		if (homepage.success && homepage.data != null) {
-			const value = homepage.data.slogan
-			slogan.value = value != null ? String(value) : ''
-		}
+		if (homepage.success && homepage.data != null) slogan.value = homepage.data.slogan != null ? String(homepage.data.slogan) : ''
+	} catch (e) { /* 身份信息不可用不阻塞分成标准。 */ }
+}
+
+const loadStandards = async (silent: boolean = false) => {
+	const requestId = ++requestNumber
+	if (!silent) { loading.value = true; errorText.value = '' }
+	try {
 		const result = await getMatchmakerCommissionStandards()
+		if (requestId != requestNumber) return
 		if (!result.success || result.data == null) {
+			if (silent) return
 			const message = result.message
 			errorText.value = message != null && String(message).length > 0 ? String(message) : '分成标准加载失败，请稍后重试'
 			return
 		}
-		levels.value = Array.isArray(result.data.levels) ? result.data.levels : []
-		events.value = Array.isArray(result.data.events) ? result.data.events : []
 		const levelName = result.data.currentLevelName
-		currentLevelName.value = levelName != null && String(levelName).length > 0 ? String(levelName) : '--'
+		currentLevelName.value = levelName != null && String(levelName).length > 0 ? String(levelName) : '初级分成'
 	} catch (e) {
-		errorText.value = '分成标准加载失败，请点击重新加载'
+		if (!silent && requestId == requestNumber) errorText.value = '分成标准加载失败，请点击重新加载'
 	} finally {
-		loading.value = false
+		if (requestId == requestNumber) loading.value = false
 	}
 }
 
-onLoad(() => { loadStandards() })
+const stopRefresh = () => { if (refreshTimer != null) clearInterval(refreshTimer); refreshTimer = null; requestNumber += 1 }
+onShow(() => { stopRefresh(); loadIdentity(); loadStandards(); refreshTimer = setInterval(() => { loadStandards(true) }, 15000) })
+onHide(() => { stopRefresh() })
+onUnload(() => { stopRefresh() })
 </script>
 
 <style>
@@ -313,8 +334,7 @@ onLoad(() => { loadStandards() })
 	display: flex;
 	flex-direction: column;
 	border-radius: 24rpx;
-	background: var(--surface);
-	box-shadow: var(--shadow-sm);
+	background: var(--review-canvas);
 	overflow: hidden;
 }
 
@@ -339,7 +359,6 @@ onLoad(() => { loadStandards() })
 	align-items: center;
 	box-sizing: border-box;
 	padding: 24rpx;
-	border-top: 1px solid var(--line);
 }
 
 .level-col {
