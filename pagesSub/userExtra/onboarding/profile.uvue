@@ -262,6 +262,8 @@
 	// 角色卡片 key（本页）→ 服务端 intent_type（app/schemas/auth.py: RegistrationIntentUpdate）。
 	// 服务端靠它决定推荐性别口径：找对象只推异性、找搭子同性异性都推。
 	// 「当红娘」不对应注册意图（那是 user_role 申请流程），返回空串表示不提交。
+	// 产品口径：身份只在注册/引导流程选，故意不在设置页开口子让老用户改，
+	// 所以这里是 intent_type 的唯一写入口；要加改身份功能须先确认推荐口径如何回滚。
 	const roleIntentType = (key: string): string => {
 		if (key == 'self') return 'self_match'
 		if (key == 'parent') return 'parent_match'
