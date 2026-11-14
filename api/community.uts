@@ -208,6 +208,14 @@ function timeTextFrom(raw: any): string {
   return m + '/' + day
 }
 
+// 社区评论区 v2：图二底行用绝对日期 MM-DD，与相对时间 timeText 并存
+function dateTextFrom(raw: any): string {
+  const d = new Date(toMs(raw))
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return (m < 10 ? '0' + m : '' + m) + '-' + (day < 10 ? '0' + day : '' + day)
+}
+
 function genderText(g: any): string {
   if (g == 1 || g == '1' || g == '男') return '男'
   if (g == 2 || g == '2' || g == '女') return '女'
@@ -643,6 +651,11 @@ function mapComment(row: any): any {
     },
     content: row.content != null ? row.content : '',
     timeText: row.timeText != null ? row.timeText : timeTextFrom(row.created_at),
+    dateText: row.dateText != null ? row.dateText : dateTextFrom(row.created_at),
+    // 地点取用户当前 IP 属地，后端已按 ip_region -> phone_region -> residence 回退
+    location: row.location != null ? '' + row.location : (row.ip_region != null ? '' + row.ip_region : (row.phone_region != null ? '' + row.phone_region : '')),
+    likedByAuthor: row.liked_by_author == true || row.likedByAuthor == true,
+    isPostAuthor: row.is_post_author == true || row.isPostAuthor == true,
     likeCount: row.like_count != null ? row.like_count : (row.likeCount != null ? row.likeCount : 0),
     liked: row.is_liked == true || row.liked == true,
     replyTo: row.parent_id != null ? row.parent_id : null,
@@ -1539,9 +1552,6 @@ export async function sendPaperPlane(contentOrPayload: any, anonymousArg: boolea
   let suppliedCreateKey = ''
   let voiceUrl = ''
   let voiceDurationSec = 0
-  // Mock 模式下上传返回的是不可播放的 mock:// 地址，另外保留录音本地临时文件，
-  // 供「我发出的」列表与详情弹层试听；真实模式下该字段不会写进请求体。
-  let localVoicePath = ''
   let imageMediaIds: number[] = []
   if (contentOrPayload != null && typeof contentOrPayload === 'object') {
     content = contentOrPayload.content != null ? ('' + contentOrPayload.content).trim() : ''
@@ -1550,7 +1560,6 @@ export async function sendPaperPlane(contentOrPayload: any, anonymousArg: boolea
     suppliedCreateKey = contentOrPayload.idempotencyKey != null ? ('' + contentOrPayload.idempotencyKey) : ''
     voiceUrl = contentOrPayload.voiceUrl != null ? ('' + contentOrPayload.voiceUrl) : ''
     voiceDurationSec = contentOrPayload.voiceDurationSec != null ? (contentOrPayload.voiceDurationSec as number) : 0
-    localVoicePath = contentOrPayload.localVoicePath != null ? ('' + contentOrPayload.localVoicePath) : ''
     const rawImageMediaIds = contentOrPayload.imageMediaIds != null ? contentOrPayload.imageMediaIds : contentOrPayload.image_media_ids
     if (rawImageMediaIds != null && Array.isArray(rawImageMediaIds)) {
       imageMediaIds = rawImageMediaIds as number[]
@@ -1592,8 +1601,7 @@ export async function sendPaperPlane(contentOrPayload: any, anonymousArg: boolea
     quotas.paperPlaneDaily.used += 1
     quotas.paperPlaneDaily.remain -= 1
     const planeImages = hasImageMediaIds ? resolveMockMediaUrls(imageMediaIds) : []
-    // 变量名避开真实分支里的 const plane，防止 UTS 编译后出现同名遮蔽。
-    const sentPlane = {
+    const plane = {
       id: Date.now(),
       content,
       anonymous,
@@ -1606,15 +1614,13 @@ export async function sendPaperPlane(contentOrPayload: any, anonymousArg: boolea
       timeText: '刚刚',
       replyCount: 0,
       replied: false,
-      type: voiceUrl != '' ? 'voice' : (planeImages.length > 0 ? 'image' : 'text'),
       voiceUrl: voiceUrl,
       voiceDurationSec: voiceDurationSec,
-      localVoicePath: localVoicePath,
       conversationId: 0,
       images: planeImages,
       photos: planeImages
     }
-    ;(mockPaperPlanes as any[]).unshift(sentPlane)
+    ;(mockPaperPlanes as any[]).unshift(plane)
     savePaperPlaneState()
     return request({
       url: '/community/paper-planes/send',
@@ -1622,7 +1628,7 @@ export async function sendPaperPlane(contentOrPayload: any, anonymousArg: boolea
       action: 'sendPaperPlane',
       method: 'POST',
       data: { content, anonymous, scope },
-      mockData: { success: true, plane: sentPlane, quotas: quotas.paperPlaneDaily }
+      mockData: { success: true, plane, quotas: quotas.paperPlaneDaily }
     })
   }
 
@@ -3443,84 +3449,23 @@ export async function getPaperPlaneConversations() {
 }
 
 /** 获取当前用户最近五天扔出的纸飞机。 */
-/**
- * 「我发出的」统一视图。
- * mock 数据是 camelCase；真实 /paper-planes/mine 返回 PaperPlaneResponse（snake_case），
- * 会先经 mapPaperPlane 转换。两条分支最终输出同一套字段，页面不再各自猜字段名。
- * 语音记录必须带 type='voice'，否则列表会把空 content 渲染成一张空白的「文字纸飞机」。
- */
-function mapSentPaperPlane(row: any): any {
-  if (row == null) return null
-  const voiceUrl = row.voiceUrl != null ? '' + row.voiceUrl : (row.voice_url != null ? '' + row.voice_url : '')
-  const localVoicePath = row.localVoicePath != null ? '' + row.localVoicePath : ''
-  const sec = Math.max(0, Math.round(Number(row.voiceDurationSec != null ? row.voiceDurationSec : (row.voice_duration_sec != null ? row.voice_duration_sec : 0))))
-  const minute = Math.floor(sec / 60)
-  const second = sec % 60
-  const durationText = (minute < 10 ? '0' + minute : '' + minute) + ':' + (second < 10 ? '0' + second : '' + second)
-  let rawImages: any[] = []
-  if (row.images != null && Array.isArray(row.images)) rawImages = row.images as any[]
-  else if (row.photos != null && Array.isArray(row.photos)) rawImages = row.photos as any[]
-  const images: string[] = []
-  for (let i = 0; i < rawImages.length; i++) {
-    const url = rawImages[i]
-    if (url != null && ('' + url) != '') images.push('' + url)
-  }
-  const content = row.content != null ? '' + row.content : ''
-  const type = row.type != null && ('' + row.type) != ''
-    ? '' + row.type
-    : (voiceUrl != '' || localVoicePath != '' ? 'voice' : (images.length > 0 ? 'image' : 'text'))
-  const replyCount = Math.max(0, Math.round(Number(row.replyCount != null ? row.replyCount : (row.reply_count != null ? row.reply_count : 0))))
-  const time = row.time != null ? Number(row.time) : (row.created_at != null ? toMs(row.created_at) : Date.now())
-  const timeText = row.timeText != null && ('' + row.timeText) != ''
-    ? '' + row.timeText
-    : (row.created_at != null ? timeTextFrom(row.created_at) : paperPlaneTimeText(time))
-  let summary = content
-  if (type == 'voice') summary = sec > 0 ? '一段 ' + sec + ' 秒的语音' : '一段语音纸飞机'
-  else if (summary == '' && images.length > 0) summary = '一张图片纸飞机'
-  else if (summary == '') summary = '（无文字内容）'
-  return {
-    id: Number(row.id != null ? row.id : 0),
-    type: type,
-    typeLabel: type == 'voice' ? '语音纸飞机' : (type == 'image' ? '图片纸飞机' : '文字纸飞机'),
-    summary: summary,
-    content: content,
-    time: time,
-    timeText: timeText,
-    replyCount: replyCount,
-    replyText: replyCount > 0 ? replyCount + ' 人回应了这架纸飞机' : '还没有收到回应',
-    statusText: replyCount > 0 ? '已送达' : '飞行中',
-    voiceUrl: voiceUrl,
-    localVoicePath: localVoicePath,
-    voicePlayable: (localVoicePath != '' && localVoicePath.indexOf('mock://') != 0) || (voiceUrl != '' && voiceUrl.indexOf('mock://') != 0),
-    voiceDurationSec: sec,
-    durationText: durationText,
-    images: images,
-    conversationId: Number(row.conversationId != null ? row.conversationId : (row.conversation_id != null ? row.conversation_id : 0)),
-    anonymous: row.anonymous != null ? row.anonymous == true : row.is_anonymous == true,
-    city: row.city != null ? '' + row.city : '',
-    scope: row.scope != null ? '' + row.scope : 'city'
-  }
-}
-
 export async function getSentPaperPlanes() {
   if (USE_MOCK) {
     restorePaperPlaneState()
     const cutoff = Date.now() - 5 * 24 * 60 * 60 * 1000
-    const rows = (mockPaperPlanes as any[]).filter((plane: any) => {
+    const list = (mockPaperPlanes as any[]).filter((plane: any) => {
       return plane.userId == mockMeProfile.id && Number(plane.time) >= cutoff
     })
-    const list: any[] = []
-    for (let i = 0; i < rows.length; i++) {
-      const mapped = mapSentPaperPlane(rows[i])
-      if (mapped != null) list.push(mapped)
-    }
+    list.forEach((plane: any) => {
+      plane.timeText = paperPlaneTimeText(plane.time)
+    })
     list.sort((a: any, b: any) => Number(b.time) - Number(a.time))
     return request({
       url: '/community/paper-planes/sent',
       cloudFunctionName: 'community',
       action: 'getSentPaperPlanes',
       method: 'GET',
-      mockData: list
+      mockData: cloneList(list)
     })
   }
   const res = await request({
@@ -3529,16 +3474,8 @@ export async function getSentPaperPlanes() {
     data: { page: 1, page_size: 50 }
   })
   if (!res.success) return res
-  let arr: any[] = []
-  if (res.data != null && Array.isArray(res.data)) arr = res.data as any[]
-  else if (res.data != null && res.data.items != null && Array.isArray(res.data.items)) arr = res.data.items as any[]
-  const list: any[] = []
-  for (let i = 0; i < arr.length; i++) {
-    const mapped = mapSentPaperPlane(mapPaperPlane(arr[i]))
-    if (mapped != null) list.push(mapped)
-  }
-  list.sort((a: any, b: any) => Number(b.time) - Number(a.time))
-  return okRes(list)
+  const arr = res.data != null && Array.isArray(res.data) ? res.data : []
+  return okRes(arr)
 }
 
 /** 获取纸飞机聊天列表的未读消息总数。 */

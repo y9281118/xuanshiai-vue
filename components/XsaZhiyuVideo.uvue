@@ -1,0 +1,135 @@
+<template>
+	<view class="zyv" :class="compact ? 'zyv-compact' : ''">
+		<view class="zyv-viewport" :style="{ width: size, height: size }">
+			<video v-if="useNativeVideo && !videoFailed" class="zyv-video"
+				src="/static/ai-cat/zhiyu-dance.mp4"
+				:autoplay="true" :loop="true" :muted="true" :controls="false"
+				object-fit="contain" :show-play-btn="false"
+				:show-center-play-btn="false" :show-fullscreen-btn="false"
+				:show-progress="false" :show-loading="false"
+				:enable-progress-gesture="false"
+				@error="onVideoError"></video>
+			<image v-else class="zyv-sprite" src="/static/ai-cat/zhiyu-dance-sprite-alpha.webp" mode="scaleToFill"></image>
+		</view>
+		<text v-if="showLabel" class="zyv-label">知遇</text>
+	</view>
+</template>
+
+<script setup lang="uts">
+/**
+ * XsaZhiyuVideo - 知遇 IP 形象（导入视频版）
+ *
+ * 素材来自用户导入的《静态3D玩偶转动态多面效果.mp4》：
+ * 720x720 / 24fps / 10.08s，同一只猫耳机器人的 3D 动态效果
+ * （眨眼、歪头、抬爪、表情变化、身体轻摇）。
+ *
+ * 小程序内提供三种素材：
+ *   - zhiyu-dance.mp4                  168KB，去音轨、512x512、H.264（原生 video 用，仍是浅灰白底）
+ *   - zhiyu-dance-sprite.webp          109KB，12fps × 120 帧横排雪碧图（不透明旧版，保留作回退）
+ *   - zhiyu-dance-sprite-alpha.webp   231KB，透明底 + 外壳提亮 + 柔和绿（默认，无描边）
+ *
+ * 外壳提亮：原片白色外壳本身偏灰（RGB 均值约 226，仅 7.8% 像素 >240），
+ * 并非抠图或压缩造成。对「浅色 + 低饱和 + 完全不透明」像素做 gamma 提亮
+ * （g=0.50）后均值约 240；黑色面罩、粉色耳内、半透明边缘不动。
+ *
+ * 绿色调色：早期提亮把薄荷绿当低饱和浅色一起冲淡（绿区 8.09% -> 1.45%），
+ * 提亮时按 G-(R+B)/2 保护绿色区不参与即可修复。绿色最终按用户色号
+ * #F5F9F2 的色度向量 (G 略高、B 最低，偏黄绿白) 以 x5 浓度叠加并保留明暗，
+ * 不用高彩度青绿薄荷（B>R 会发亮偏荧光）。彩度约 17.1，绿区 RGB 约 (220,229,212)，
+ * 绿区占比 10.77%。只作用于耳朵外圈 / 头部两侧 / 手脚 / 底边，粉色耳内与白壳不变。
+ *
+ * 轮廓描边：曾额外加过一圈柔和灰绿外描边 + 内部结构线（轮廓带与浅色页面
+ * 色差 4.8 -> 90.5），但用户认为观感奇怪，已回退为无描边版本。
+ * 描边版及浅描边 / 纯描边 / 深描边各档仅留在会话目录备用，未进项目。
+ *
+ * 透明底做法：视频背景是带纹理的浅灰白（约 241,240,243），猫身也是白色，
+ * 硬色键会连主体一起抠掉。改用「四边采样拟合背景曲面 + 色差/梯度屏障 +
+ * 仅保留与画面边缘连通的背景区域」，再取最大前景连通块做软 alpha 羽化。
+ * 120 帧覆盖率 56.3–59.3%，无异常帧。H.264 不支持 alpha，故原生 video 分支无透明效果。
+ *
+ * 默认走雪碧图逐帧播放：视觉与视频一致，但避开小程序 video 原生组件的
+ * 两个坑 —— ① 层级最高会盖住知遇气泡等上层 UI；② 包内本地 MP4 在部分真机黑屏。
+ * 要在开发者工具里试原生 video，把 USE_NATIVE_VIDEO 改为 true 即可；
+ * 播放失败会自动回退到雪碧图，不会出现空白。
+ * 若旧 iOS 真机不支持带 alpha 的 WebP，把 src 改回 -sprite.webp 即可回到不透明版。
+ *
+ * props 与 XsaZhiyuMark 完全一致（size / showLabel / compact），可直接替换。
+ */
+import { ref } from 'vue'
+
+const USE_NATIVE_VIDEO = false
+const useNativeVideo = ref(USE_NATIVE_VIDEO)
+const videoFailed = ref(false)
+
+interface Props {
+	size?: string
+	showLabel?: boolean
+	compact?: boolean
+}
+
+withDefaults(defineProps<Props>(), {
+	size: '72rpx',
+	showLabel: true,
+	compact: false
+})
+
+function onVideoError(): void {
+	videoFailed.value = true
+}
+</script>
+
+<style scoped>
+.zyv {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2rpx;
+}
+
+.zyv-viewport {
+	position: relative;
+	overflow: hidden;
+	flex: none;
+}
+
+/* 120 帧横排：宽 = 视口 120 倍，steps(120) 每次推进一帧，10s 一圈 */
+.zyv-sprite {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 12000%;
+	height: 100%;
+	animation: zyv-play 10s steps(120) infinite;
+}
+
+@keyframes zyv-play {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-100%);
+	}
+}
+
+.zyv-video {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.zyv-label {
+	font-size: 22rpx;
+	line-height: 1.2;
+	font-weight: 700;
+	color: var(--accent2);
+	letter-spacing: 2rpx;
+}
+
+.zyv-compact .zyv-label {
+	font-size: 20rpx;
+	letter-spacing: 1rpx;
+}
+</style>

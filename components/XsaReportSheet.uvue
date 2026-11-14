@@ -172,7 +172,7 @@
 		}
 		uni.showModal({
 			title: '确认屏蔽',
-			content: '屏蔽后将不再看到该用户内容，可在设置中管理。',
+			content: '屏蔽后将不再看到该用户内容，可在「我的 → 设置 → 社区安全 → 已屏蔽用户」中管理。',
 			confirmText: '屏蔽',
 			success: async (res) => {
 				if (!res.confirm) return

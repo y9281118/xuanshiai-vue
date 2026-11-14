@@ -1,14 +1,18 @@
 <template>
 	<view class="zym" :class="compact ? 'zym-compact' : ''">
-		<image class="zym-cat" :style="{ width: size, height: size }" src="/static/ai-cat/ai-cat.webp" mode="aspectFit"></image>
+		<view class="zym-cat-box" :style="{ width: size, height: size }">
+			<image class="zym-cat" src="/static/ai-cat/ai-cat.webp" mode="aspectFit"></image>
+		</view>
 		<text v-if="showLabel" class="zym-label">知遇</text>
 	</view>
 </template>
 
 <script setup lang="uts">
 /**
- * XsaZhiyuMark - 知遇 IP 字标
- * 全站 AI 入口共用同一只小猫 +「知遇」，不再另起吉祥物或名字。
+ * XsaZhiyuMark - 知遇 IP 字标（静态正面版）
+ * 全站 AI 入口共用同一只小猫 +「知遇」。
+ * 按产品要求：只展示小猫 2D 静态正面图，不做挥手 / 呼吸 / 逐帧动效，也不接 3D 模型。
+ * 素材为原图 512x512 猫耳机器人（static/ai-cat/ai-cat.webp）。
  * size 用行内样式控制边长，避免小程序样式 v-bind 不稳定。
  */
 interface Props {
@@ -33,8 +37,17 @@ withDefaults(defineProps<Props>(), {
 	gap: 2rpx;
 }
 
-.zym-cat {
+.zym-cat-box {
+	position: relative;
 	flex: none;
+}
+
+.zym-cat {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
 }
 
 .zym-label {

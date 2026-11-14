@@ -2,7 +2,7 @@
 	<XsaSheet :visible="visible" title="知遇" :tall="true" @close="onClose">
 		<view class="zyh">
 			<view class="zyh-hero">
-				<XsaZhiyuMark size="112rpx" :show-label="false" />
+				<XsaZhiyuVideo size="112rpx" :show-label="false" />
 				<view class="zyh-hero-copy">
 					<text class="zyh-name">知遇</text>
 					<text class="zyh-lead">一个知遇，帮你认识自己、了解对方。仅供参考。</text>
@@ -14,8 +14,9 @@
 				class="zyh-item"
 				@tap="onPick(item.key)"
 			>
-				<view class="zyh-item-mark">
-					<text class="zyh-item-glyph">{{ item.glyph }}</text>
+				<view class="zyh-item-mark" :class="{ 'zyh-item-mark-icon': !!item.icon }">
+					<XsaZhiyuGlyph v-if="item.icon" :src="item.icon" size="96rpx" />
+					<text v-else class="zyh-item-glyph">{{ item.glyph }}</text>
 				</view>
 				<view class="zyh-item-copy">
 					<text class="zyh-item-title">{{ item.title }}</text>
@@ -34,11 +35,13 @@
  * 不承诺关系结果，不替用户发送或同意。
  */
 import XsaSheet from './XsaSheet.uvue'
-import XsaZhiyuMark from './XsaZhiyuMark.uvue'
+import XsaZhiyuVideo from './XsaZhiyuVideo.uvue'
+import XsaZhiyuGlyph from './XsaZhiyuGlyph.uvue'
 
 interface ZhiyuAction {
 	key: string
 	glyph: string
+	icon?: string
 	title: string
 	desc: string
 }
@@ -121,6 +124,13 @@ function onPick(key: string): void {
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
+}
+
+/* 有动态图标时不画圆底：机器人雪碧图帧内主体约占 75%，
+   96rpx 图框的视觉主体 ≈ 72rpx（原圆底直径），透明部分溢出不裁剪 */
+.zyh-item-mark-icon {
+	background: transparent;
+	overflow: visible;
 }
 
 .zyh-item-glyph {

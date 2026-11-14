@@ -17,9 +17,17 @@
 			<view class="content-inner">
 			<!-- 个人资料头部（横向布局） -->
 			<view class="profile-header">
-				<view class="avatar-wrap" @tap="onViewMyProfile">
-					<image v-if="user.avatar != ''" class="avatar-image" :src="user.avatar" mode="aspectFill"></image>
-					<text v-else class="ic ic-social ic-touxiang avatar-icon"></text>
+				<view class="avatar-col">
+					<view class="avatar-wrap" @tap="onViewMyProfile">
+						<image v-if="user.avatar != ''" class="avatar-image" :src="user.avatar" mode="aspectFill"></image>
+						<text v-else class="ic ic-social ic-touxiang avatar-icon"></text>
+					</view>
+					<!-- VIP 标识紧贴头像正下方；「会员权益有效」「规则版本」文案 2026-11-13 产品决定删除。 -->
+					<view v-if="user.isVip" class="vip-under-avatar">
+						<view class="vip-tag">
+							<text class="vip-tag-text">VIP会员</text>
+						</view>
+					</view>
 				</view>
 				<view class="profile-info">
 					<view class="nickname-row">
@@ -28,23 +36,14 @@
 							<text class="moxiang-attachment-text">{{ aiAttachmentStyleLabel }}</text>
 						</view>
 					</view>
-					<!-- 墨相心性称号与特质标签行（点击直达我的画像） -->
-					<view v-if="aiPersonaTitle != '' || aiPersonaTags.length > 0" class="moxiang-badge-wrap" @tap="onAiPortrait">
-						<view v-if="aiPersonaTitle != ''" class="moxiang-title-badge">
+					<!-- 墨相心性称号行（点击直达我的画像）；特质标签 2026-11-12 产品决定从头部移除 -->
+					<view v-if="aiPersonaTitle != ''" class="moxiang-badge-wrap" @tap="onAiPortrait">
+						<view class="moxiang-title-badge">
 							<text class="moxiang-title-seal">墨</text>
 							<text class="moxiang-title-text">{{ aiPersonaTitle }}</text>
 						</view>
-						<view v-for="tag in aiPersonaTags" :key="tag" class="moxiang-tag-pill">
-							<text class="moxiang-tag-text">{{ tag }}</text>
-						</view>
 					</view>
-					<view class="vip-tag-row">
-						<view v-if="user.isVip" class="vip-tag">
-							<text class="vip-tag-text">VIP会员</text>
-						</view>
-						<text class="vip-tag-desc">{{ user.isVip ? '会员权益有效' : '开通会员解锁更多功能' }}</text>
-					</view>
-					<!-- H5：这里是资料完整度，不是会员进度；与下方会员权益文案区分开。 -->
+					<!-- H5：资料完整度放在原 VIP 标识处（信息列第三行，右侧进度条铺满）；VIP 标识移到头像下方。 -->
 					<view class="progress-row">
 						<text class="progress-label">资料完整度</text>
 						<view class="progress-bar">
@@ -52,7 +51,6 @@
 						</view>
 						<text class="progress-percent">{{ completionLoaded ? profileCompletion + '%' : '—' }}</text>
 					</view>
-					<text v-if="completionRulesVersion != ''" class="progress-rule">规则版本 {{ completionRulesVersion }}</text>
 				</view>
 				<view class="edit-profile-btn" @tap="onEditProfile">
 					<text class="edit-profile-text">编辑资料</text>
@@ -165,9 +163,9 @@
 		</scroll-view>
 	</view>
 
-	<!-- 知遇悬浮入口：点开聚合面板；画像分流仍在面板里的「我的画像」 -->
+	<!-- 知遇悬浮入口：与首页同一只动态浅绿米白机器人；画像分流仍在面板里的「我的画像」 -->
 	<view class="ai-portrait-fab" @tap="openZhiyuHub">
-		<XsaZhiyuMark size="104rpx" />
+		<XsaZhiyuVideo size="144rpx" :show-label="false" />
 	</view>
 
 	<!-- 邀请分享弹窗：复用“我的任务.pen”的邀请分享弹窗-遮罩 -->
@@ -177,7 +175,7 @@
 			<text class="invite-share-title">分享邀请好友</text>
 			<view class="invite-share-options">
 				<view class="invite-share-option" @tap="shareToWechat">
-					<view class="invite-share-option-icon invite-share-option-icon-green"><text class="invite-share-symbol">↗</text></view>
+					<view class="invite-share-option-icon invite-share-option-icon-green"><image class="invite-share-symbol-img" src="/static/icons/share-arrow-line.svg" mode="aspectFit"></image></view>
 					<text class="invite-share-option-label">发送给朋友</text>
 				</view>
 				<view class="invite-share-option" @tap="goMyPoster">
@@ -204,6 +202,7 @@
 import { ref, computed } from 'vue'
 import XsaTabBar from '@/components/XsaTabBar.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
+import XsaZhiyuVideo from '@/components/XsaZhiyuVideo.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getProfileOverview, getProfileCompletion, getMembershipStatus, getPortraitNarrative } from '@/api'
 import { getContinuousMoxiangState, type ContinuousMoxiangState } from '@/api/ai-moxiang.uts'
@@ -812,7 +811,7 @@ page {
 .profile-header {
 	display: flex;
 	flex-direction: row;
-	align-items: center;
+	align-items: flex-start;
 	gap: 14px;
 	width: 100%;
 	padding-top: 8px;
@@ -820,6 +819,7 @@ page {
 /* ==================== 编辑资料入口（描边胶囊） ==================== */
 .edit-profile-btn {
 	flex-shrink: 0;
+	align-self: flex-start;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
@@ -847,8 +847,9 @@ page {
 .ai-portrait-fab {
 	position: fixed;
 	right: 20rpx;
-	bottom: 220rpx;
-	z-index: 30;
+	bottom: 360rpx;
+	width: 160rpx;
+	z-index: 55;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -957,24 +958,19 @@ page {
 	white-space: nowrap;
 }
 
-.moxiang-tag-pill {
-	padding: 2px 6px;
-	border-radius: 4px;
-	background-color: #F8F6F2;
-	border: 0.8px solid #EBE4D8;
+/* VIP 标识紧贴头像正下方，与头像同列居中；会员权益文案已删。 */
+.avatar-col {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	flex-shrink: 0;
 }
 
-.moxiang-tag-text {
-	font-size: 10px;
-	color: #6E4535;
-	line-height: 1.2;
-}
-
-.vip-tag-row {
+.vip-under-avatar {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 6px;
+	margin-top: 6px;
 }
 
 .vip-tag {
@@ -992,11 +988,6 @@ page {
 	color: var(--profile-text-inverse);
 }
 
-.vip-tag-desc {
-	font-size: 12px;
-	color: var(--profile-text-secondary);
-}
-
 .progress-row {
 	display: flex;
 	flex-direction: row;
@@ -1006,6 +997,7 @@ page {
 }
 
 .progress-bar {
+	/* 回到信息列内，进度条铺满剩余宽度（原 VIP 标识位置）。 */
 	flex: 1;
 	height: 6px;
 	border-radius: 3px;
@@ -1026,13 +1018,6 @@ page {
 .progress-percent {
 	font-size: 12px;
 	color: var(--profile-accent);
-}
-
-.progress-rule {
-	display: block;
-	margin-top: 4px;
-	font-size: 10px;
-	color: var(--muted);
 }
 
 .overview-error-bar {
@@ -1521,6 +1506,8 @@ page {
 .invite-share-option-icon-green { color: #627A5F; background-color: #E2EBE0; }
 .invite-share-option-icon-gold { color: #B8944A; background-color: #F7F1E5; }
 .invite-share-symbol { line-height: 1; }
+/* 「发送给朋友」与社区动态卡片共用同一枚细线弧形箭头（#7B8282 / 0.98px） */
+.invite-share-symbol-img { width: 34rpx; height: 34rpx; }
 
 .invite-share-option-label {
 	color: #1A1A1A;
