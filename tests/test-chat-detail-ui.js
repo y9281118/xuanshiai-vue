@@ -29,12 +29,31 @@ includes(chatPage, 'result.success != true', 'send success should require the bu
 includes(chatPage, 'uploadChatMedia', 'media should be uploaded before sending a media message')
 includes(chatPage, 'revokeMessage', 'sent messages should support a server-side revoke')
 
-// F-M1 长按菜单：撤回等动作收进长按，气泡外不再常驻可点文字。
-includes(chatPage, '@longpress="openMessageMenu(message)"', 'message bubbles should open a long-press menu')
-includes(chatPage, "const openMessageMenu = (message: any)", 'long-press menu builder')
-includes(chatPage, "items.push('复制')", 'copy action')
-includes(chatPage, "items.push('重新编辑')", 're-edit action')
-includes(chatPage, "items.push('撤回')", 'revoke action inside the long-press menu')
+// 撤回表现对齐微信：原气泡与头像都不再出现，只留一行居中灰字提示。
+// 对方侧不得再看到「消息已撤回」这种气泡占位。
+includes(chatPage, 'class="recall-divider"', 'revoked messages should render as a centered hint row')
+includes(chatPage, "message.isMine ? '你撤回了一条消息' : '对方撤回了一条消息'", 'recall hint copy should follow the viewer side')
+assert.ok(!chatPage.includes('revoked-content'), 'the old revoked placeholder bubble should be gone')
+assert.ok(!chatPage.includes("message.content = '消息已撤回'"), 'revoking must not keep the old placeholder text locally')
+includes(chatPage, '.recall-divider-text', 'recall hint should use its own muted style')
+includes(
+  chatPage,
+  'class="recall-divider" v-else-if="message.revoked == true" @longpress="openMessageMenu(message, $event)"',
+  'recall hint should stay long-pressable so "delete for me" remains reachable'
+)
+
+// F-M1 长按菜单：微信式深色网格浮层，转发/删除/多选/引用/复制/撤回/重新编辑。
+includes(chatPage, '@longpress="openMessageMenu(message, $event)"', 'message bubbles should open a long-press menu with position')
+includes(chatPage, 'const openMessageMenu = (message: any, event: any)', 'long-press menu builder')
+includes(chatPage, 'message-menu-grid', 'WeChat-style grid menu')
+includes(chatPage, 'message-menu-arrow', 'menu arrow pointing at the bubble')
+includes(chatPage, 'message-bubble-active', 'long-pressed bubble should keep a selected highlight')
+assert.ok(!chatPage.includes('itemList: items,'), 'the old system action sheet menu should be gone')
+for (const label of ['复制', '转发', '删除', '多选', '引用', '重新编辑', '撤回']) {
+  includes(chatPage, `label: '${label}'`, `${label} action in long-press menu`)
+}
+includes(chatPage, 'forwardTextMessage(', 'forward should send the text to another conversation')
+includes(chatPage, '删除后仅从你的聊天记录中移除，对方仍可看到。', 'delete must explain it is local-only')
 includes(chatPage, "message.type === 'system'", 'system messages should not expose a message menu')
 assert.ok(!chatPage.includes('class="revoke-action"'), 'revoke should not stay as a permanent control under the bubble')
 assert.ok(!chatPage.includes('.revoke-action'), 'styles of the removed permanent revoke control should be gone')
@@ -109,5 +128,16 @@ includes(apiIndex, 'revokeMessage', 'chat revoke API export')
 includes(apiIndex, 'getContactExchanges', 'contact exchange read API export')
 includes(apiIndex, 'createContactExchange', 'contact exchange create API export')
 includes(apiIndex, 'respondContactExchange', 'contact exchange response API export')
+includes(apiIndex, 'forwardTextMessage', 'forward API export')
+includes(apiIndex, 'getConversationPage', 'conversation list API for choosing a forward target')
+
+const messageApi = fs.readFileSync(path.join(root, 'api/message.uts'), 'utf8')
+assert.match(messageApi, /export async function forwardTextMessage\b/, 'forwardTextMessage must be implemented')
+assert.match(
+  messageApi,
+  /return await sendMessage\(targetUserId, text, 'text', clientMessageId, subject\)/,
+  'forward must reuse the real send-message path instead of a parallel API'
+)
+assert.ok(!messageApi.includes('url: \'/chat/messages/forward\''), 'no non-existent forward endpoint')
 
 console.log('聊天详情页交互契约测试通过')

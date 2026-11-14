@@ -13,7 +13,7 @@
 					<view class="application-top" @tap="openProfile(item.userId)"><image class="application-avatar" :src="item.avatar" mode="aspectFill"></image><view class="application-info"><text class="application-name">{{ item.name }}{{ item.age != '' ? ' · ' + item.age + '岁' : '' }}</text><text class="application-meta">{{ item.city }}</text><text class="application-meta">{{ item.salary }}</text></view></view>
 					<text class="application-message">{{ item.message }}</text>
 					<view class="application-status"><text>申请状态</text><view class="status-badge" :class="item.statusClass"><text class="ic ic-sys ic-tijiaoqueren"></text><text>{{ item.status }}</text></view></view>
-					<view v-if="item.statusCode == 'accepted'" class="single-action"><view class="agree-button" @tap="startChat(item)"><text>开始聊天</text></view></view>
+					<view v-if="item.statusCode == 'accepted'" class="single-action"><view class="agree-button" @tap="requestMeeting(item)"><text>撮合见面</text></view></view>
 				</view>
 			</view>
 			<view v-else-if="currentApplications.length > 0">
@@ -22,16 +22,19 @@
 					<text class="application-message">{{ item.message }}</text>
 					<view v-if="item.statusCode == 'pending'" class="received-actions"><view class="reject-button" :class="{ disabled: actionId != 0 }" @tap="rejectApplication(item)"><text>拒绝</text></view><view class="agree-button" :class="{ disabled: actionId != 0 }" @tap="agreeApplication(item)"><text>{{ actionId == item.applicationId ? '处理中...' : '同意' }}</text></view></view>
 					<view v-else class="application-status"><text>申请状态</text><view class="status-badge" :class="item.statusClass"><text class="ic ic-sys ic-tijiaoqueren"></text><text>{{ item.status }}</text></view></view>
-					<view v-if="item.statusCode == 'accepted'" class="single-action"><view class="agree-button" @tap="startChat(item)"><text>开始聊天</text></view></view>
+					<view v-if="item.statusCode == 'accepted'" class="single-action"><view class="agree-button" @tap="requestMeeting(item)"><text>撮合见面</text></view></view>
 				</view>
 			</view>
 			<view v-if="currentHasMore" class="load-more-action" @tap="loadMoreApplications"><text>{{ loading ? '正在加载...' : '加载更多' }}</text></view>
 		</scroll-view>
+		<!-- 撮合见面提交成功后弹出红娘安排线下见面的三步引导。 -->
+		<XsaMeetingSuccessModal :visible="meetingSuccessVisible" @close="meetingSuccessVisible = false" />
 	</view>
 </template>
 
 <script setup lang="uts">
-import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId, getPointProducts, getPointsSummary, redeemPointProduct } from '@/api'
+import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId, getPointProducts, getPointsSummary, redeemPointProduct, createMeetingApply } from '@/api'
+import XsaMeetingSuccessModal from '@/components/XsaMeetingSuccessModal.uvue'
 import { guardRealName } from '@/utils/realNameGate.uts'
 
 const systemInfo = uni.getSystemInfoSync()
@@ -215,6 +218,34 @@ const openProfile = (userId: number) => {
 		url: '/pagesSub/userExtra/user/detail?userId=' + Number(userId),
 		fail: () => { uni.showToast({ title: '资料打开失败，请重试', icon: 'none' }) }
 	})
+}
+
+// 撮合见面：认识申请已同意后，改为向平台发起线下约见申请，由红娘介入安排。
+// 复用一期 /matchmaker/meetings/requests 契约；成功后弹三步引导，不再直接跳聊天。
+const meetingSuccessVisible = ref(false)
+const meetingRequesting = ref(false)
+
+const requestMeeting = async (item: any) => {
+	const peerId = Number(item != null ? item.userId : 0)
+	if (peerId <= 0) {
+		uni.showToast({ title: '暂时无法定位对方', icon: 'none' })
+		return
+	}
+	if (meetingRequesting.value) return
+	meetingRequesting.value = true
+	try {
+		const res = await createMeetingApply(peerId)
+		if (res != null && res.success == true) {
+			meetingSuccessVisible.value = true
+			return
+		}
+		uni.showToast({
+			title: res != null && res.message != null && String(res.message) != 'success' ? String(res.message) : '约见申请失败，请重试',
+			icon: 'none'
+		})
+	} finally {
+		meetingRequesting.value = false
+	}
 }
 
 const startChat = async (item: any) => {

@@ -114,7 +114,12 @@ export {
   hideChatSession,
   restoreChatSession,
   getMyAvatarUrl,
-  resetMyAvatarCache
+  resetMyAvatarCache,
+  createMeetingApply,
+  getMeetingApplies,
+  handleMeetingApply,
+  getMeetingApplyState,
+  forwardTextMessage
 } from './message.uts'
 export {
   ADVISOR_SCENARIOS,

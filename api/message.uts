@@ -1449,3 +1449,122 @@ export async function handleApplication(
     subjectContext
   )
 }
+
+// ===== 聊天页「约见申请」：复用一期线下约见契约，不另建申请单 =====
+// 后端 POST /matchmaker/meetings/requests、GET .../requests/mine、PATCH .../requests/{id}。
+// 状态沿用 meeting_request：SUBMITTED / CONTACTED / ACCEPTED / DECLINED / CLOSED，
+// 红娘工作台待办、配额与状态回写全部自动复用，无需新增表或定时任务。
+export const MEETING_APPLY_NOTE = '希望通过平台安排一次线下见面'
+
+function mapMeetingApply(row: any): any | null {
+  if (row == null || !isPositiveInteger(Number(row.id))) return null
+  return {
+    id: Number(row.id),
+    userId: Number(row.user_id),
+    targetUserId: Number(row.target_user_id),
+    status: String(row.status != null ? row.status : 'SUBMITTED'),
+    note: row.note != null ? String(row.note) : '',
+    createdAt: row.created_at != null ? String(row.created_at) : '',
+    updatedAt: row.updated_at != null ? String(row.updated_at) : '',
+    userNickname: row.user_nickname != null ? String(row.user_nickname) : '',
+    targetNickname: row.target_nickname != null ? String(row.target_nickname) : '',
+    matchmakerName: row.matchmaker_name != null ? String(row.matchmaker_name) : ''
+  }
+}
+
+function meetingApplyResponse(res: any): any {
+  const normalized = normalizeBusinessResponse(res)
+  if (normalized == null || normalized.success != true) return normalized
+  const row = mapMeetingApply(businessData(normalized))
+  if (row == null) return failResponse('约见申请响应无效', 'INVALID_MEETING_APPLY_RESPONSE')
+  return okResponse(row)
+}
+
+/** 发起约见申请；note 是后端必填的申请说明，服务端会复用服务配额与红娘归属校验。 */
+export async function createMeetingApply(targetUserId: number, note: string = MEETING_APPLY_NOTE): Promise<any> {
+  if (!isPositiveInteger(targetUserId)) return failResponse('无效的约见对象', 'INVALID_USER')
+  const trimmed = note.trim()
+  if (trimmed.length < 1 || trimmed.length > 2000) return failResponse('申请说明不能为空', 'INVALID_MEETING_NOTE')
+  const res = await messageRequest({
+    url: '/matchmaker/meetings/requests',
+    method: 'POST',
+    data: { target_user_id: targetUserId, note: trimmed }
+  })
+  return meetingApplyResponse(res)
+}
+
+/** 拉取我发出或收到的约见申请，供卡片状态兜底（进入会话 / 曝光 / 点击各查一次）。 */
+export async function getMeetingApplies(): Promise<any> {
+  const res = await messageRequest({ url: '/matchmaker/meetings/requests/mine', method: 'GET' })
+  const normalized = normalizeBusinessResponse(res)
+  if (normalized == null || normalized.success != true) return normalized
+  const rows = businessData(normalized)
+  if (!Array.isArray(rows)) return failResponse('约见申请列表响应无效', 'INVALID_MEETING_APPLY_RESPONSE')
+  const items: any[] = []
+  for (const row of rows) {
+    const item = mapMeetingApply(row)
+    if (item != null) items.push(item)
+  }
+  return okResponse(items)
+}
+
+/** 同意 / 拒绝 / 撤回；幂等由服务端按申请单当前状态保证。 */
+export async function handleMeetingApply(applyId: number, action: string, reason: string = ''): Promise<any> {
+  if (!isPositiveInteger(applyId)) return failResponse('无效的约见申请', 'INVALID_MEETING_APPLY')
+  const status = action == 'agree' ? 'ACCEPTED' : (action == 'refuse' ? 'DECLINED' : (action == 'cancel' ? 'CLOSED' : ''))
+  if (status == '') return failResponse('不支持的约见操作', 'INVALID_MEETING_ACTION')
+  const data: any = { status: status }
+  const trimmed = reason.trim()
+  if (trimmed.length > 0) data.reason = trimmed.substring(0, 255)
+  else if (status == 'DECLINED' || status == 'CLOSED') {
+    // 后端 update_meeting_request 对 DECLINED/CLOSED 强制 reason 非空，否则 422。
+    // 需求里「拒绝原因可选」、撤回也不填原因，所以客户端补一条中性说明，
+    // 否则「撤回申请」和「拒绝（不填原因）」必定失败。
+    data.reason = status == 'CLOSED' ? '发起方主动撤回申请' : '对方未填写原因'
+  }
+  const res = await messageRequest({ url: '/matchmaker/meetings/requests/' + applyId, method: 'PATCH', data: data })
+  return meetingApplyResponse(res)
+}
+
+/**
+ * 当前会话的约见状态：前端聚合「是否有 pending / 已同意」用于入口置灰与卡片渲染。
+ * 频率限制最终由服务端 matchmaker_service_quota 与「已有处理中约见申请」409 兜底，
+ * 这里不在客户端解析时间做二次限流，避免跨端时间格式差异造成误置灰。
+ */
+export async function getMeetingApplyState(peerUserId: number): Promise<any> {
+  const listRes = await getMeetingApplies()
+  if (listRes == null || listRes.success != true) return listRes
+  const rows: any[] = Array.isArray(listRes.data) ? listRes.data as any[] : []
+  const viewerId = Number(uni.getStorageSync(CURRENT_USER_ID_KEY))
+  let active: any = null
+  for (const row of rows) {
+    const mine = Number(row.userId) == viewerId
+    const peer = mine ? Number(row.targetUserId) : Number(row.userId)
+    if (peer != peerUserId) continue
+    if (active == null || String(row.createdAt) >= String(active.createdAt)) active = row
+  }
+  const pending = active != null && (active.status == 'SUBMITTED' || active.status == 'CONTACTED')
+  const agreed = active != null && active.status == 'ACCEPTED'
+  let canApply = true
+  let reason = ''
+  if (pending) { canApply = false; reason = '对方正在处理你的约见申请' }
+  else if (agreed) { canApply = false; reason = '约见已同意，请等待红娘联系' }
+  return okResponse({ canApply: canApply, reason: reason, pending: pending, agreed: agreed, active: active })
+}
+
+/**
+ * 转发一条文本消息到另一个会话。
+ * 后端没有独立转发接口：这里复用 sendMessage 原样重发正文，由服务端重新落库，
+ * 因此不会泄漏原消息 id / 引用关系，也不会把撤回态带过去。
+ */
+export async function forwardTextMessage(
+  targetUserId: number,
+  content: string,
+  subject: MessageSubject | null = null
+): Promise<any> {
+  if (!isPositiveInteger(targetUserId)) return failResponse('无效的转发对象', 'INVALID_USER')
+  const text = typeof content == 'string' ? content.trim() : ''
+  if (text.length < 1 || text.length > 5000) return failResponse('该消息不支持转发', 'INVALID_FORWARD_CONTENT')
+  const clientMessageId = 'forward-' + Date.now() + '-' + targetUserId
+  return await sendMessage(targetUserId, text, 'text', clientMessageId, subject)
+}

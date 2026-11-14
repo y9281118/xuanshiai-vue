@@ -1,0 +1,185 @@
+<template>
+	<view v-if="visible" class="ms-mask" @tap="closeModal">
+		<view class="ms-card" @tap.stop>
+			<view class="ms-head">
+				<text class="ms-heart">♥</text>
+				<text class="ms-title">百聊不如一见</text>
+			</view>
+			<view class="ms-body">
+				<text class="ms-intro">微信不回？聊不下去？约不上见面？专业红娘来帮忙！太多人，条件挺好，跟你也合适，只是不善网聊！线下见面，更能快速了解对方，让缘分不要擦肩而过！</text>
+
+				<view class="ms-steps">
+					<view class="ms-step">
+						<view class="ms-dot ms-dot-done"><text>✓</text></view>
+						<text class="ms-step-label ms-step-active">已成功提交约见申请</text>
+					</view>
+					<view class="ms-step">
+						<view class="ms-dot"></view>
+						<text class="ms-step-label">等待红娘联系沟通</text>
+					</view>
+					<view class="ms-step">
+						<view class="ms-dot"></view>
+						<text class="ms-step-label">撮合安排双方线下见面</text>
+					</view>
+				</view>
+
+				<text class="ms-teacher">👉 主动联系您的服务老师 👉</text>
+				<view class="ms-wechat-row">
+					<image class="ms-wechat-icon" src="/static/icons/wechat-bubble.svg" mode="aspectFit"></image>
+					<text class="ms-wechat-id">{{ wechatLabel }}</text>
+					<view class="ms-copy" @tap.stop="copyWechat"><text>复制</text></view>
+				</view>
+
+				<view class="ms-primary" @tap.stop="closeModal"><text>知道了</text></view>
+				<text class="ms-dates" @tap.stop="openMyDates">我的约会 ›</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+interface Props {
+	visible: boolean
+	wechat?: string
+}
+
+const props = withDefaults(defineProps<Props>(), { wechat: '' })
+const emit = defineEmits<{ close: [] }>()
+
+const wechatLabel = computed(() => props.wechat != null && props.wechat != '' ? props.wechat : '--')
+
+const closeModal = () => { emit('close') }
+
+const copyWechat = () => {
+	if (props.wechat == null || props.wechat == '') {
+		uni.showToast({ title: '服务老师微信待配置', icon: 'none' })
+		return
+	}
+	uni.setClipboardData({
+		data: props.wechat,
+		success: () => { uni.showToast({ title: '已复制', icon: 'none' }) }
+	})
+}
+
+const openMyDates = () => {
+	emit('close')
+	uni.navigateTo({
+		url: '/pagesSub/profileExtra/my-date-service',
+		fail: () => { uni.showToast({ title: '页面打开失败，请重试', icon: 'none' }) }
+	})
+}
+</script>
+
+<style scoped>
+/* 约见成功弹窗沿用参考稿的浅紫业务色板；只在组件内定义局部色板，
+   不改全局 uni.scss Token，也不把这套紫色带进聊天页/我的申请页的其它区域。 */
+.ms-card {
+	--ms-purple: var(--plane-purple);
+	--ms-purple-deep: var(--plane-purple-deep);
+	--ms-purple-soft: #F1ECFF;
+	--ms-purple-softer: #E5DAFF;
+	--ms-ink: #2B1F45;
+	--ms-muted: #8B84A3;
+}
+
+.ms-mask {
+	position: fixed;
+	inset: 0;
+	z-index: 90;
+	background-color: rgba(12, 19, 19, 0.36);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+}
+.ms-card {
+	width: 100%;
+	max-width: 330px;
+	background-color: var(--paper);
+	border-radius: 18px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+.ms-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 18px 16px;
+	background: linear-gradient(90deg, var(--ms-purple-soft), var(--ms-purple-softer));
+}
+.ms-heart {
+	width: 30px;
+	height: 30px;
+	border-radius: 10px;
+	background-color: var(--ms-purple);
+	color: #FFFFFF;
+	font-size: 18px;
+	line-height: 30px;
+	text-align: center;
+}
+.ms-title { font-size: 20px; font-weight: 700; color: var(--ms-ink); }
+.ms-body { padding: 18px 20px 20px; display: flex; flex-direction: column; }
+.ms-intro { font-size: 13px; line-height: 1.7; color: var(--ms-ink); }
+
+.ms-steps {
+	margin-top: 16px;
+	padding: 14px 16px;
+	border-radius: 10px;
+	background-color: var(--ms-purple-soft);
+}
+.ms-step { display: flex; flex-direction: row; align-items: center; gap: 12px; min-height: 30px; }
+.ms-dot {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background-color: var(--paper);
+	border: 2px solid var(--ms-purple);
+}
+.ms-dot-done {
+	background-color: var(--ms-purple);
+	color: #FFFFFF;
+	font-size: 10px;
+	line-height: 14px;
+	text-align: center;
+}
+.ms-step-label { font-size: 13px; color: var(--ms-muted); }
+.ms-step-active { color: var(--ms-ink); font-weight: 700; }
+
+.ms-teacher { margin-top: 16px; font-size: 14px; font-weight: 700; text-align: center; color: var(--ms-ink); }
+.ms-wechat-row {
+	margin-top: 12px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	background-color: var(--surface);
+}
+.ms-wechat-icon { width: 26px; height: 26px; }
+.ms-wechat-id { flex: 1; font-size: 15px; color: var(--ms-ink); }
+.ms-copy {
+	padding: 6px 14px;
+	border-radius: 8px;
+	background-color: var(--ms-purple-soft);
+	color: var(--ms-purple-deep);
+	font-size: 13px;
+}
+.ms-primary {
+	margin-top: 18px;
+	min-height: 46px;
+	border-radius: 12px;
+	background: linear-gradient(90deg, var(--ms-purple), var(--ms-purple-deep));
+	color: #FFFFFF;
+	font-size: 16px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.ms-dates { margin-top: 14px; text-align: center; font-size: 14px; color: var(--ms-purple-deep); }
+</style>

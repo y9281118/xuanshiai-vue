@@ -93,6 +93,33 @@
 						<text class="system-divider-text">{{ message.content }}</text>
 					</view>
 
+					<!-- 约见申请卡片：双方从 GET /matchmaker/meetings/requests/mine 合成同一张
+					     apply_id 卡片；终态只读无按钮，卡片曝光/点击时兜底重查状态。 -->
+					<view class="meeting-apply-wrap" v-else-if="message.type === 'meeting-apply'">
+						<view class="meeting-card" @click="refreshMeetingApplies">
+							<view class="meeting-card-head">
+								<text class="meeting-card-title">♡ 约见申请</text>
+								<text class="meeting-card-status">{{ meetingApplyStatusLabel(message.meetingApply) }}</text>
+							</view>
+							<text class="meeting-card-target">{{ meetingApplyTargetLabel(message.meetingApply) }}</text>
+							<text class="meeting-card-body">{{ meetingApplyBody(message.meetingApply) }}</text>
+							<text v-if="meetingApplySubtitle(message.meetingApply) != ''" class="meeting-card-sub">{{ meetingApplySubtitle(message.meetingApply) }}</text>
+							<view v-if="meetingApplyActions(message.meetingApply).length > 0" class="meeting-card-actions">
+								<view v-for="action in meetingApplyActions(message.meetingApply)" :key="action.key" class="meeting-card-action" :class="action.key == 'agree' ? 'meeting-card-action-primary' : ''" @click.stop="onMeetingApplyAction(message.meetingApply, action.key)">
+									<text>{{ action.label }}</text>
+								</view>
+							</view>
+							<text class="meeting-card-time">{{ message.time }}</text>
+						</view>
+					</view>
+
+					<!-- 撤回（微信式）：原气泡和头像都不再出现，只留一行居中灰字。
+					     文案按视角区分，对方侧不再看到「消息已撤回」这种气泡占位。
+					     仍保留长按菜单里的「仅自己删除」，否则撤回消息会永久占位删不掉。 -->
+					<view class="recall-divider" v-else-if="message.revoked == true" @longpress="openMessageMenu(message, $event)">
+						<text class="recall-divider-text">{{ message.isMine ? '你撤回了一条消息' : '对方撤回了一条消息' }}</text>
+					</view>
+
 					<view class="message-wrapper" v-else :class="message.isMine ? 'mine' : 'other'">
 						<view
 							class="avatar protected-avatar"
@@ -123,9 +150,8 @@
 									<view class="ai-source-dot"></view>
 									<text class="ai-source-text">{{ getAiMessageLabel(message) }}</text>
 								</view>
-								<view class="message-bubble" :class="[message.type, getAiMessageTone(message)]" @longpress="openMessageMenu(message)">
-									<text class="revoked-content" v-if="message.revoked == true">消息已撤回</text>
-									<view class="protected-content" v-else-if="isParentMode && message.protectedContent">
+								<view class="message-bubble" :class="[message.type, getAiMessageTone(message), messageMenuTarget === message ? 'message-bubble-active' : '']" @longpress="openMessageMenu(message, $event)">
+									<view class="protected-content" v-if="isParentMode && message.protectedContent">
 										<text class="protected-content-text">内容已保护</text>
 									</view>
 									<text class="text-content" v-else-if="message.type === 'text'">{{ message.content }}</text>
@@ -215,6 +241,12 @@
 							<view class="menu-item" v-if="!isParentMode" @click="openContactExchange">
 								<view class="menu-icon">⌁</view>
 								<text class="menu-text">联系方式</text>
+							</view>
+							<!-- 约见申请：排在联系方式之后（第二行首位）。有进行中申请时置灰，
+							     已同意时切成「约见已同意」只读态；父母端不展示。 -->
+							<view class="menu-item" :class="{ 'menu-item-disabled': meetingApplyDisabled }" v-if="!isParentMode" @click="openMeetingApply">
+								<view class="menu-icon">♡</view>
+								<text class="menu-text">{{ meetingApplyLabel }}</text>
 							</view>
 							<view class="menu-item" v-if="!isParentMode" @click="openAiAdvisor">
 								<view class="menu-icon">✦</view>
@@ -308,6 +340,56 @@
 					<text style="color: #7A8286; font-size: 13px;" @click="closeVoicePreview">取消本次录音</text>
 				</view>
 			</XsaModal>
+
+			<!-- 约见申请二次确认：取消不产生任何请求；确认后复用一期线下约见接口创建申请单，
+			     红娘工作台待办与会话内卡片都由同一份服务端状态驱动。 -->
+			<XsaModal
+				:visible="meetingApplyVisible"
+				title="约见申请"
+				cancel-text="取消"
+				confirm-text="申请约见"
+				:confirm-loading="meetingApplySubmitting"
+				@close="closeMeetingApply"
+				@cancel="closeMeetingApply"
+				@confirm="submitMeetingApply"
+			>
+				<view class="meeting-apply-modal-copy">
+					<text>若在平台点击「申请约见」，红娘会为你们安排见面。</text>
+					<text class="meeting-apply-modal-note">提交后红娘将收到你们的申请，请留意红娘来电。</text>
+				</view>
+			</XsaModal>
+
+			<!-- 约见申请提交成功：红娘安排线下见面的三步进度引导，内含「我的约会」入口。 -->
+			<XsaMeetingSuccessModal :visible="meetingSuccessVisible" @close="meetingSuccessVisible = false" />
+
+			<!-- 微信式长按菜单：深色圆角网格 + 图标 + 指向气泡的小三角。
+			     遮罩点击关闭；菜单跟随长按位置，尽量不盖住被操作的气泡。 -->
+			<view v-if="messageMenuVisible" class="message-menu-mask" @click="closeMessageMenu">
+				<view class="message-menu-panel" :style="{ top: messageMenuTop + 'px' }" @click.stop>
+					<view class="message-menu-arrow" :class="messageMenuArrowTop ? 'arrow-top' : 'arrow-bottom'"></view>
+					<view class="message-menu-grid">
+						<view v-for="item in messageMenuItems" :key="item.key" class="message-menu-item" @click.stop="onMessageMenuAction(item.key)">
+							<text class="message-menu-icon">{{ item.icon }}</text>
+							<text class="message-menu-label">{{ item.label }}</text>
+						</view>
+					</view>
+				</view>
+			</view>
+
+			<XsaSheet v-if="!isParentMode" :visible="forwardVisible" title="转发到" @close="closeForwardSheet">
+				<view class="forward-sheet">
+					<text v-if="forwardLoading" class="forward-state">正在读取会话...</text>
+					<text v-else-if="forwardList.length == 0" class="forward-state">暂无可转发的会话</text>
+					<view v-else class="forward-list">
+						<view v-for="item in forwardList" :key="item.id" class="forward-row" @click="confirmForward(item)">
+							<image class="forward-avatar" :src="item.avatar" mode="aspectFill"></image>
+							<text class="forward-name">{{ item.name }}</text>
+							<text class="forward-arrow">›</text>
+						</view>
+					</view>
+					<text v-if="forwardError != ''" class="forward-state forward-error">{{ forwardError }}</text>
+				</view>
+			</XsaSheet>
 		</view>
 </template>
 
@@ -318,8 +400,11 @@
 	import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaModal from '@/components/XsaModal.uvue'
+	import XsaMeetingSuccessModal from '@/components/XsaMeetingSuccessModal.uvue'
 	import type { MessageSubject, ParentContext } from '@/api'
 	import {
+		getConversationPage,
+		forwardTextMessage,
 		getChatMessages,
 		getChatPermission,
 		getChatSessionId,
@@ -334,6 +419,10 @@
 		getContactExchanges,
 		createContactExchange,
 		respondContactExchange,
+		createMeetingApply,
+		getMeetingApplies,
+		handleMeetingApply,
+		getMeetingApplyState,
 		getAiAvatarProfile,
 		getAiAvatarQuickQuestions,
 		getAiAvatarConversation,
@@ -388,6 +477,21 @@
 	const contactType = ref('phone')
 	const contactValue = ref('')
 	const contactExchanges = ref([] as any[])
+	// 约见申请：入口、确认弹窗与会话内卡片共用同一份服务端状态（不另建本地状态机）。
+	const meetingApplyVisible = ref(false)
+	const meetingApplySubmitting = ref(false)
+	const meetingApplyBusy = ref(false)
+	const meetingApplyState = ref(null as any)
+	const meetingApplyLabel = computed(() => {
+		const state = meetingApplyState.value
+		return state != null && state.agreed == true ? '约见已同意' : '约见申请'
+	})
+	const meetingApplyDisabled = computed(() => {
+		const state = meetingApplyState.value
+		return state != null && state.canApply != true
+	})
+	let meetingApplyLastSubmitAt = 0
+	const meetingSuccessVisible = ref(false)
 	// 己方头像：取真实资料头像，取不到才回退默认图（旧版写死男头像，女性账号会显示错）。
 	const myAvatar = ref('/static/portraits/profile-man-light.webp')
 	let clientMessageSequence = 0
@@ -412,6 +516,19 @@
 	let aiAvatarSendSequence = 0
 	let peerTitleApplied = false
 	let messageMenuOpenedAt = 0
+	// 微信式长按菜单：深色网格浮层跟随长按位置，菜单项按消息态动态生成。
+	const messageMenuVisible = ref(false)
+	const messageMenuItems = ref([] as any[])
+	const messageMenuTarget = ref(null as any)
+	const messageMenuTop = ref(0)
+	const messageMenuArrowTop = ref(true)
+	// 转发：后端没有独立转发接口，选中会话后原样重发文本正文。
+	const forwardVisible = ref(false)
+	const forwardList = ref([] as any[])
+	const forwardLoading = ref(false)
+	const forwardBusy = ref(false)
+	const forwardError = ref('')
+	const forwardSource = ref(null as any)
 
 	const refreshMyAvatar = async () => {
 		const url = await getMyAvatarUrl()
@@ -1005,6 +1122,10 @@
 				}
 			})
 			messages.value = serverMessages
+			// 历史整体替换会冲掉本地合成的约见卡片：先用缓存挂回，再异步兜底重查一次状态。
+			const cachedMeeting = meetingApplyState.value
+			syncMeetingApplyMessage(cachedMeeting != null ? cachedMeeting.active : null)
+			refreshMeetingApplies()
 			scrollToBottom()
 			return true
 		} catch (error: any) {
@@ -1372,6 +1493,205 @@
 			}
 		}
 
+		// ===== 约见申请 =====
+		// 卡片不写 IM 历史：它是按服务端申请单（GET /matchmaker/meetings/requests/mine）
+		// 合成的一条会话态消息，双方各自拉到同一 apply_id 后渲染成同一张卡片。
+		// 历史消息整体替换后需要重新挂回去，所以 loadChatMessages 末尾也会调一次。
+		const syncMeetingApplyMessage = (active: any) => {
+			const list = messages.value as any[]
+			const kept = list.filter((item: any) => item.type != 'meeting-apply')
+			if (active == null) {
+				if (kept.length != list.length) messages.value = kept
+				return
+			}
+			const viewerId = Number(uni.getStorageSync(CURRENT_USER_ID_KEY))
+			const rawTime = String(active.createdAt != null ? active.createdAt : '')
+			const card: any = {
+				id: -Number(active.id),
+				type: 'meeting-apply',
+				content: '',
+				meetingApply: active,
+				isMine: Number(active.userId) == viewerId,
+				time: rawTime.length >= 16 ? rawTime.substring(0, 16).replace('T', ' ') : '',
+				showTime: false,
+				avatar: '',
+				status: 'sent',
+				revoked: false
+			}
+			messages.value = kept.concat([card])
+		}
+
+		const currentMeetingViewerId = (): number => Number(uni.getStorageSync(CURRENT_USER_ID_KEY))
+
+		const meetingApplyStatusLabel = (apply: any): string => {
+			if (apply == null) return ''
+			const status = String(apply.status)
+			if (status == 'SUBMITTED' || status == 'CONTACTED') {
+				return Number(apply.userId) == currentMeetingViewerId() ? '等待对方确认' : '待处理'
+			}
+			if (status == 'ACCEPTED') return '已同意'
+			if (status == 'DECLINED') return '对方暂未同意'
+			if (status == 'CLOSED') return '已撤回'
+			return '约见申请'
+		}
+
+		const meetingApplyTargetLabel = (apply: any): string => {
+			if (apply == null) return ''
+			const mine = Number(apply.userId) == currentMeetingViewerId()
+			const nickname = mine
+				? (apply.targetNickname != null && apply.targetNickname != '' ? String(apply.targetNickname) : '对方')
+				: (apply.userNickname != null && apply.userNickname != '' ? String(apply.userNickname) : '对方')
+			return mine ? '发给：' + nickname : '来自：' + nickname
+		}
+
+		const meetingApplyBody = (apply: any): string => {
+			if (apply == null) return ''
+			const mine = Number(apply.userId) == currentMeetingViewerId()
+			const status = String(apply.status)
+			if (status == 'SUBMITTED' || status == 'CONTACTED') {
+				return mine ? '已向 TA 发起约见申请，红娘将为你们安排见面。' : 'TA 向你发起了约见申请。若同意，红娘会为你们安排见面并与你们联系。'
+			}
+			if (status == 'ACCEPTED') return '已同意，请等待红娘与你们联系安排见面。'
+			if (status == 'DECLINED') return mine ? '对方暂未同意约见申请' : '你已拒绝本次约见申请'
+			if (status == 'CLOSED') return mine ? '你已撤回本次约见申请' : '对方已撤回约见申请'
+			return '约见申请'
+		}
+
+		const meetingApplySubtitle = (apply: any): string => {
+			if (apply == null) return ''
+			const status = String(apply.status)
+			if (status == 'ACCEPTED') return '红娘会在 1-3 个工作日内电话联系你们，确认见面时间与地点。'
+			if (status == 'DECLINED') return '红娘不会介入，双方仍可正常聊天'
+			return ''
+		}
+
+		const meetingApplyActions = (apply: any): any[] => {
+			const empty: any[] = []
+			if (apply == null) return empty
+			const status = String(apply.status)
+			if (status != 'SUBMITTED' && status != 'CONTACTED') return empty
+			const mine = Number(apply.userId) == currentMeetingViewerId()
+			const items: any[] = []
+			if (mine) {
+				items.push({ key: 'cancel', label: '撤回申请' })
+				items.push({ key: 'contact', label: '联系红娘' })
+			} else {
+				items.push({ key: 'refuse', label: '拒绝' })
+				items.push({ key: 'agree', label: '同意' })
+			}
+			return items
+		}
+
+		const refreshMeetingApplies = async () => {
+			const peerId = Number(userId.value)
+			if (isParentMode.value || peerId <= 0 || meetingApplyBusy.value) return
+			meetingApplyBusy.value = true
+			try {
+				const res = await getMeetingApplyState(peerId)
+				if (res != null && res.success == true && res.data != null) {
+					meetingApplyState.value = res.data
+					syncMeetingApplyMessage(res.data.active)
+				}
+			} finally {
+				meetingApplyBusy.value = false
+			}
+		}
+
+		const submitMeetingApplyAction = async (apply: any, action: string, reason: string) => {
+			if (apply == null || meetingApplyBusy.value) return
+			meetingApplyBusy.value = true
+			try {
+				const res = await handleMeetingApply(Number(apply.id), action, reason)
+				if (res != null && res.success == true) {
+					uni.showToast({ title: action == 'agree' ? '已同意约见' : (action == 'refuse' ? '已拒绝约见申请' : '已撤回约见申请'), icon: 'none' })
+				} else {
+					uni.showToast({ title: responseMessage(res, '操作失败，请重试'), icon: 'none' })
+				}
+			} finally {
+				meetingApplyBusy.value = false
+			}
+			await refreshMeetingApplies()
+		}
+
+		const onMeetingApplyAction = (apply: any, action: string) => {
+			if (apply == null) return
+			if (action == 'contact') {
+				uni.showToast({ title: '请留意红娘来电', icon: 'none' })
+				return
+			}
+			if (action == 'agree') {
+				uni.showModal({
+					title: '同意约见',
+					content: '同意后红娘会与你们联系，安排见面时间和地点。',
+					cancelText: '再想想',
+					confirmText: '确认同意',
+					success: (res: any) => {
+						if (res != null && res.confirm == true) submitMeetingApplyAction(apply, 'agree', '')
+					}
+				})
+				return
+			}
+			if (action == 'refuse') {
+				uni.showActionSheet({
+					itemList: ['还不想见面', '时机不合适', '其他', '不填原因'],
+					success: (res: any) => {
+						const labels: string[] = ['还不想见面', '时机不合适', '其他']
+						const index = Number(res != null ? res.tapIndex : -1)
+						const reason = index >= 0 && index < labels.length ? labels[index] : ''
+						submitMeetingApplyAction(apply, 'refuse', reason)
+					}
+				})
+				return
+			}
+			if (action == 'cancel') {
+				uni.showModal({
+					title: '撤回申请',
+					content: '撤回后本次约见申请将关闭，双方仍可正常聊天。',
+					cancelText: '再想想',
+					confirmText: '确认撤回',
+					success: (res: any) => {
+						if (res != null && res.confirm == true) submitMeetingApplyAction(apply, 'cancel', '')
+					}
+				})
+			}
+		}
+
+		const openMeetingApply = () => {
+			if (isParentMode.value) return
+			closeMoreMenu()
+			if (meetingApplyDisabled.value) {
+				const state = meetingApplyState.value
+				uni.showToast({ title: state != null && state.reason != '' ? String(state.reason) : '对方正在处理你的约见申请', icon: 'none' })
+				return
+			}
+			meetingApplyVisible.value = true
+		}
+
+		const closeMeetingApply = () => {
+			if (meetingApplySubmitting.value) return
+			meetingApplyVisible.value = false
+		}
+
+		const submitMeetingApply = async () => {
+			if (meetingApplySubmitting.value) return
+			const now = Date.now()
+			if (now - meetingApplyLastSubmitAt < 500) return
+			meetingApplyLastSubmitAt = now
+			meetingApplySubmitting.value = true
+			try {
+				const res = await createMeetingApply(Number(userId.value))
+				if (res != null && res.success == true) {
+					meetingApplyVisible.value = false
+					meetingSuccessVisible.value = true
+				} else {
+					uni.showToast({ title: responseMessage(res, '约见申请失败，请重试'), icon: 'none' })
+				}
+			} finally {
+				meetingApplySubmitting.value = false
+			}
+			await refreshMeetingApplies()
+		}
+
 		const openContactExchange = () => {
 			if (isParentMode.value) return
 			closeMoreMenu()
@@ -1458,32 +1778,138 @@
 			inputText.value = message.content != null ? String(message.content) : ''
 		}
 
-		const openMessageMenu = (message: any) => {
-			if (isParentMode.value || selectionMode.value || message == null || message.type === 'system') return
-			// 已撤回的气泡不再提供复制/引用/重新编辑/撤回（原文已经不该存在），
-			// 但必须保留「仅自己删除」：旧实现直接 return，撤回消息就永久占位删不掉。
-			const revoked = message.revoked === true
-			const items: string[] = []
-			if (!revoked && message.type === 'text' && message.content != null && String(message.content).length > 0) items.push('复制')
-			if (!revoked && message.isMine === true && message.type === 'text' && message.status === 'sent') items.push('重新编辑')
-			if (!revoked && message.id > 0) items.push('引用')
-			if (!revoked && message.isMine === true && message.id > 0 && message.status === 'sent') items.push('撤回')
-			if (message.id > 0) items.push('仅自己删除')
-			if (message.id > 0) items.push('多选')
-			if (items.length === 0) return
-			messageMenuOpenedAt = Date.now()
-			uni.showActionSheet({
-				itemList: items,
+		const closeMessageMenu = () => {
+			messageMenuVisible.value = false
+			messageMenuTarget.value = null
+		}
+
+		const confirmDeleteMessage = (message: any) => {
+			uni.showModal({
+				title: '删除消息',
+				content: '删除后仅从你的聊天记录中移除，对方仍可看到。',
+				cancelText: '取消',
+				confirmText: '删除',
 				success: (res: any) => {
-					const tapIndex = res != null ? Number(res.tapIndex) : -1
-					if (tapIndex < 0 || tapIndex >= items.length) return
-					const action = items[tapIndex]
-					if (action === '复制') copyMessageContent(message)
-					else if (action === '重新编辑') reEditMessage(message)
-					else if (action === '引用') quotedMessage.value = message
-					else if (action === '撤回') requestRevokeMessage(message)
-					else if (action === '仅自己删除') hideMessageForMeLocally(message)
-					else if (action === '多选') enterSelectionMode(message)
+					if (res != null && res.confirm == true) hideMessageForMeLocally(message)
+				}
+			})
+		}
+
+		const onMessageMenuAction = (key: string) => {
+			const message = messageMenuTarget.value
+			closeMessageMenu()
+			if (message == null) return
+			if (key == 'copy') copyMessageContent(message)
+			else if (key == 'forward') openForwardSheet(message)
+			else if (key == 'delete') confirmDeleteMessage(message)
+			else if (key == 'multi') enterSelectionMode(message)
+			else if (key == 'quote') quotedMessage.value = message
+			else if (key == 'edit') reEditMessage(message)
+			else if (key == 'revoke') requestRevokeMessage(message)
+		}
+
+		const openMessageMenu = (message: any, event: any) => {
+			if (isParentMode.value || selectionMode.value || message == null || message.type === 'system') return
+			// 已撤回的气泡不再提供复制/引用/重新编辑/转发/撤回（原文已经不该存在），
+			// 但必须保留「删除」「多选」：旧实现直接 return，撤回消息就永久占位删不掉。
+			const revoked = message.revoked === true
+			const items: any[] = []
+			if (!revoked && message.type === 'text' && message.content != null && String(message.content).length > 0) {
+				items.push({ key: 'copy', label: '复制', icon: '⧉' })
+			}
+			if (!revoked && message.id > 0) items.push({ key: 'forward', label: '转发', icon: '↗' })
+			if (message.id > 0) items.push({ key: 'delete', label: '删除', icon: '⌫' })
+			if (message.id > 0) items.push({ key: 'multi', label: '多选', icon: '☑' })
+			if (!revoked && message.id > 0) items.push({ key: 'quote', label: '引用', icon: '❝' })
+			if (!revoked && message.isMine === true && message.type === 'text' && message.status === 'sent') {
+				items.push({ key: 'edit', label: '重新编辑', icon: '✎' })
+			}
+			if (!revoked && message.isMine === true && message.id > 0 && message.status === 'sent') {
+				items.push({ key: 'revoke', label: '撤回', icon: '↺' })
+			}
+			if (items.length == 0) return
+			messageMenuItems.value = items
+			messageMenuTarget.value = message
+
+			// 菜单跟随长按点：优先放在气泡下方，空间不够时翻到上方。
+			const info = uni.getSystemInfoSync()
+			const windowHeight = Number(info != null && info.windowHeight != null ? info.windowHeight : 640)
+			const touch = event != null && event.touches != null && event.touches.length > 0 ? event.touches[0] : null
+			const detail = event != null ? event.detail : null
+			let anchorY = 0
+			if (touch != null && touch.clientY != null) anchorY = Number(touch.clientY)
+			else if (detail != null && detail.y != null) anchorY = Number(detail.y)
+			else if (detail != null && detail.clientY != null) anchorY = Number(detail.clientY)
+			const menuHeight = 196
+			if (anchorY > 0 && anchorY + menuHeight + 24 < windowHeight) {
+				messageMenuTop.value = anchorY + 16
+				messageMenuArrowTop.value = true
+			} else {
+				messageMenuTop.value = Math.max(12, anchorY > 0 ? anchorY - menuHeight - 16 : windowHeight * 0.28)
+				messageMenuArrowTop.value = false
+			}
+			messageMenuOpenedAt = Date.now()
+			messageMenuVisible.value = true
+		}
+
+		const openForwardSheet = async (message: any) => {
+			if (message == null || message.type !== 'text' || message.content == null || String(message.content).length == 0) {
+				uni.showToast({ title: '暂不支持转发该类型消息', icon: 'none' })
+				return
+			}
+			forwardSource.value = message
+			forwardError.value = ''
+			forwardList.value = []
+			forwardVisible.value = true
+			forwardLoading.value = true
+			try {
+				const res = await getConversationPage('', 50, 'standard', activeMessageSubject.value)
+				if (res != null && res.success == true && res.data != null && Array.isArray(res.data.list)) {
+					const currentPeerId = Number(userId.value)
+					const rows: any[] = []
+					for (const item of res.data.list as any[]) {
+						if (Number(item.userId) == currentPeerId) continue
+						rows.push(item)
+					}
+					forwardList.value = rows
+				} else {
+					forwardError.value = responseMessage(res, '会话列表加载失败')
+				}
+			} finally {
+				forwardLoading.value = false
+			}
+		}
+
+		const closeForwardSheet = () => {
+			forwardVisible.value = false
+			forwardSource.value = null
+			forwardError.value = ''
+		}
+
+		const confirmForward = (item: any) => {
+			const source = forwardSource.value
+			if (source == null || item == null) return
+			const name = item.name != null ? String(item.name) : '对方'
+			uni.showModal({
+				title: '转发消息',
+				content: '转发给「' + name + '」？',
+				cancelText: '取消',
+				confirmText: '发送',
+				success: async (res: any) => {
+					if (res == null || res.confirm != true || forwardBusy.value) return
+					forwardBusy.value = true
+					try {
+						const result = await forwardTextMessage(Number(item.userId), String(source.content), activeMessageSubject.value)
+						if (result != null && result.success == true) {
+							forwardVisible.value = false
+							forwardSource.value = null
+							uni.showToast({ title: '已转发', icon: 'none' })
+						} else {
+							forwardError.value = responseMessage(result, '转发失败，请重试')
+						}
+					} finally {
+						forwardBusy.value = false
+					}
 				}
 			})
 		}
@@ -1589,7 +2015,7 @@
 			if (isParentMode.value || message == null || message.id <= 0 || message.revoked == true) return
 			uni.showModal({
 				title: '撤回消息',
-				content: '撤回后对方将看到“消息已撤回”。',
+				content: '撤回后双方都看不到原消息，聊天里只留一行提示。',
 				confirmText: '确认撤回',
 				success: async (result: any) => {
 					if (result == null || result.confirm != true) return
@@ -1597,9 +2023,11 @@
 					if (subject == null) return
 					const res = await revokeMessage(Number(message.id), 'revoke-' + message.id + '-' + Date.now(), subject)
 					if (res != null && res.success == true) {
+						// 渲染只看 revoked：正文一并清空，避免本地残留「消息已撤回」
+						// 这串文字被引用块、会话预览等其他渲染点带出去。
 						message.revoked = true
 						message.type = 'text'
-						message.content = '消息已撤回'
+						message.content = ''
 						// 输入框里的引用草稿同样持有原文。撤回后必须一起清掉，
 						// 否则「已撤回」的内容还挂在输入栏上方（Q63：撤回不要显示在外面）。
 						const quoted = quotedMessage.value
@@ -1900,12 +2328,154 @@
 	.message-status.failed { color: var(--accent2); }
 	.message-status.retryable { text-decoration: underline; }
 
-	.revoked-content {
-		display: block;
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--muted);
+	/* 撤回提示：微信式纯灰字居中，无气泡底、无头像，视觉权重低于系统消息。 */
+	.recall-divider {
+		display: flex;
+		flex-direction: row;
+		justify-content: center;
+		padding: 6px 40px;
 	}
+
+	.recall-divider-text {
+		max-width: 100%;
+		color: var(--muted);
+		font-size: 12px;
+		line-height: 1.5;
+		text-align: center;
+	}
+
+	/* 约见申请：宫格置灰态、确认弹窗、会话内卡片。全部沿用聊天页 token，
+	   不引入蜜桃/粉色系（那是「我的约会」页的另一套业务域色调）。 */
+	.menu-item-disabled { opacity: 0.45; }
+
+	.meeting-apply-modal-copy {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		align-items: center;
+	}
+	.meeting-apply-modal-note { color: var(--muted); font-size: 12px; }
+
+	.meeting-apply-wrap {
+		display: flex;
+		flex-direction: row;
+		justify-content: center;
+		padding: 6px 16px;
+	}
+	.meeting-card {
+		width: 100%;
+		max-width: 320px;
+		background-color: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		padding: 14px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.meeting-card-head {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.meeting-card-title { font-size: 14px; color: var(--ink); }
+	.meeting-card-status {
+		font-size: 11px;
+		color: var(--accent2);
+		background-color: var(--accent-bg);
+		border-radius: 8px;
+		padding: 2px 8px;
+	}
+	.meeting-card-target { font-size: 12px; color: var(--muted); }
+	.meeting-card-body { font-size: 13px; color: var(--ink2); line-height: 1.6; }
+	.meeting-card-sub { font-size: 12px; color: var(--muted); line-height: 1.5; }
+	.meeting-card-actions {
+		display: flex;
+		flex-direction: row;
+		gap: 8px;
+		margin-top: 2px;
+	}
+	.meeting-card-action {
+		flex: 1;
+		min-height: 44px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 13px;
+		color: var(--ink2);
+	}
+	.meeting-card-action-primary {
+		background-color: var(--accent);
+		border-color: var(--accent);
+		color: var(--text-invert);
+	}
+	.meeting-card-time { font-size: 11px; color: var(--muted); text-align: right; }
+
+	/* 微信式长按菜单：深色圆角网格 + 图标 + 指向气泡的小三角。
+	   底色用 --ink2（深灰）而非纯黑，文字 --text-invert，全部沿用既有 Token。 */
+	.message-menu-mask {
+		position: fixed;
+		inset: 0;
+		z-index: 80;
+		background-color: rgba(12, 19, 19, 0.36);
+	}
+	.message-menu-panel {
+		position: absolute;
+		left: 16px;
+		right: 16px;
+		background-color: var(--ink2);
+		border-radius: 12px;
+		padding: 12px 8px;
+		box-shadow: var(--shadow-lg);
+	}
+	.message-menu-arrow {
+		position: absolute;
+		left: 50%;
+		width: 12px;
+		height: 12px;
+		margin-left: -6px;
+		background-color: var(--ink2);
+		transform: rotate(45deg);
+	}
+	.message-menu-arrow.arrow-top { top: -6px; }
+	.message-menu-arrow.arrow-bottom { bottom: -6px; }
+	.message-menu-grid {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+	.message-menu-item {
+		width: 25%;
+		min-height: 76px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+	}
+	.message-menu-icon { font-size: 22px; line-height: 1; color: var(--text-invert); }
+	.message-menu-label { font-size: 12px; color: var(--text-invert); }
+	/* 长按选中态：微信会在被操作的气泡上留一层浅高亮。 */
+	.message-bubble-active { opacity: 0.72; }
+
+	.forward-sheet { padding: 4px 0 12px; }
+	.forward-list { display: flex; flex-direction: column; }
+	.forward-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 4px;
+		border-bottom: 1px solid var(--line);
+	}
+	.forward-avatar { width: 40px; height: 40px; border-radius: 8px; background-color: var(--warm); }
+	.forward-name { flex: 1; font-size: 14px; color: var(--ink); }
+	.forward-arrow { font-size: 18px; color: var(--muted); }
+	.forward-state { display: block; padding: 16px 4px; font-size: 13px; text-align: center; color: var(--muted); }
+	.forward-error { color: var(--accent2); }
 
 	.image-content {
 		display: block;
