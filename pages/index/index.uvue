@@ -88,6 +88,8 @@
 						<view class="user-info-header">
 							<view class="user-name-line">
 								<text class="name-age">{{ currentRecommendUser.name }}，{{ currentRecommendUser.age }}岁</text>
+								<!-- 性别紧贴年龄展示：卡片 gender 只有 1/2 编码，符号与无障碍文案都由 genderSymbol/genderAriaLabel 收口 -->
+								<text v-if="currentGenderSymbol != ''" :class="currentGenderClass" :aria-label="currentGenderAriaLabel">{{ currentGenderSymbol }}</text>
 								<view v-if="currentRecommendUser.isVip === true" class="recommend-vip-badge">
 									<text class="ic ic-vip ic-huiyuan recommend-vip-icon"></text>
 									<text class="recommend-vip-text">VIP</text>
@@ -853,9 +855,14 @@
 		const text = '' + raw
 		return text.endsWith(unit) ? text : text + unit
 	}
-	// 卡片 zodiac = 属相（后端 app/schemas/discovery.py 明写「zodiac=属相」），
-	// 且卡片不下发 constellation / birthday，端侧推算星座只会得到空串。
-	// 所以这一格必须标「属相」；标成「星座」会与详情页的真星座对不上。
+	// 卡片第 4 格展示星座（2026-11-14 起）：后端 DiscoveryCard 直接下发 constellation，
+	// 取值顺序为 user_profile.constellation → 生日推导，与详情页同一口径；锁定态为 null。
+	// 不要再回退到 zodiac（属相），否则「星座」标签配属相值会和详情页自相矛盾。
+	const constellationText = (raw: any): string => {
+		if (raw == null) return '未填写'
+		const text = ('' + raw).trim()
+		return text == '' ? '未填写' : text
+	}
 	const locationTextByCityCode = (rawCode: any): string => {
 		const cityCode = rawCode != null ? '' + rawCode : ''
 		if (cityCode == '') return '未填写'
@@ -872,7 +879,7 @@
 			{ label: '体重', value: dimensionText(currentRecommendUser.value.weight, 'kg') }
 		],
 		[
-			{ label: '属相', value: currentRecommendUser.value.zodiac || '未填写' },
+			{ label: '星座', value: constellationText(currentRecommendUser.value.constellation) },
 			{ label: '学历', value: educationText(currentRecommendUser.value.education) },
 			{ label: '职业', value: currentRecommendUser.value.job || '未填写' }
 		],
@@ -998,6 +1005,38 @@
 		const list = filteredRecommendUsers.value as any[]
 		if (list.length === 0) return { id: 0, name: '暂无推荐', age: 0, avatar: '', photos: [], education: '暂无数据', job: '', city: '', isVip: false }
 		return list[currentRecommendIndex.value % list.length]
+	})
+	// 性别紧贴「昵称，年龄」展示（2026-11-14）：卡片只下发 1/2 数值编码，
+	// 符号、配色和无障碍文案全部在这里收口，模板不再散落 if 判断。
+	// 取值非法时返回 ''，由模板 v-if 整体隐藏，未填性别的卡片不会留空占位。
+	const currentGenderValue = (): number => {
+		const item = currentRecommendUser.value as any
+		if (item == null) return 0
+		const raw = item.gender
+		if (raw == null) return 0
+		const text = ('' + raw).trim()
+		if (text == '1' || text == '男' || text == 'male' || text == 'm') return 1
+		if (text == '2' || text == '女' || text == 'female' || text == 'f') return 2
+		return 0
+	}
+	const currentGenderSymbol = computed((): string => {
+		const g = currentGenderValue()
+		if (g == 1) return '♂'
+		if (g == 2) return '♀'
+		return ''
+	})
+	const currentGenderAriaLabel = computed((): string => {
+		const g = currentGenderValue()
+		if (g == 1) return '男'
+		if (g == 2) return '女'
+		return ''
+	})
+	// 色值沿用 components/XsaDynamicCard.uvue 的既有性别图标规范，两处必须一致。
+	const currentGenderClass = computed((): string => {
+		const g = currentGenderValue()
+		if (g == 1) return 'gender-symbol male'
+		if (g == 2) return 'gender-symbol female'
+		return 'gender-symbol'
 	})
 	// 推荐理由只透传服务端 match_reason（legacy-rule-v1 基于资料字段的说明文案），
 	// 前端不再本地拼装 MBTI 之类的契合结论；服务端没给理由时返回空串由模板隐藏整块。
@@ -1770,6 +1809,10 @@
 .avatar-wrap { position: absolute; left: 30rpx; top: 348rpx; width: 184rpx; height: 184rpx; border-radius: 50%; overflow: hidden; border: 6rpx solid var(--bg-card); background-color: var(--bg-card-soft); z-index: 10; }
 .avatar-img { width: 100%; height: 100%; }
 .name-age { font-size: 44rpx; font-weight: 700; color: var(--text-primary); margin-top: 8rpx; }
+/* 性别符号：字号略小于年龄、基线与姓名行对齐；色值同 components/XsaDynamicCard.uvue */
+.gender-symbol { font-size: 34rpx; font-weight: 700; margin-top: 8rpx; color: var(--text-secondary); }
+.gender-symbol.male { color: #6A9ECF; }
+.gender-symbol.female { color: #D98C9E; }
 .basic-line { display: flex; flex-direction: row; align-items: center; gap: 16rpx; }
 .basic-text { font-size: 26rpx; color: var(--text-secondary); }
 .dot-sep { width: 6rpx; height: 6rpx; border-radius: 50%; background-color: var(--text-muted); }

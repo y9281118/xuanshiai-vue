@@ -623,7 +623,11 @@ const constellationFromBirthday = (birthday: any): string => {
 	const month = Number(value.substring(5, 7))
 	const day = Number(value.substring(8, 10))
 	const signs = ['摩羯座', '水瓶座', '双鱼座', '白羊座', '金牛座', '双子座', '巨蟹座', '狮子座', '处女座', '天秤座', '天蝎座', '射手座']
-	const cutoffs = [20, 19, 21, 21, 21, 22, 23, 23, 23, 23, 22, 22]
+	// 各月星座切换日（当日属于前一个星座）：摩羯12/22 水瓶1/20 双鱼2/19 白羊3/21
+	// 金牛4/20 双子5/21 巨蟹6/22 狮子7/23 处女8/23 天秤9/23 天蝎10/24 射手11/23。
+	// 原表 4 月 21、10 月 23、11 月 22 各偏一天，与生日真实星座对不上；
+	// 后端 app/services/discovery.py:_constellation_from_birthday 用同一张表，改一处须同步另一处。
+	const cutoffs = [20, 19, 21, 20, 21, 22, 23, 23, 23, 24, 23, 22]
 	if (month < 1 || month > 12 || day < 1 || day > 31) return ''
 	return signs[(day < cutoffs[month - 1] ? month - 1 : month) % 12]
 }

@@ -118,7 +118,7 @@
 <script setup lang="uts">
 	import { LOCATION_TREE as locationJson } from '../data/location.uts'
 	import { updateOwnProfile } from '@/api/user.uts'
-	import { getProfileCompletion } from '@/api/auth.uts'
+	import { getProfileCompletion, setRegistrationIntent } from '@/api/auth.uts'
 	import { getContinuousMoxiangState } from '@/api/ai-moxiang.uts'
 
 	const step = ref(0)
@@ -259,7 +259,24 @@
 		}
 	}
 
+	// 角色卡片 key（本页）→ 服务端 intent_type（app/schemas/auth.py: RegistrationIntentUpdate）。
+	// 服务端靠它决定推荐性别口径：找对象只推异性、找搭子同性异性都推。
+	// 「当红娘」不对应注册意图（那是 user_role 申请流程），返回空串表示不提交。
+	const roleIntentType = (key: string): string => {
+		if (key == 'self') return 'self_match'
+		if (key == 'parent') return 'parent_match'
+		if (key == 'buddy') return 'companion'
+		return ''
+	}
+
 	const chooseRole = (key: string) => {
+		// 身份要立刻落到服务端，否则推荐流只能按默认「找对象」处理，
+		// 找搭子的用户永远看不到同性。失败不阻塞注册流程：本地 mode 仍会记录，
+		// 用户下次进资料页重选即可覆盖，不在这里弹错打断注册。
+		const intentType = roleIntentType(key)
+		if (intentType != '') {
+			setRegistrationIntent(intentType, 'register').catch((error: any) => {})
+		}
 		if (key === 'parent') {
 			uni.setStorageSync('xsa_onboarding_mode', 'parent')
 			uni.setStorageSync('xsa_onboarding_completed', true)

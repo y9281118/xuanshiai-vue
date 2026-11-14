@@ -21,6 +21,8 @@ export {
   loginByWechat,
   bindPhone,
   changePhone,
+  setRegistrationIntent,
+  getRegistrationIntent,
   createPhoneChangeKey,
   submitRealname,
   getUserCertifications,
