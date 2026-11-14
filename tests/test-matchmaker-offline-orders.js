@@ -67,19 +67,10 @@ async function run() {
   // 财务明细入口本身保留。
   assert.ok(page.includes("openWorkspace('财务明细', 'income-placeholder')"))
 
-  // 数据源：本期演示数据，接口层与 mock 索引都要能取到。
-  assert.ok(api.includes('export async function getMatchmakerOfflineOrders') && api.includes('isDemo: true'))
+  // 数据源未接入时为空，不展示演示开单记录。
+  assert.match(api, /export async function getMatchmakerOfflineOrders\(\)[\s\S]*?items: \[\] as any\[\], total: 0, isDemo: false/)
   assert.ok(read('api/index.uts').includes('getMatchmakerOfflineOrders') && read('mock/index.uts').includes('mockMatchmakerOfflineOrders'))
-  assert.equal(mockData.length, 6)
-  const first = mockData[0]
-  assert.equal(first.date, '2026-11-11')
-  assert.equal(first.name, '456')
-  assert.equal(first.salesMatchmaker, '芸希老师')
-  assert.equal(first.amount, 1)
-  assert.equal(first.avatar, '')
-  const dates = Array.from(mockData).map(row => String(row.date))
-  assert.deepEqual(dates, [...dates].sort().reverse(), '开单记录未按时间倒序')
-  assert.ok(dates.length == 6 && Array.from(mockData).some(row => String(row.avatar).length > 0) && Array.from(mockData).some(row => String(row.avatar).length == 0), '头像需覆盖有图与占位两种')
+  assert.equal(mockData.length, 0)
 
   // 金额：整元不带小数，角分保留两位，千位分组。
   assert.equal(ui.amountText(1), '1元')
@@ -90,8 +81,7 @@ async function run() {
 
   response = { success: true, data: { items: mockData, total: mockData.length, isDemo: true } }
   await ui.loadRows()
-  assert.equal(state.rows.value.length, 6)
-  assert.equal(state.usingDemoData.value, true)
+  assert.equal(state.rows.value.length, 0)
   assert.equal(state.loading.value, false)
   assert.equal(state.errorMessage.value, '')
 
@@ -103,7 +93,6 @@ async function run() {
   response = { success: false, code: 403, message: '无工作台权限' }
   await ui.loadRows()
   assert.equal(state.errorMessage.value, '无工作台权限')
-  assert.equal(state.usingDemoData.value, false)
   assert.equal(state.rows.value.length, 0)
 
   response = new Error('socket hang up')

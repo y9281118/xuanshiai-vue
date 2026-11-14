@@ -50,7 +50,7 @@
 
 				<view v-if="workspaceKind == 'income-placeholder'" class="finance-page">
 					<view class="finance-overview">
-						<view class="finance-card finance-balance"><view class="finance-card-mark"><text>¥</text></view><text class="finance-card-label">余额 (元)</text><text class="finance-card-value">--</text><view class="finance-card-actions"><view class="finance-pill" @tap="showToast('提现暂不可用')"><text>提现</text></view></view></view>
+						<view class="finance-card finance-balance"><view class="finance-card-mark"><text>¥</text></view><text class="finance-card-label">余额 (元)</text><text class="finance-card-value">{{ workspaceCommissionBalance }}</text><view class="finance-card-actions"><view class="finance-pill" @tap="openCommissionWithdrawal"><text>提现</text></view></view></view>
 						<view class="finance-card finance-points"><view class="finance-card-mark"><text>¥</text></view><text class="finance-card-label">积分 (金币)</text><text class="finance-card-value">--</text><view class="finance-card-actions"><view class="finance-pill" @tap="showToast('充值暂不可用')"><text>充值</text></view><view class="finance-gift" @tap="showToast('兑换礼物暂不可用')"><text>兑换礼物 ›</text></view></view></view>
 					</view>
 					<view class="finance-tabs"><view v-for="tab in financeTabs" :key="tab" class="finance-tab" :class="{ active: workspaceActiveTab == tab }" @tap="selectWorkspaceTab(tab)"><text>{{ tab }}</text><view v-if="workspaceActiveTab == tab" class="finance-tab-mark"></view></view></view>
@@ -316,7 +316,6 @@
 							<text class="workspace-entry-hero-title">分派提示</text>
 							<text class="workspace-entry-hero-sub">录入的会员进入待审核名单并挂到您名下，审核通过后开始参与匹配推荐</text>
 						</view>
-						<view class="workspace-entry-demo" @click="fillMemberDemo"><text>{{ memberEntryFilled ? '清空示例' : '填充示例' }}</text></view>
 					</view>
 
 					<view class="workspace-entry-formcard workspace-entry-formcard-typo">
@@ -346,7 +345,6 @@
 							<text class="ls-hero-title">新增一位客源</text>
 							<text class="ls-hero-sub">您录入的客源将挂到您名下，平台核实后即可开始跟进</text>
 						</view>
-						<view class="ls-hero-demo" @click="fillLeadDemo"><text>{{ leadDemoFilled ? '清空' : '示例' }}</text></view>
 					</view>
 
 					<!-- 联系方式 -->
@@ -451,7 +449,7 @@
 
 				<view v-else><view v-for="row in workspaceGenericRows" :key="row.title" class="workspace-generic-card"><view><text>{{ row.icon }}</text></view><view><text>{{ row.title }}</text><text>{{ row.desc }}</text></view><text @click="showToast(row.action)">{{ row.action }} ></text></view></view>
 			</view>
-			<view v-if="workspaceKind != 'remote' && workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead' && workspaceKind != 'match' && workspaceKind != 'income-placeholder'" class="workspace-add" @click="showToast('远端暂未开放此功能')"><text>+</text><text>添加</text></view>
+			<view v-if="workspaceKind != 'remote' && workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead' && workspaceKind != 'match' && workspaceKind != 'income-placeholder' && workspaceKind != 'commission'" class="workspace-add" @click="showToast('远端暂未开放此功能')"><text>+</text><text>添加</text></view>
 			<!-- 牵线记录：添加入口照搬资料待审的悬浮录入键（同款浅底圆形 + ✎ 字形） -->
 			<view v-if="workspaceKind == 'match'" class="match-float-actions">
 				<view class="fab-match-add" @click="openMatchAddSheet"><text class="fab-match-glyph">✎</text><text>添加</text></view>
@@ -1214,8 +1212,8 @@ const workspaceCommissionLoading = ref(false)
 const workspaceCommissionError = ref('')
 const workspaceCommissionUsingDemoData = ref(false)
 const workspaceCommissionTotalAmount = ref('')
-// 可提现额度：GET /finance/balance 的 available_amount（当前登录用户账户）。取不到保持 '--'，不能按 0 元渲染。
-const workspaceCommissionBalance = ref('--')
+// 财务明细和我的分成共用当前登录账户的可提现余额。
+const workspaceCommissionBalance = ref('加载中')
 // 分成级别徽标：取后台 commission_level 配置里本人档案指向的级别，未指派时保持 '--'。
 const workspaceCommissionLevelName = ref('--')
 const commissionAvatarText = (name: any): string => {
@@ -1396,8 +1394,8 @@ const reloadManagementCenterSnapshot = async () => {
 	}
 }
 // 远端未开放红娘活动管理，不展示本地活动。
-const activityMetrics = [{ label: '全部', value: '19' }, { label: '待审', value: '6' }, { label: '通过', value: '13' }, { label: '无效', value: '0' }, { label: '已签到', value: '0' }, { label: '未签到', value: '19' }]
-const activityRows: any[] = [{ id: 1, name: '示例会员', phone: '138****1092', status: '待审核', detail: '33岁 / 165cm / 博士 / 1-2万元 / 未婚', time: '09-16 14:26', checked: false }]
+const activityMetrics: any[] = []
+const activityRows: any[] = []
 const activityKeyword = ref('')
 const activitySearch = ref('')
 const activityFilter = ref('全部')
@@ -2750,16 +2748,16 @@ const loadWorkspaceCommissionEntries = async () => {
 }
 
 const loadWorkspaceCommissionBalance = async () => {
-	workspaceCommissionBalance.value = '--'
+	workspaceCommissionBalance.value = '加载中'
 	try {
 		const result = await getRemoteFinanceBalance()
-		if (!result.success || result.data == null) return
+		if (!result.success || result.data == null || result.data.available_amount == null) { workspaceCommissionBalance.value = '获取失败'; return }
 		const data: any = result.data
 		const amount = Number(data.available_amount)
-		if (isNaN(amount) || amount < 0) return
+		if (isNaN(amount)) { workspaceCommissionBalance.value = '获取失败'; return }
 		workspaceCommissionBalance.value = amount.toFixed(2)
 	} catch (e) {
-		// 余额接口异常时留 '--'，明细与提现到账户资金页看，不显示来路不明的金额。
+		workspaceCommissionBalance.value = '获取失败'
 	}
 }
 
@@ -3479,6 +3477,7 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'lead') await loadWorkspaceLeads()
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
+	if (kind == 'income-placeholder') await loadWorkspaceCommissionBalance()
 	// 「线上分成」读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
 	if (kind == 'commission' && title == '我的分成') {
 		await loadWorkspaceCommissionEntries()

@@ -9,8 +9,6 @@
 					</view>
 					<text class="oo-notice-copy">以下是您名下客源成功签单成为我们平台线下VIP服务客户的记录。数据信息若有误差，请与工作人员核对为准。</text>
 				</view>
-				<text v-if="usingDemoData" class="oo-demo">当前展示本地演示数据，线下开单接口接入后自动切换为真实记录。</text>
-
 				<view v-if="loading && rows.length == 0" class="oo-state"><text>正在加载开单明细…</text></view>
 				<view v-else-if="errorMessage.length > 0" class="oo-state"><text>{{ errorMessage }}</text><text class="oo-state-action" @tap="loadRows">重新加载</text></view>
 				<view v-else-if="rows.length == 0" class="oo-state">
@@ -49,7 +47,6 @@ import { getMatchmakerOfflineOrders } from '@/api/matchmaker.uts'
 const rows = ref<any[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
-const usingDemoData = ref(false)
 
 // 签单金额按「元」展示：整元不带小数，带角分的保留两位，千位加逗号。
 const amountText = (value: any): string => {
@@ -74,16 +71,13 @@ const loadRows = async () => {
 		const result = await getMatchmakerOfflineOrders()
 		if (!result.success || result.data == null) {
 			rows.value = []
-			usingDemoData.value = false
 			errorMessage.value = result.message != null && String(result.message).length > 0 ? String(result.message) : '开单明细加载失败'
 			return
 		}
 		const source = result.data
 		rows.value = Array.isArray(source.items) ? source.items : []
-		usingDemoData.value = source.isDemo == true
 	} catch (e) {
 		rows.value = []
-		usingDemoData.value = false
 		errorMessage.value = '网络数据加载失败，请稍后重试'
 	} finally {
 		loading.value = false

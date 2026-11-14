@@ -868,27 +868,27 @@ const loadSelfProfile = async () => {
 }
 
 /* ---------- 更多菜单 ---------- */
-const toggleMenu = async (member: any, event: any) => {
+const toggleMenu = (member: any, event: any) => {
   const id = Number(member.user_id)
   if (menuForId.value == id) {
     closeMenu()
     return
   }
-  canManageHeadOffice.value = false
-  await loadSelfProfile()
   const windowInfo = uni.getSystemInfoSync()
   const menuWidth = 270 * windowInfo.windowWidth / 750
-  const menuHeight = (activeTab.value == 'REJECTED' ? 1 : (canManageHeadOffice.value ? 5 : 3)) * 84 * windowInfo.windowWidth / 750
+  // 预留全部菜单项的高度，身份请求稍后返回时也不会把菜单挤出屏幕。
+  const menuHeight = (activeTab.value == 'REJECTED' ? 1 : 5) * 84 * windowInfo.windowWidth / 750
   let tapX = 0
   let tapY = 0
-  if (event != null && event.detail != null) {
-    if (event.detail.x != null) tapX = Number(event.detail.x)
-    if (event.detail.y != null) tapY = Number(event.detail.y)
+  const touches = event != null && event.changedTouches != null && event.changedTouches.length > 0 ? event.changedTouches : (event != null ? event.touches : null)
+  if (touches != null && touches.length > 0) {
+    const touch = touches[0]
+    if (touch.clientX != null) tapX = Number(touch.clientX)
+    if (touch.clientY != null) tapY = Number(touch.clientY)
   }
-  if ((tapX <= 0 || tapY <= 0) && event != null && event.touches != null && event.touches.length > 0) {
-    const touch = event.touches[0]
-    if (tapX <= 0 && touch.clientX != null) tapX = Number(touch.clientX)
-    if (tapY <= 0 && touch.clientY != null) tapY = Number(touch.clientY)
+  if (event != null && event.detail != null) {
+    if (tapX <= 0 && event.detail.x != null) tapX = Number(event.detail.x)
+    if (tapY <= 0 && event.detail.y != null) tapY = Number(event.detail.y)
   }
   // tap 坐标以屏幕为准；保底值只在极少数旧端未提供坐标时使用。
   if (tapX <= 0) tapX = 56 * windowInfo.windowWidth / 375

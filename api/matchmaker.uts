@@ -11,8 +11,7 @@ import {
   mockPartnerCenterSnapshot,
   mockMatchmakerWorkspaceIntroductions,
   mockMatchmakerWorkspaceMeetingRequests,
-  mockMatchmakerCommissionEntries,
-  mockMatchmakerOfflineOrders
+  mockMatchmakerCommissionEntries
 } from '@/mock/matchmaker.uts'
 
 // 仅本机联调可在服务端尚未写入工作台记录时展示脱敏测试明细；部署环境始终只用服务端数据。
@@ -936,23 +935,14 @@ export async function getAccountBalance() {
 
 /**
  * 线下开单明细：红娘管理中心「线下业绩」的独立页数据，与财务明细不再共用列表。
- * 本期按设计稿先出本地演示数据；服务端 /matchmaker/workbench/offline-income
- * 补齐开单日期与销售红娘字段后，这里换成真实请求即可，页面按同一结构渲染。
+ * 暂无可用数据源时返回空列表，不展示虚构的开单记录。
  */
 export async function getMatchmakerOfflineOrders() {
-  const items = mockMatchmakerOfflineOrders.map((item: any) => ({
-    id: String(item.id),
-    date: String(item.date),
-    name: String(item.name),
-    avatar: resolveMediaUrl(item.avatar),
-    salesMatchmaker: String(item.salesMatchmaker),
-    amount: Number(item.amount)
-  }))
   return {
     success: true,
-    data: { items: items, total: items.length, isDemo: true },
+    data: { items: [] as any[], total: 0, isDemo: false },
     code: 0,
-    message: '本地演示数据'
+    message: ''
   }
 }
 
