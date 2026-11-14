@@ -119,6 +119,7 @@ export {
   getMeetingApplies,
   handleMeetingApply,
   getMeetingApplyState,
+  isMeetingApplyQuotaBlocked,
   forwardTextMessage
 } from './message.uts'
 export {

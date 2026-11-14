@@ -76,4 +76,19 @@ assert.match(
   'reason backfill must cover both decline and cancel'
 )
 
+// 409 降级：配额不足 / 未分配服务红娘不是可重试错误，要引导联系客服而不是弹原始报错。
+assert.match(messageApi, /export function isMeetingApplyQuotaBlocked\b/, 'quota blocked detector must exist')
+includes(messageApi, "Number(res.code) != 409", 'detector must be scoped to 409')
+includes(messageApi, "'约见资源不足'", 'detector must catch the quota message')
+includes(messageApi, "'尚未分配服务红娘'", 'detector must catch the assignment message')
+assert.ok(apiIndex.includes('isMeetingApplyQuotaBlocked'), 'detector must be exported from api/index.uts')
+const applicationsPage = fs.readFileSync(path.join(root, 'pagesSub/profileExtra/applications.uvue'), 'utf8')
+for (const [source, label] of [[chatPage, 'chat detail page'], [applicationsPage, 'applications page']]) {
+  assert.ok(source.includes('isMeetingApplyQuotaBlocked('), `${label} must branch on quota blocked`)
+  assert.ok(source.includes('showMeetingQuotaGuide'), `${label} must show the quota guide modal`)
+  includes(source, "title: '约见服务未开通'", `${label} guide title`)
+  includes(source, "confirmText: '联系客服'", `${label} guide must offer contacting support`)
+  includes(source, "url: '/pagesSub/profileExtra/help'", `${label} guide must navigate to help page`)
+}
+
 console.log('约见申请契约测试通过')

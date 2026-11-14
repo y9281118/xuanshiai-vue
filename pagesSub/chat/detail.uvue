@@ -423,6 +423,7 @@
 		getMeetingApplies,
 		handleMeetingApply,
 		getMeetingApplyState,
+		isMeetingApplyQuotaBlocked,
 		getAiAvatarProfile,
 		getAiAvatarQuickQuestions,
 		getAiAvatarConversation,
@@ -1667,30 +1668,47 @@
 			meetingApplyVisible.value = true
 		}
 
-		const closeMeetingApply = () => {
-			if (meetingApplySubmitting.value) return
-			meetingApplyVisible.value = false
-		}
+	const closeMeetingApply = () => {
+		if (meetingApplySubmitting.value) return
+		meetingApplyVisible.value = false
+	}
 
-		const submitMeetingApply = async () => {
-			if (meetingApplySubmitting.value) return
-			const now = Date.now()
-			if (now - meetingApplyLastSubmitAt < 500) return
-			meetingApplyLastSubmitAt = now
-			meetingApplySubmitting.value = true
-			try {
-				const res = await createMeetingApply(Number(userId.value))
-				if (res != null && res.success == true) {
-					meetingApplyVisible.value = false
-					meetingSuccessVisible.value = true
-				} else {
-					uni.showToast({ title: responseMessage(res, '约见申请失败，请重试'), icon: 'none' })
-				}
-			} finally {
-				meetingApplySubmitting.value = false
+	// 409「约见资源不足 / 尚未分配服务红娘」= 账号还没开通约见服务（配额或红娘归属缺失），
+	// 这不是可重试错误：引导去客服开通，而不是让用户对着一句话报错反复点。
+	const showMeetingQuotaGuide = () => {
+		uni.showModal({
+			title: '约见服务未开通',
+			content: '发起约见申请需要平台先为你开通红娘服务。可联系客服开通后再来发起，红娘会为你们安排线下见面。',
+			cancelText: '知道了',
+			confirmText: '联系客服',
+			success: (res: any) => {
+				if (res != null && res.confirm == true) uni.navigateTo({ url: '/pagesSub/profileExtra/help' })
 			}
-			await refreshMeetingApplies()
+		})
+	}
+
+	const submitMeetingApply = async () => {
+		if (meetingApplySubmitting.value) return
+		const now = Date.now()
+		if (now - meetingApplyLastSubmitAt < 500) return
+		meetingApplyLastSubmitAt = now
+		meetingApplySubmitting.value = true
+		try {
+			const res = await createMeetingApply(Number(userId.value))
+			if (res != null && res.success == true) {
+				meetingApplyVisible.value = false
+				meetingSuccessVisible.value = true
+			} else if (isMeetingApplyQuotaBlocked(res)) {
+				meetingApplyVisible.value = false
+				showMeetingQuotaGuide()
+			} else {
+				uni.showToast({ title: responseMessage(res, '约见申请失败，请重试'), icon: 'none' })
+			}
+		} finally {
+			meetingApplySubmitting.value = false
 		}
+		await refreshMeetingApplies()
+	}
 
 		const openContactExchange = () => {
 			if (isParentMode.value) return
