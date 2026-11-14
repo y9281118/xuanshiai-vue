@@ -1,7 +1,13 @@
 import { mockSpotlightPaymentOrders } from '@/mock/spotlight.uts'
 import { USE_MOCK } from './config.uts'
 import { request } from './request.uts'
+import { createPrepay, requestWechatPayment, pollUntil, WechatPayParams } from './payment.uts'
 
+/**
+ * 爆灯单价兜底值，只用于 /spotlights/price 拉取失败时的展示。
+ * 真实价格由后端运行期配置 `finance.spotlight_price` 决定，下单金额也由服务端计算，
+ * 前端不参与定价、也不要拿这个常量去算钱。
+ */
 export const SPOTLIGHT_AMOUNT = 9.9
 const STORAGE_KEY = 'xsa_spotlight_orders_v1'
 
@@ -54,13 +60,13 @@ function createMockOrder(target: SpotlightTarget): SpotlightPaymentOrder {
 }
 
 /**
- * 免费额度爆灯（本轮前台入口走这条）。
- * 后端 `POST /discovery/superlikes/{target_id}` 已完整可用：幂等键 + 每日额度
- * （普通号默认 1 次/天、VIP 3 次/天，可由运营在 platform_permissions 覆盖）
- * + 写 user_boost + 给对方发「收到爆灯」通知。
+ * 免费额度爆灯（每日次数内走这条）。
+ * 后端 `POST /discovery/superlikes/{target_id}`：幂等键 + 每日额度
+ * （普通号 1 次/天、VIP 3 次/天，可由运营在 platform_permissions 覆盖；
+ * 额度不足时后端会尝试用积分兑换一次）+ 写 user_boost + 给对方发「收到爆灯」通知。
  * 返回体：{ target_user_id, remaining_today, created_at }
  *
- * 与 paySpotlight 的区别：这条不涉及支付，履约由后端同步完成。
+ * 与付费爆灯的区别：这条不涉及支付，履约由后端同步完成，也不占付费订单额度。
  */
 export async function sendSuperlike(targetUserId: number, idempotencyKey: string = '') {
   if (!(targetUserId > 0)) {
@@ -75,24 +81,127 @@ export async function sendSuperlike(targetUserId: number, idempotencyKey: string
   })
 }
 
+/** 拉取爆灯单价。失败时由调用方退回 SPOTLIGHT_AMOUNT 展示，不阻塞功能。 */
+export async function getSpotlightPrice() {
+  const res = await request({
+    url: '/spotlights/price',
+    method: 'GET',
+    mockData: { amount: SPOTLIGHT_AMOUNT, currency: 'CNY' }
+  })
+  if (!res.success || res.data == null) return res
+  const raw: any = res.data
+  const amount = Number(raw.amount != null ? raw.amount : SPOTLIGHT_AMOUNT)
+  return { success: true, data: amount > 0 ? amount : SPOTLIGHT_AMOUNT, code: res.code, message: res.message }
+}
+
+function mapPaidOrder(raw: any, target: SpotlightTarget): SpotlightPaymentOrder {
+  const data = raw != null ? raw : {}
+  const orderNo = data.order_no != null ? '' + data.order_no : (data.orderNo != null ? '' + data.orderNo : '')
+  const status = Number(data.status != null ? data.status : 0)
+  return {
+    orderNo: orderNo,
+    targetUserId: target.id,
+    targetUserName: target.name,
+    amount: Number(data.amount != null ? data.amount : SPOTLIGHT_AMOUNT),
+    paymentStatus: status == 1 ? 'paid' : (status == 2 ? 'cancelled' : 'unpaid'),
+    spotlightStatus: status == 1 ? 'delivered' : 'pending',
+    paidAt: data.pay_time != null ? '' + data.pay_time : (status == 1 ? new Date().toISOString() : '')
+  }
+}
+
 /**
- * 付费爆灯（方案 B，本轮未启用）。
- * ⚠️ 现状只创建订单、不履约：启用真实支付时应走
- * `createPrepay -> requestWechatPayment -> 轮询订单/权益`，不要再调旧测试支付。
- * 另需先把后端运行期价格与前端展示价格统一，否则用户看到的金额与实际订单不符。
+ * 付费爆灯第一步：创建订单。
+ * 金额由服务端按运行期价格计算，返回体里的 amount 才是要给用户看的数字——
+ * 不要用前端常量弹确认框，否则运营调价后用户会看到与实际扣款不一致的价。
  */
-export async function paySpotlight(target: SpotlightTarget) {
-  if (target == null || target.id <= 0 || target.name == '') {
+export async function createSpotlightOrder(target: SpotlightTarget) {
+  if (target == null || target.id <= 0) {
     return { success: false, data: null, code: 400, message: '爆灯对象无效' }
+  }
+  if (USE_MOCK) {
+    return { success: true, data: createMockOrder(target), code: 0, message: 'success' }
+  }
+  const res = await request({
+    url: '/spotlights/payments',
+    method: 'POST',
+    data: { target_user_id: target.id },
+    // 同一目标重复下单复用同一 key：网络重试不会多建单，后端按 idempotency_key 幂等返回原单。
+    headers: { 'Idempotency-Key': 'spotlight-' + Date.now() + '-' + target.id },
+    mockData: {
+      order_no: 'MOCK-SPOTLIGHT-' + String(Date.now()),
+      product_code: 'superlike',
+      product_name: '爆灯',
+      amount: SPOTLIGHT_AMOUNT,
+      status: 0,
+      expire_at: null,
+      payment_required: true
+    }
+  })
+  if (!res.success || res.data == null) return res
+  const order = mapPaidOrder(res.data, target)
+  if (order.orderNo == '') {
+    return { success: false, data: null, code: 502, message: '爆灯订单号缺失' }
+  }
+  return { success: true, data: order, code: res.code, message: res.message }
+}
+
+/** 查询付费爆灯订单（轮询回调是否已把订单置为 status=1）。 */
+export async function getSpotlightOrder(orderNo: string) {
+  if (orderNo == '') {
+    return { success: false, data: null, code: 400, message: '订单号缺失' }
+  }
+  return request({
+    url: '/spotlights/payments/' + encodeURIComponent(orderNo),
+    method: 'GET',
+    mockData: {
+      order_no: orderNo,
+      product_code: 'superlike',
+      product_name: '爆灯',
+      amount: SPOTLIGHT_AMOUNT,
+      status: 1,
+      expire_at: null,
+      payment_required: false
+    }
+  })
+}
+
+/**
+ * 付费爆灯第二步：预支付 + 调起微信 + 等回调。
+ * `requestWechatPayment` 的 success 只代表用户在微信侧付款完成，服务端还要等回调履约，
+ * 所以必须轮询订单状态，不能凭支付回调的成功提示就直接弹「已送达」。
+ */
+export async function paySpotlightOrder(orderNo: string, target: SpotlightTarget, amount: number = SPOTLIGHT_AMOUNT) {
+  if (orderNo == '') {
+    return { success: false, data: null, code: 400, message: '订单号缺失' }
   }
   if (USE_MOCK) {
     restoreOrders()
     return { success: true, data: createMockOrder(target), code: 0, message: '支付成功，爆灯已送达' }
   }
-  return request({
-    url: '/spotlights/payments',
-    method: 'POST',
-    data: { target_user_id: target.id },
-    headers: { 'Idempotency-Key': 'spotlight-' + Date.now() + '-' + target.id }
-  })
+  const prepay = await createPrepay(orderNo)
+  if (!prepay.success) return prepay
+  const pay = await requestWechatPayment(prepay.data as WechatPayParams)
+  if (!pay.success) return pay
+
+  const paid = await pollUntil(
+    () => getSpotlightOrder(orderNo),
+    (o: any) => o != null && Number(o.status) == 1,
+    15000,
+    1500
+  )
+  if (!paid.success) {
+    // 微信侧已扣款但服务端回调未到：按「开通中」返回，避免用户重复支付。
+    // 金额用下单时服务端给的数字，不能拿前端常量顶替，否则对账提示会对不上。
+    const pending: SpotlightPaymentOrder = {
+      orderNo: orderNo,
+      targetUserId: target.id,
+      targetUserName: target.name,
+      amount: amount,
+      paymentStatus: 'paid',
+      spotlightStatus: 'pending',
+      paidAt: new Date().toISOString()
+    }
+    return { success: true, data: pending, code: 0, message: '支付成功，爆灯开通中' }
+  }
+  return { success: true, data: mapPaidOrder(paid.data, target), code: 0, message: '支付成功，爆灯已送达' }
 }

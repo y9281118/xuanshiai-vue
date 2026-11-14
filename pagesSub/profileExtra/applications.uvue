@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="uts">
-import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId, getPointProducts, getPointsSummary, redeemPointProduct, createMeetingApply } from '@/api'
+import { getApplicationPage, acceptDiscoveryApplication, rejectDiscoveryApplication, getCommunityQuotas, getChatSessionId, getPointProducts, getPointsSummary, redeemPointProduct, createMeetingApply, isMeetingApplyQuotaBlocked } from '@/api'
 import XsaMeetingSuccessModal from '@/components/XsaMeetingSuccessModal.uvue'
 import { guardRealName } from '@/utils/realNameGate.uts'
 
@@ -225,6 +225,20 @@ const openProfile = (userId: number) => {
 const meetingSuccessVisible = ref(false)
 const meetingRequesting = ref(false)
 
+// 409「约见资源不足 / 尚未分配服务红娘」= 账号还没开通约见服务（配额或红娘归属缺失），
+// 引导去客服开通，而不是让用户对一句原始报错反复点。
+const showMeetingQuotaGuide = () => {
+	uni.showModal({
+		title: '约见服务未开通',
+		content: '发起约见申请需要平台先为你开通红娘服务。可联系客服开通后再来发起，红娘会为你们安排线下见面。',
+		cancelText: '知道了',
+		confirmText: '联系客服',
+		success: (res) => {
+			if (res.confirm) uni.navigateTo({ url: '/pagesSub/profileExtra/help' })
+		}
+	})
+}
+
 const requestMeeting = async (item: any) => {
 	const peerId = Number(item != null ? item.userId : 0)
 	if (peerId <= 0) {
@@ -237,6 +251,10 @@ const requestMeeting = async (item: any) => {
 		const res = await createMeetingApply(peerId)
 		if (res != null && res.success == true) {
 			meetingSuccessVisible.value = true
+			return
+		}
+		if (isMeetingApplyQuotaBlocked(res)) {
+			showMeetingQuotaGuide()
 			return
 		}
 		uni.showToast({

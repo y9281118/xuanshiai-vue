@@ -1553,6 +1553,19 @@ export async function getMeetingApplyState(peerUserId: number): Promise<any> {
 }
 
 /**
+ * 约见申请 409 降级判定：服务端 create_meeting_request 的两个业务前置条件
+ * （matchmaker_service_quota 配额、已分配服务红娘）不满足时返回 409
+ * 「约见资源不足」/「尚未分配服务红娘…」。这不是网络错误也不是参数错误，
+ * 页面应引导用户联系客服开通服务，而不是只弹一句原始报错。
+ */
+export function isMeetingApplyQuotaBlocked(res: any): boolean {
+  if (res == null || res.success == true) return false
+  if (Number(res.code) != 409) return false
+  const message = res.message != null ? String(res.message) : ''
+  return message.indexOf('约见资源不足') >= 0 || message.indexOf('尚未分配服务红娘') >= 0
+}
+
+/**
  * 转发一条文本消息到另一个会话。
  * 后端没有独立转发接口：这里复用 sendMessage 原样重发正文，由服务端重新落库，
  * 因此不会泄漏原消息 id / 引用关系，也不会把撤回态带过去。
