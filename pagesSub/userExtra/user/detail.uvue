@@ -340,8 +340,7 @@
 
 			<!-- 知遇悬浮入口：点开聚合能力；红娘代看模式隐藏 -->
 			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == ''" class="detail-ai-float" @tap="openZhiyuHub">
-				<!-- 与首页同款：动画版知遇（雪碧图逐帧），无文字标签 -->
-				<XsaZhiyuVideo size="144rpx" :show-label="false" />
+				<XsaZhiyuMark size="144rpx" :show-label="false" />
 			</view>
 			<view v-if="showAiGuide && !fromMatchmaker" class="ai-guide-bubble" @tap="dismissAiGuide"><text class="ai-guide-text">点知遇，看看能怎么了解对方</text></view>
 			<!-- 知遇说话气泡：引导气泡消失后才开始自动弹出，避免两块气泡打架；红娘代看模式隐藏 -->
@@ -405,7 +404,6 @@ import XsaSpotlightSuccessSheet from '@/pagesSub/userExtra/components/XsaSpotlig
 import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
-import XsaZhiyuVideo from '@/components/XsaZhiyuVideo.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus, getUserVisitorCount, saveAiAvatarProfileSnapshot, getUserDynamicList, getPortraitNarrative, getUserPartnerPreference } from '@/api'
 import { normalizeIdealPartner } from '@/api/preference.uts'
