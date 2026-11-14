@@ -252,4 +252,14 @@ assert.ok(
   '页面的分类判断必须复用 api 层的口径，避免两套映射漂移',
 )
 
-console.log('通知分类分页契约（6 个 Tab / 社区可见分类 / 服务端 category / 滚动续拉 / 分类未读角标）测试通过')
+// 8) 「全部已读」文字随全局可见未读切换状态色：有未读青瓷绿，全已读取灰。
+assert.ok(
+  /:class="unreadTotal > 0 \? 'text-accent' : 'text-muted'"/.test(page),
+  '「全部已读」必须按可见未读总数在强调色与置灰之间切换',
+)
+assert.ok(
+  !page.includes('class="mark-all text-accent"'),
+  '「全部已读」不得写死为强调色',
+)
+
+console.log('通知分类分页契约（6 个 Tab / 社区可见分类 / 服务端 category / 滚动续拉 / 分类未读角标 / 按钮状态色）测试通过')

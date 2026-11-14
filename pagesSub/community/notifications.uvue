@@ -58,7 +58,13 @@
 			</view>
 		</scroll-view>
 		<view class="toolbar" v-if="visibleList.length > 0">
-			<text class="mark-all text-accent" @click="markAll">全部已读</text>
+			<!-- 有可见未读时保持青瓷绿，全部已读后置灰。判断取全局可见未读总数，
+			     不用当前 Tab 的未读，避免切到空分类时按钮误置灰。 -->
+			<text
+				class="mark-all"
+				:class="unreadTotal > 0 ? 'text-accent' : 'text-muted'"
+				@click="markAll"
+			>全部已读</text>
 		</view>
 		<scroll-view class="list" scroll-y @scrolltolower="loadMore">
 			<view class="state" v-if="loading"><text class="text-muted">通知加载中...</text></view>
