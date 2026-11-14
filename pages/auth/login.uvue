@@ -14,55 +14,13 @@
 		<view class="login-card">
 			<view class="card-heading">
 				<text class="card-title">欢迎回来</text>
-				<text class="card-copy">用手机号登录，继续你的认真相遇</text>
+				<text class="card-copy">用微信登录，继续你的认真相遇</text>
 			</view>
-
-			<view class="field-group">
-				<text class="field-label">手机号</text>
-				<view class="field-shell">
-					<text class="field-prefix">+86</text>
-					<input
-						class="field-input"
-						type="number"
-						placeholder="请输入手机号"
-						:value="phone"
-						maxlength="11"
-						@input="onPhoneInput"
-					/>
-				</view>
-			</view>
-
-			<view class="field-group code-group">
-				<text class="field-label">验证码</text>
-				<view class="field-shell">
-					<input
-						class="field-input"
-						type="number"
-						placeholder="请输入6位验证码"
-						:value="code"
-						maxlength="6"
-						@input="onCodeInput"
-					/>
-					<button class="code-button" :disabled="codeButtonDisabled" @click="sendCode">
-						{{ codeButtonText }}
-					</button>
-				</view>
-			</view>
-
-			<button class="login-button" :disabled="authLoading || !agreementChecked" @click="handlePhoneLogin">
-				{{ authLoading ? '正在登录…' : '手机号验证码登录' }}
-			</button>
 
 			<!-- #ifdef MP-WEIXIN -->
 			<button class="wechat-button" :disabled="authLoading || !agreementChecked" @click="handleWechatLogin">
 				<text class="wechat-dot">W</text>
 				<text>微信一键登录</text>
-			</button>
-			<!-- #endif -->
-
-			<!-- #ifndef MP-WEIXIN -->
-			<button class="phone-auth-button" :disabled="authLoading || !agreementChecked" @click="handleNonWechatLogin">
-				手机号验证码登录
 			</button>
 			<!-- #endif -->
 
@@ -107,16 +65,11 @@
 
 <script setup lang="uts">
 	import { getProfileCompletion } from '@/api/auth.uts'
-	import { loginByExistingAccount, loginByPhone, loginByWechat, sendSms } from '@/api'
+	import { loginByExistingAccount, loginByWechat } from '@/api'
 	import { CURRENT_USER_ID_KEY, setAuthTokens } from '@/api/config.uts'
 
 	const authLoading = ref(false)
 	const agreementChecked = ref(uni.getStorageSync('xsa_login_agreed') == true)
-	const phone = ref('')
-	const code = ref('')
-	const countdown = ref(0)
-	const codeButtonDisabled = ref(false)
-	const codeButtonText = ref('获取验证码')
 	// 测试账号白名单：登录页快捷登录按钮与之一一对应，密码统一走 debugAccountPassword。
 	// 账号三/四/五/六 为「完全普通用户」：仅 user 角色、无会员记录（男/女/男/女），
 	// 用于实名、开通会员、浏览额度与权益回归。
@@ -190,68 +143,6 @@
 		uni.navigateTo({ url })
 	}
 
-	const onPhoneInput = (e: any) => { phone.value = e.detail.value }
-	const onCodeInput = (e: any) => { code.value = e.detail.value }
-
-	const startCountdown = () => {
-		codeButtonDisabled.value = true
-		countdown.value = 60
-		codeButtonText.value = '60秒后重试'
-		const timer = setInterval(() => {
-			countdown.value--
-			if (countdown.value > 0) {
-				codeButtonText.value = countdown.value + '秒后重试'
-			} else {
-				clearInterval(timer)
-				codeButtonDisabled.value = false
-				codeButtonText.value = '获取验证码'
-			}
-		}, 1000)
-	}
-
-	const sendCode = async () => {
-		if (!/^1[3-9][0-9]{9}$/.test(phone.value)) {
-			uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
-			return
-		}
-		try {
-			const res = await sendSms(phone.value, 'login')
-			if (!res.success) {
-				uni.showToast({ title: responseMessage(res, '验证码发送失败'), icon: 'none' })
-				return
-			}
-			startCountdown()
-			uni.showToast({ title: responseMessage(res, '验证码已发送'), icon: 'success' })
-		} catch (e) {
-			uni.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
-		}
-	}
-
-	const handlePhoneLogin = async () => {
-		if (authLoading.value) return
-		if (!/^1[3-9][0-9]{9}$/.test(phone.value)) {
-			uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
-			return
-		}
-		if (!/^[0-9]{6}$/.test(code.value)) {
-			uni.showToast({ title: '请输入6位验证码', icon: 'none' })
-			return
-		}
-		authLoading.value = true
-		try {
-			const res = await loginByPhone(phone.value, code.value)
-			if (!res.success || res.data == null || res.data.access_token == null) {
-				uni.showToast({ title: responseMessage(res, '登录失败，请重试'), icon: 'none' })
-				return
-			}
-			await finishLogin(res.data)
-		} catch (e) {
-			uni.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
-		} finally {
-			authLoading.value = false
-		}
-	}
-
 	const getWechatLoginCode = (): Promise<string> => {
 		return new Promise((resolve) => {
 			uni.login({
@@ -282,11 +173,6 @@
 		} finally {
 			authLoading.value = false
 		}
-	}
-
-	const handleNonWechatLogin = () => {
-		if (!agreementChecked.value) return
-		uni.navigateTo({ url: '/pages/auth/register' })
 	}
 
 	const startLocalDemoSession = (): boolean => {
@@ -355,17 +241,8 @@
 	.card-heading { display: flex; flex-direction: column; margin-bottom: 22px; }
 	.card-title { color: var(--ink); font-size: 24px; font-weight: 800; line-height: 1.25; }
 	.card-copy { margin-top: 6px; color: var(--muted); font-size: 13px; }
-	.field-group { margin-top: 15px; }
-	.field-label { display: block; margin-bottom: 8px; color: var(--ink2); font-size: 13px; font-weight: 700; }
-	.field-shell { display: flex; flex-direction: row; align-items: center; min-height: 52px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); }
-	.field-shell:focus-within { border-color: var(--accent); background: var(--surface); }
-	.field-prefix { padding-right: 12px; margin-right: 12px; border-right: 1px solid var(--line); color: var(--ink2); font-size: 14px; }
-	.field-input { flex: 1; min-width: 0; height: 50px; color: var(--ink); font-size: 16px; }
-	.code-button { flex-shrink: 0; width: 88px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: var(--accent-bg); color: var(--accent2); font-size: 12px; line-height: 34px; }
-	.code-button[disabled] { opacity: .55; }
-	.login-button, .wechat-button { width: 100%; height: 50px; margin-top: 22px; border: 0; border-radius: 13px; font-size: 16px; font-weight: 800; line-height: 50px; }
-	.login-button { background: var(--accent2); color: var(--text-invert); box-shadow: 0 7px 16px rgba(0,117,101,.18); }
-	.login-button[disabled], .wechat-button[disabled] { opacity: .55; }
+	.wechat-button { width: 100%; height: 50px; margin-top: 22px; border: 0; border-radius: 13px; font-size: 16px; font-weight: 800; line-height: 50px; }
+	.wechat-button[disabled] { opacity: .55; }
 	.wechat-button { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px; background: var(--surface); color: var(--accent2); border: 1px solid var(--accent-bg); }
 	.wechat-dot { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--sage); color: var(--text-invert); font-size: 12px; font-weight: 800; line-height: 22px; }
 	.agreement-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; margin-top: 18px; color: var(--muted); font-size: 11px; line-height: 1.7; }
