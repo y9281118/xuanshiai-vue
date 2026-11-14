@@ -5,11 +5,11 @@
 			<view class="nav-back" @click="handlePageBack">
 				<view class="nav-back-chevron"></view>
 			</view>
-			<text class="nav-title">{{ withdrawalVisible ? '申请提现' : (offlineOrdersVisible ? '线下开单明细' : (pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading ? '红娘管理中心' : '我要做红娘')))) }}</text>
+			<text class="nav-title">{{ withdrawalVisible ? '申请提现' : (offlineOrdersVisible ? '线下开单明细' : (pendingReviewVisible ? '会员资料管理' : (workspaceVisible ? workspaceTitle : (managementCenterVisible || managementCenterLoading || directCenterMode ? '红娘管理中心' : '我要做红娘')))) }}</text>
 			<!-- 工作区遮罩右上角只保留「保存」药丸；返回走左侧箭头（handlePageBack 会先关遮罩）。 -->
 			<view v-if="withdrawalVisible" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
 			<view v-else-if="(pendingReviewVisible || workspaceVisible) && isLeadEntryStudio" class="nav-help nav-help-save" @click="submitLeadForm()"><text class="nav-help-text">保存</text></view>
-			<view v-else-if="workspaceVisible && workspaceKind == 'income-placeholder'" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
+			<view v-else-if="workspaceVisible && (workspaceKind == 'income-placeholder' || workspaceKind == 'activity')" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
 			<view v-else-if="offlineOrdersVisible" class="nav-entries"><view class="nav-entry" @click="openMyAccount"><view class="entry-person"><view class="entry-person-head"></view><view class="entry-person-body"></view><view class="entry-person-dot"></view></view></view><view class="nav-entry" @click="serviceNavVisible = true"><view class="entry-lines"><view></view><view></view><view></view></view></view></view>
 			<view v-else-if="!pendingReviewVisible && !workspaceVisible && managementCenterVisible" class="nav-entries">
 				<view class="nav-entry" @click="openMyAccount">
@@ -19,7 +19,7 @@
 					<view class="entry-lines"><view></view><view></view><view></view></view>
 				</view>
 			</view>
-			<view v-else-if="!pendingReviewVisible && !workspaceVisible && !managementCenterLoading" class="nav-help" @click="showHelp">
+			<view v-else-if="!pendingReviewVisible && !workspaceVisible && !managementCenterLoading && !directCenterMode" class="nav-help" @click="showHelp">
 				<text class="nav-help-text">帮助</text>
 			</view>
 		</view>
@@ -27,6 +27,7 @@
 		<MatchmakerWithdrawal v-if="withdrawalVisible" />
 		<MatchmakerPendingReview
 			v-else-if="pendingReviewVisible"
+			ref="pendingReviewPanel"
 			:initial-tab="pendingReviewInitialTab"
 			:refresh-token="pendingReviewRefreshToken"
 			@entry="openMemberEntryFromReview"
@@ -36,17 +37,17 @@
 		<MatchmakerOfflineOrders v-else-if="offlineOrdersVisible" />
 		<scroll-view v-else-if="workspaceVisible" scroll-y class="workspace-scroller" :class="{ 'ls-scroll': isLeadEntryStudio }" :show-scrollbar="false" :scroll-top="workspaceScrollTop">
 			<view class="workspace-content" :class="{ 'lead-space': workspaceKind == 'lead' }">
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'news' && workspaceKind != 'income-placeholder'" class="workspace-heading">
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'news' && workspaceKind != 'income-placeholder' && workspaceKind != 'activity'" class="workspace-heading">
 					<text v-if="workspaceKind != 'commission'" class="workspace-title">{{ workspaceTitle }}</text>
 					<text v-if="workspaceKind != 'income-placeholder'" class="workspace-copy">{{ workspaceKind == 'entry' ? '提交后自动分派到您名下，信息仅用于平台牵线服务。' : '仅展示服务端已提供的数据，未开放能力不会创建本地记录。' }}</text>
 				</view>
 				<!-- 「我的分成」不显示页签导航条与搜索框：分成标准走卡片内入口，分成明细没有关键词筛选。 -->
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'income-placeholder' && workspaceKind != 'news' && workspaceKind != 'commission'" class="workspace-tabs">
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'income-placeholder' && workspaceKind != 'news' && workspaceKind != 'commission' && workspaceKind != 'activity'" class="workspace-tabs">
 					<view class="workspace-tabs-row">
 						<view v-for="item in workspaceTabs" :key="item" class="workspace-tab" :class="{ active: workspaceActiveTab == item }" @click="selectWorkspaceTab(item)"><text>{{ item }}</text></view>
 					</view>
 				</view>
-				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'income-placeholder' && workspaceKind != 'commission'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
+				<view v-if="workspaceKind != 'remote' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'income-placeholder' && workspaceKind != 'commission' && workspaceKind != 'activity'" class="workspace-search"><text class="workspace-search-glyph">⌕</text><input class="workspace-search-input" :placeholder="workspaceSearchPlaceholder" placeholder-class="workspace-search-ph" :value="workspaceKeyword" confirm-type="search" @input="onWorkspaceKeywordInput" @confirm="runWorkspaceSearch"/></view>
 
 				<view v-if="workspaceKind == 'income-placeholder'" class="finance-page">
 					<view class="finance-overview">
@@ -434,14 +435,17 @@
 				<view v-else-if="workspaceKind == 'activity'">
 					<view class="ar-page">
 						<view class="ar-summary">
-							<view class="ar-heading"><view class="ar-symbol"><text>!</text></view><view class="ar-title-wrap"><text class="ar-title">单身青年 免费择偶竞争力评分</text><text class="ar-demo">页面示例 · 数据待接入</text></view></view>
-							<view class="ar-grid"><view v-for="item in activityMetrics" :key="item.label" class="ar-stat" @click="selectActivityFilter(item.label)"><text class="ar-number">{{ item.value }}</text><text class="ar-label">{{ item.label }}</text></view></view>
-							<view class="ar-actions"><view class="ar-action" @click="showToast('活动管理暂未接入')"><text>⇅ 管理其他活动</text></view><view class="ar-action" @click="showToast('签到功能暂未接入')"><text>▣ 扫码签到</text></view></view>
+							<view class="ar-heading"><view class="ar-symbol"><text>!</text></view><view class="ar-title-wrap"><text class="ar-title">{{ activityTitle }}</text><text class="ar-demo">显示您可管理的会员报名</text></view></view>
+							<view class="ar-grid"><view v-for="item in activityMetrics" :key="item.key" class="ar-stat" :class="{ 'ar-stat-active': activityFilter == item.key }" @click="selectActivityFilter(item.key)"><text class="ar-number">{{ item.value }}</text><text class="ar-label">{{ item.label }}</text></view></view>
+							<view class="ar-actions"><picker :range="activityOptions" range-key="title" :value="activityOptionIndex" @change="selectActivity"><view class="ar-action"><text>⇅ 管理其他活动</text></view></picker><view class="ar-action" @click="showToast('扫码签到暂未开放')"><text>▣ 扫码签到</text></view></view>
 						</view>
-						<view class="ar-search"><input class="ar-input" placeholder="请输入电话/昵称关键词搜索" :value="activityKeyword" @input="onActivityKeyword" @confirm="applyActivitySearch" /><view class="ar-search-btn" @click="applyActivitySearch"><text>搜索</text></view></view>
-						<view class="ar-list-heading"><text>{{ activityFilter == '全部' ? '全部报名' : activityFilter + '报名' }}</text></view>
-						<view v-if="activityVisibleRows.length == 0" class="ar-empty"><text>暂无符合条件的报名</text></view>
-						<view v-for="row in activityVisibleRows" :key="row.id" class="ar-card"><view class="ar-card-head"><view class="ar-avatar"><text>人</text></view><text class="ar-name">{{ row.name }}</text><text class="ar-badge">{{ row.status }}</text></view><text class="ar-detail">{{ row.detail }}</text><view class="ar-line"><text>☎  {{ row.phone }}</text><text class="ar-muted" @click="showToast('电话功能暂未接入')">拨打 ›</text></view><view class="ar-line"><text>¥  报名费</text><text class="ar-fee">免费</text></view><view class="ar-line"><text>◷  {{ row.time }}</text></view></view>
+						<view class="ar-search"><text class="ar-search-icon">⌕</text><input class="ar-input" placeholder="请输入会员昵称搜索" :value="activityKeyword" confirm-type="search" @input="onActivityKeyword" @confirm="searchActivities" /><view class="ar-search-btn" @click="searchActivities"><text>搜索</text></view></view>
+						<view class="ar-list-heading"><text>{{ activityFilterLabel }}报名</text></view>
+						<view v-if="activityLoading && activityRows.length == 0" class="ar-empty"><text>正在加载报名记录…</text></view>
+						<view v-else-if="activityError.length > 0" class="ar-empty" @click="loadActivitySignups(false)"><text class="ar-empty-title">{{ activityError }}</text><text>点击重试</text></view>
+						<view v-else-if="activityRows.length == 0" class="ar-empty"><text class="ar-empty-title">暂无报名记录</text><text>{{ activityOptions.length == 0 ? '暂无可查看的活动。' : '当前范围内没有符合条件的报名。' }}</text></view>
+						<view v-for="row in activityRows" :key="row.id" class="ar-card"><view class="ar-card-head"><image v-if="row.avatar.length > 0" class="ar-avatar" :src="row.avatar" mode="aspectFill"/><view v-else class="ar-avatar"><text>人</text></view><text class="ar-name">{{ row.name }}</text><text class="ar-badge">{{ row.statusText }}</text></view><view class="ar-line"><text>报名费</text><text class="ar-fee">{{ row.fee }}</text></view><view class="ar-line"><text>报名时间</text><text>{{ row.createdAt }}</text></view><view class="ar-line"><text>签到状态</text><text>{{ row.checkedIn ? '已签到' : '未签到' }}</text></view></view>
+						<view v-if="activityHasMore && activityError.length == 0" class="ar-empty" @click="loadActivitySignups(true)"><text>{{ activityLoading ? '正在加载…' : '加载更多' }}</text></view>
 					</view>
 				</view>
 
@@ -449,7 +453,7 @@
 
 				<view v-else><view v-for="row in workspaceGenericRows" :key="row.title" class="workspace-generic-card"><view><text>{{ row.icon }}</text></view><view><text>{{ row.title }}</text><text>{{ row.desc }}</text></view><text @click="showToast(row.action)">{{ row.action }} ></text></view></view>
 			</view>
-			<view v-if="workspaceKind != 'remote' && workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead' && workspaceKind != 'match' && workspaceKind != 'income-placeholder' && workspaceKind != 'commission'" class="workspace-add" @click="showToast('远端暂未开放此功能')"><text>+</text><text>添加</text></view>
+			<view v-if="workspaceKind != 'remote' && workspaceKind != 'meeting' && workspaceKind != 'entry' && workspaceKind != 'news' && workspaceKind != 'lead' && workspaceKind != 'match' && workspaceKind != 'income-placeholder' && workspaceKind != 'commission' && workspaceKind != 'activity'" class="workspace-add" @click="showToast('远端暂未开放此功能')"><text>+</text><text>添加</text></view>
 			<!-- 牵线记录：添加入口照搬资料待审的悬浮录入键（同款浅底圆形 + ✎ 字形） -->
 			<view v-if="workspaceKind == 'match'" class="match-float-actions">
 				<view class="fab-match-add" @click="openMatchAddSheet"><text class="fab-match-glyph">✎</text><text>添加</text></view>
@@ -472,7 +476,9 @@
 			@identity="openMatchmakerIdentity"
 			@action="handleManagementCenterAction"
 		/>
-		<view v-else-if="managementCenterLoading" class="management-center-loading">
+		<view v-else-if="managementCenterLoading || directCenterMode" class="management-center-loading">
+			<view v-if="directCenterError.length > 0" class="workspace-state" @click="retryDirectCenter"><text>{{ directCenterError }}</text><text>点击重试</text></view>
+			<template v-else>
 			<view class="management-loading-card management-loading-identity"></view>
 			<view class="management-loading-tabs">
 				<view class="management-loading-pill"></view>
@@ -486,6 +492,7 @@
 				<view class="management-loading-card"></view>
 				<view class="management-loading-card"></view>
 			</view>
+			</template>
 		</view>
 
 		<scroll-view v-else scroll-y class="page-scroller" :show-scrollbar="false">
@@ -744,7 +751,7 @@
 		</scroll-view>
 
 		<!-- 底部提交按钮 -->
-		<view v-if="!pendingReviewVisible && !workspaceVisible && !managementCenterVisible && !managementCenterLoading" class="footer-safe">
+		<view v-if="!pendingReviewVisible && !workspaceVisible && !managementCenterVisible && !managementCenterLoading && !directCenterMode" class="footer-safe">
 			<view
 				class="submit-button"
 				:class="{ disabled: !canSubmit || submitting }"
@@ -1049,6 +1056,7 @@
 		     仍是内联实现：常驻挂载 + open 类控制显隐，避免新增组件文件热编译不识别。 -->
 		<view class="cp-overlay" :class="{ open: copyVisible }" @tap="closeCopyProfile">
 			<view class="cp-card" @tap.stop>
+				<view class="cpd-close" @tap="closeCopyProfile"><text>✕</text></view>
 				<view class="cpd-icon"><text class="cpd-icon-glyph">◈</text></view>
 				<text class="cpd-title">复制客源资料</text>
 				<text class="cpd-subtitle">确认下方文本后再复制，可先修改。</text>
@@ -1113,8 +1121,10 @@ import {
 	getMatchmakerWorkspaceMeetingRequests,
 	getMatchmakerWorkspaceCommissionEntries,
 	getMatchmakerCommissionStandards,
+	getMatchmakerWorkspaceActivitySignups,
 	getMatchmakerMemberContact,
-	submitMatchmakerApplication
+	submitMatchmakerApplication,
+	getActivities
 } from '@/api'
 import { getWorkspaceMeetingPresentation } from '@/utils/meeting-workflow.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
@@ -1150,8 +1160,11 @@ const managementAccess = ref<any>(null)
 const managementCenterSnapshot = ref<any>(null)
 const managementAccessLoading = ref(true)
 const managementCenterLoading = ref(false)
+const directCenterMode = ref(false)
+const directCenterError = ref('')
 const managementCenterVisible = ref(false)
 const pendingReviewVisible = ref(false)
+const pendingReviewPanel = ref<any>(null)
 // 线下业绩独立页：与「财务明细」工作区互斥，不再共用同一个页面。
 const offlineOrdersVisible = ref(false)
 const withdrawalVisible = ref(false)
@@ -1393,20 +1406,51 @@ const reloadManagementCenterSnapshot = async () => {
 		// 重拉失败时保留上一次有效统计，和刷新接口的容错一致。
 	}
 }
-// 远端未开放红娘活动管理，不展示本地活动。
-const activityMetrics: any[] = []
-const activityRows: any[] = []
+// 工作台尚未提供报名管理接口，不将示例统计当作真实数据。
+const activityOptions = ref<any[]>([])
+const activityId = ref(0)
+const activityRows = ref<any[]>([])
+const activityStatistics = ref<any>({})
 const activityKeyword = ref('')
 const activitySearch = ref('')
-const activityFilter = ref('全部')
+const activityFilter = ref('all')
+const activityPage = ref(1)
+const activityHasMore = ref(false)
+const activityLoading = ref(false)
+const activityError = ref('')
+let activityRequest = 0
+const activityOptionIndex = computed(() => Math.max(0, activityOptions.value.findIndex((item: any) => Number(item.id) == activityId.value)))
+const activityTitle = computed(() => activityOptions.value.length > 0 ? String(activityOptions.value[activityOptionIndex.value].title) : '活动报名管理')
+const activityMetricDefs: any[] = [{ key: 'all', label: '全部', field: 'total' }, { key: 'pending', label: '待审', field: 'pending' }, { key: 'approved', label: '通过', field: 'approved' }, { key: 'rejected', label: '未通过', field: 'rejected' }, { key: 'checked_in', label: '已签到', field: 'checked_in' }, { key: 'not_checked_in', label: '未签到', field: 'not_checked_in' }]
+const activityMetrics = computed(() => activityMetricDefs.map((item: any) => ({ ...item, value: activityStatistics.value[item.field] != null ? String(activityStatistics.value[item.field]) : '—' })))
+const activityFilterLabel = computed(() => { const item: any = activityMetricDefs.find((row: any) => row.key == activityFilter.value); return item != null ? item.label : '全部' })
 const onActivityKeyword = (event: any) => { activityKeyword.value = String(event.detail.value || '') }
-const applyActivitySearch = () => { activitySearch.value = activityKeyword.value.trim() }
-const selectActivityFilter = (label: string) => { activityFilter.value = label }
-const activityVisibleRows = computed(() => activityRows.filter((row: any): boolean => {
-	const filter = activityFilter.value
-	const statusMatch = filter == '全部' || (filter == '待审' && row.status == '待审核') || (filter == '通过' && row.status == '已通过') || (filter == '无效' && row.status == '无效') || (filter == '已签到' && row.checked) || (filter == '未签到' && !row.checked)
-	return statusMatch && (activitySearch.value.length == 0 || row.name.indexOf(activitySearch.value) >= 0 || row.phone.indexOf(activitySearch.value) >= 0)
-}))
+const loadActivitySignups = async (append: boolean = false) => {
+	if (append && (activityLoading.value || !activityHasMore.value)) return
+	const requestId = ++activityRequest
+	const nextPage = append ? activityPage.value + 1 : 1
+	activityLoading.value = true
+	activityError.value = ''
+	if (!append) activityRows.value = []
+	try {
+		const result = await getMatchmakerWorkspaceActivitySignups(activityId.value, nextPage, activitySearch.value, activityFilter.value)
+		if (requestId != activityRequest) return
+		if (!result.success || result.data == null) { activityError.value = result.message != null ? String(result.message) : '报名数据加载失败'; return }
+		const data: any = result.data
+		activityOptions.value = Array.isArray(data.activities) ? data.activities : []
+		activityId.value = Number(data.selected_activity_id || 0)
+		activityStatistics.value = data.statistics != null ? data.statistics : {}
+		const rows: any[] = Array.isArray(data.items) ? data.items : []
+		const mapped = rows.map((row: any) => ({ id: String(row.id), name: String(row.nickname || '未命名会员'), avatar: resolveMediaUrl(row.avatar), statusText: Number(row.status) == 1 ? '已通过' : (Number(row.status) == 2 ? '已取消' : (Number(row.status) == 3 ? '未通过' : '待审核')), checkedIn: row.checked_in == true, fee: row.pay_status == 'free' ? '免费' : '¥' + String(row.pay_amount || '0.00'), createdAt: formatLeadTime(row.created_at) }))
+		activityRows.value = append ? activityRows.value.concat(mapped) : mapped
+		activityPage.value = nextPage
+		activityHasMore.value = data.has_more == true
+	} catch (e) { if (requestId == activityRequest) activityError.value = '报名数据加载失败，请稍后重试' }
+	finally { if (requestId == activityRequest) activityLoading.value = false }
+}
+const selectActivity = (event: any) => { const index = Number(event.detail.value); if (index >= 0 && index < activityOptions.value.length) { activityId.value = Number(activityOptions.value[index].id); activityFilter.value = 'all'; loadActivitySignups(false) } }
+const selectActivityFilter = (key: string) => { activityFilter.value = key; loadActivitySignups(false) }
+const searchActivities = () => { activitySearch.value = activityKeyword.value.trim(); loadActivitySignups(false) }
 const workspaceGenericRows: any[] = []
 const workspaceVisibleMembers = computed(() => {
 	let rows = workspaceMembers.value
@@ -1618,7 +1662,16 @@ const openManagementCenter = async () => {
 	}
 }
 
+const retryDirectCenter = async () => {
+	if (managementCenterLoading.value) return
+	directCenterError.value = ''
+	await loadManagementAccess()
+	await openManagementCenter()
+	if (!managementCenterVisible.value) directCenterError.value = '红娘管理中心暂时无法打开'
+}
+
 const exitManagementCenter = () => {
+	if (directCenterMode.value) { uni.navigateBack(); return }
 	stopPendingReviewCountTimer()
 	pendingReviewCountRequest += 1
 	pendingReviewVisible.value = false
@@ -3477,6 +3530,7 @@ const openWorkspace = async (title: string, kind: string, initialTab: string = '
 	if (kind == 'lead') await loadWorkspaceLeads()
 	if (kind == 'match') await loadWorkspaceMatches()
 	if (kind == 'meeting') await loadWorkspaceMeetings()
+	if (kind == 'activity') { activityId.value = 0; activityFilter.value = 'all'; activityKeyword.value = ''; activitySearch.value = ''; await loadActivitySignups(false) }
 	if (kind == 'income-placeholder') await loadWorkspaceCommissionBalance()
 	// 「线上分成」读服务端；「专属推广工具」没有对应数据源，仍是演示数据。
 	if (kind == 'commission' && title == '我的分成') {
@@ -3609,6 +3663,27 @@ const serviceNavVisible = ref(false)
 const openPage = (url: string) => {
 	uni.navigateTo({ url: url, fail: () => showToast('页面打开失败，请稍后重试') })
 }
+const openingServiceActivity = ref(false)
+// 服务导航中的「相亲活动」应直接进入可报名活动详情；仅在没有活动或读取失败时回到列表。
+const openServiceActivityDetail = async () => {
+	if (openingServiceActivity.value) return
+	openingServiceActivity.value = true
+	try {
+		const result = await getActivities('recruiting')
+		const activities: any[] = result.success && Array.isArray(result.data) ? result.data : []
+		const first = activities.length > 0 ? activities[0] : null
+		const activityId = first != null ? Number(first.id) : 0
+		if (activityId > 0) {
+			openPage('/pagesSub/community/activity-detail?id=' + String(activityId))
+			return
+		}
+		openPage('/pagesSub/community/activity-list')
+	} catch (e) {
+		openPage('/pagesSub/community/activity-list')
+	} finally {
+		openingServiceActivity.value = false
+	}
+}
 // 「我的账号」：红娘管理中心子页面——会员端「我的」页的精简版，共用账号数据但页面独立。
 const openMyAccount = () => {
 	uni.navigateTo({
@@ -3620,7 +3695,7 @@ const onServiceNavSelect = (key: string) => {
 	serviceNavVisible.value = false
 	if (key == 'member_zone') { uni.reLaunch({ url: '/pages/index/index?tab=2', fail: () => showToast('会员分区打开失败，请稍后重试') }); return }
 	if (key == 'filter') { openPendingReview(''); return }
-	if (key == 'activity') { openPage('/pagesSub/community/activity-list'); return }
+	if (key == 'activity') { openServiceActivityDetail(); return }
 	if (key == 'news') { openWorkspace('红娘喜讯', 'news'); return }
 	if (key == 'custom') { openPage('/pagesSub/matchmaker/custom'); return }
 	if (key == 'vip') { openPage('/pagesSub/profileExtra/vip'); return }
@@ -3647,6 +3722,7 @@ onLoad((options: any) => {
 	autoOpenPendingReview.value = options != null && (options.openPendingReview == '1' || options.openPendingReview == 1 || options.openPendingReview === true)
 	// 直达工作区：?workspace=meeting（约见申请）/ ?workspace=match（待我牵线）
 	autoOpenWorkspace.value = options != null && options.workspace != null ? String(options.workspace) : ''
+	directCenterMode.value = autoOpenWorkspace.value == 'center'
 })
 
 onShow(async () => {
@@ -3669,6 +3745,7 @@ onShow(async () => {
 		autoOpenWorkspace.value = ''
 		await loadManagementAccess()
 		await openManagementCenter()
+		if (directCenterMode.value && !managementCenterVisible.value) directCenterError.value = '红娘管理中心暂时无法打开'
 		if (managementCenterVisible.value) {
 			if (kind == 'meeting') openWorkspace('约会管理', 'meeting', '全部')
 			else if (kind == 'match') openWorkspace('牵线管理', 'match', '待牵线')
@@ -3722,6 +3799,8 @@ const handlePageBack = () => {
 		return
 	}
 	if (pendingReviewVisible.value) {
+		// 牵线记录 / 匹配子页打开时，返回先回会员资料管理列表，不直接退到红娘管理中心。
+		if (pendingReviewPanel.value != null && pendingReviewPanel.value.back()) return
 		closePendingReview()
 		return
 	}
@@ -6165,6 +6244,7 @@ const submitApplication = async () => {
 }
 
 .cp-card {
+	position: relative;
 	width: 100%;
 	max-width: 640rpx;
 	background: var(--surface);
@@ -6180,6 +6260,24 @@ const submitApplication = async () => {
 
 .cp-overlay.open .cp-card {
 	transform: translateY(0) scale(1);
+}
+
+.cpd-close {
+	position: absolute;
+	top: 24rpx;
+	right: 24rpx;
+	width: 52rpx;
+	height: 52rpx;
+	border-radius: 50%;
+	background: var(--warm);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cpd-close text {
+	color: var(--muted);
+	font-size: 24rpx;
 }
 
 .cpd-icon {
@@ -6711,10 +6809,10 @@ const submitApplication = async () => {
 .ar-title { color:var(--ink); font-size:29rpx; font-weight:700; }.ar-demo { color:var(--muted); font-size:20rpx; }
 .ar-grid { display:flex; flex-direction:row; flex-wrap:wrap; justify-content:space-between; margin-top:24rpx; }
 .ar-stat { width:31%; height:112rpx; margin-bottom:16rpx; border-radius:20rpx; background:var(--canvas); display:flex; flex-direction:column; align-items:center; justify-content:center; }
-.ar-number { font-size:34rpx; color:var(--ink); font-weight:700; }.ar-label { font-size:23rpx; color:var(--muted); margin-top:4rpx; }
+.ar-number { font-size:22rpx; color:var(--muted); font-weight:700; }.ar-label { font-size:23rpx; color:var(--ink2); margin-top:8rpx; }
 .ar-actions { display:flex; flex-direction:row; justify-content:center; gap:20rpx; margin-top:8rpx; }.ar-action { padding:17rpx 24rpx; border-radius:999rpx; background:var(--warm); color:var(--accent2); font-size:23rpx; }
-.ar-search { margin-top:24rpx; border:1rpx solid var(--line); border-radius:999rpx; background:var(--surface); padding:6rpx; display:flex; flex-direction:row; align-items:center; }.ar-input { flex:1; padding-left:22rpx; font-size:23rpx; color:var(--ink); }.ar-search-btn { padding:13rpx 28rpx; border-radius:999rpx; background:var(--accent); color:var(--surface); font-size:24rpx; font-weight:700; }
+.ar-search { margin-top:24rpx; border:1rpx solid var(--line); border-radius:999rpx; background:var(--surface); padding:6rpx 6rpx 6rpx 20rpx; display:flex; flex-direction:row; align-items:center; }.ar-search-icon { color:var(--muted); font-size:32rpx; }.ar-input { flex:1; min-width:0; padding-left:10rpx; font-size:23rpx; color:var(--ink); }.ar-search-btn { padding:13rpx 28rpx; border-radius:999rpx; background:var(--accent-bg); color:var(--accent2); font-size:24rpx; font-weight:700; }
 .ar-list-heading { margin:32rpx 4rpx 24rpx; font-size:30rpx; font-weight:700; color:var(--ink); }.ar-card { margin-bottom:20rpx; display:flex; flex-direction:column; gap:16rpx; }.ar-card-head { display:flex; flex-direction:row; align-items:center; gap:16rpx; }
 .ar-avatar { width:70rpx; height:70rpx; border-radius:50%; background:var(--warm); display:flex; align-items:center; justify-content:center; color:var(--muted); }.ar-name { flex:1; font-size:27rpx; font-weight:700; color:var(--ink); }.ar-badge { background:var(--canvas); color:var(--accent); border-radius:999rpx; padding:10rpx 20rpx; font-size:22rpx; }
-.ar-detail { font-size:24rpx; color:var(--ink2); }.ar-line { display:flex; flex-direction:row; justify-content:space-between; color:var(--ink2); font-size:22rpx; }.ar-muted { color:var(--muted); }.ar-fee { color:var(--accent); }.ar-empty { padding:60rpx; text-align:center; color:var(--muted); font-size:24rpx; }
+.ar-detail { font-size:24rpx; color:var(--ink2); }.ar-line { display:flex; flex-direction:row; justify-content:space-between; color:var(--ink2); font-size:22rpx; }.ar-muted { color:var(--muted); }.ar-fee { color:var(--accent); }.ar-empty { min-height:220rpx; padding:40rpx 28rpx; border-radius:30rpx; background:var(--surface); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14rpx; text-align:center; color:var(--muted); font-size:23rpx; }.ar-empty-title { color:var(--ink2); font-size:27rpx; font-weight:700; }
 </style>

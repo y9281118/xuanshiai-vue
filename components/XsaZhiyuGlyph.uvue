@@ -1,0 +1,57 @@
+<template>
+	<view class="zyg-viewport" :style="{ width: size, height: size }">
+		<image class="zyg-sprite" :src="src" mode="scaleToFill"></image>
+	</view>
+</template>
+
+<script setup lang="uts">
+/**
+ * XsaZhiyuGlyph - 知遇面板动作位动态小机器人图标
+ *
+ * 用法：放在 XsaZhiyuHub 的 zyh-item-mark 圆形底里，替代文字 glyph。
+ * 素材来自用户导入的《静态3D玩偶转动态多面效果 (1).mp4》：
+ * 720x720 / 24fps / 8.06s，同款猫耳机器人转台式旋转（带固定地面阴影）。
+ * 抽 60 帧，梯度屏障抠透明底（白壳 ~226 与背景 ~230 同色，色距阈值
+ * 会把白壳一起抠掉；改用描边轮廓做屏障、从画面四边洪泛填充背景），
+ * 内容缩至 87% 居中，96x96 x 60 帧横排雪碧图 138.5KB。
+ *
+ * 与 XsaZhiyuVideo 同一套雪碧图逐帧方案，但图标级更轻：
+ * 不带原生 video 分支、不带标签；后续 己/合/寻 换机器人时传不同 src 即可。
+ */
+interface Props {
+	size?: string
+	src?: string
+}
+
+withDefaults(defineProps<Props>(), {
+	size: '60rpx',
+	src: '/static/ai-cat/zhiyu-liao-sprite-alpha.webp'
+})
+</script>
+
+<style scoped>
+.zyg-viewport {
+	position: relative;
+	overflow: hidden;
+	flex: none;
+}
+
+/* 60 帧横排：宽 = 视口 60 倍，steps(60) 每次推进一帧，6s 一圈 */
+.zyg-sprite {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 6000%;
+	height: 100%;
+	animation: zyg-play 6s steps(60) infinite;
+}
+
+@keyframes zyg-play {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-100%);
+	}
+}
+</style>

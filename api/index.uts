@@ -21,6 +21,8 @@ export {
   loginByWechat,
   bindPhone,
   changePhone,
+  setRegistrationIntent,
+  getRegistrationIntent,
   createPhoneChangeKey,
   submitRealname,
   getUserCertifications,
@@ -119,6 +121,7 @@ export {
   getMeetingApplies,
   handleMeetingApply,
   getMeetingApplyState,
+  isMeetingApplyQuotaBlocked,
   forwardTextMessage
 } from './message.uts'
 export {
@@ -346,7 +349,10 @@ export {
 export {
   SPOTLIGHT_AMOUNT,
   sendSuperlike,
-  paySpotlight
+  getSpotlightPrice,
+  createSpotlightOrder,
+  getSpotlightOrder,
+  paySpotlightOrder
 } from './spotlight.uts'
 
 
@@ -383,6 +389,7 @@ export {
   getMatchmakerWorkspaceMeetingRequests,
   getMatchmakerWorkspaceCommissionEntries,
   getMatchmakerCommissionStandards,
+  getMatchmakerWorkspaceActivitySignups,
   getMatchmakerOfflineOrders,
   getMatchmakerWorkspaceIdentity,
   getMatchmakerWorkspaceGoodNews,

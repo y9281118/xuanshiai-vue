@@ -192,6 +192,29 @@ export async function changePhone(newPhone: string, newCode: string, oldCode: st
   })
 }
 
+/**
+ * 提交注册身份：服务端据此决定推荐性别口径（找对象只推异性、找搭子不限性别）。
+ * 枚举必须与后端 app/schemas/auth.py 的 RegistrationIntentUpdate 一致，
+ * 传其他值会被 422 拒绝，别在前端自由扩展取值。
+ */
+export async function setRegistrationIntent(intentType: string, source: string = 'register') {
+  return request({
+    url: '/auth/registration-intent',
+    method: 'PUT',
+    data: { intent_type: intentType, source: source },
+    mockData: { intent_type: intentType, label: '', description: '' }
+  })
+}
+
+/** 查询当前用户已选的注册身份；未选过时服务端返回 null。 */
+export async function getRegistrationIntent() {
+  return request({
+    url: '/auth/registration-intent',
+    method: 'GET',
+    mockData: null
+  })
+}
+
 /** Submit real-name information. The server returns status 1 while reviewing. */
 export async function submitRealname(realName: string, idCard: string) {
   return request({

@@ -70,7 +70,7 @@
 						<text class="vip-section-title">基础资料</text>
 						<view class="basic-info-grid">
 							<view v-for="(row, ri) in user.basicInfo" :key="ri" class="basic-info-row">
-								<view v-for="(item, ii) in row" :key="ii" class="basic-info-cell"><text class="basic-info-label">{{ item.label }}</text><text class="basic-info-value">{{ item.value }}</text></view>
+								<view v-for="(item, ii) in row" :key="ii" class="basic-info-cell"><text class="basic-info-label">{{ item.label }}</text><view class="basic-info-value basic-info-segs"><text v-for="(s, si) in segsOf(item.value)" :key="si" class="basic-info-seg">{{ s }}</text></view></view>
 							</view>
 						</view>
 					</view>
@@ -211,7 +211,7 @@
 						</view>
 						<view class="spotlight-quota">
 							<text class="spotlight-quota-label">单次爆灯</text>
-							<text class="spotlight-quota-value">¥{{ spotlightAmount }}</text>
+							<text class="spotlight-quota-value">¥{{ spotlightPrice }}</text>
 							<text class="spotlight-quota-unit">电费</text>
 						</view>
 						<view class="spotlight-button" :class="{ 'spotlight-button-disabled': !canSpotlight }" @tap="onSpotlight">
@@ -219,7 +219,7 @@
 							<text class="spotlight-button-text">{{ spotlightButtonText }}</text>
 						</view>
 						<text class="spotlight-error" v-if="spotlightError != ''">{{ spotlightError }}</text>
-						<text class="spotlight-pending-note">爆灯人数与头像为示意，正式定价待后端接入 · 当前免费体验</text>
+						<text class="spotlight-pending-note">爆灯人数与头像为示意，列表接口尚未开放 · 单价与扣款由服务端计算</text>
 					</view>
 				</view>
 			</view>
@@ -321,7 +321,7 @@
 						</view>
 						<view class="spotlight-quota">
 							<text class="spotlight-quota-label">单次爆灯</text>
-							<text class="spotlight-quota-value">¥{{ spotlightAmount }}</text>
+							<text class="spotlight-quota-value">¥{{ spotlightPrice }}</text>
 							<text class="spotlight-quota-unit">电费</text>
 						</view>
 						<view class="spotlight-button" :class="{ 'spotlight-button-disabled': !canSpotlight }" @tap="onSpotlight">
@@ -329,13 +329,13 @@
 							<text class="spotlight-button-text">{{ spotlightButtonText }}</text>
 						</view>
 						<text class="spotlight-error" v-if="spotlightError != ''">{{ spotlightError }}</text>
-						<text class="spotlight-pending-note">爆灯人数与头像为示意，正式定价待后端接入 · 当前免费体验</text>
+						<text class="spotlight-pending-note">爆灯人数与头像为示意，列表接口尚未开放 · 单价与扣款由服务端计算</text>
 					</view>
 
 				</view>
 			</view>
 
-			<view class="scroll-bottom-spacer" :class="{ 'spacer-matchmaker': fromMatchmaker }"></view>
+			<view class="scroll-bottom-spacer" :class="{ 'spacer-matchmaker': fromMatchmaker || matchmakerActions }"></view>
 		</scroll-view>
 
 			<!-- 知遇悬浮入口：点开聚合能力；红娘代看模式隐藏 -->
@@ -355,7 +355,7 @@
 				<view class="primary-action edit-only-btn" @tap="goEdit"><text class="primary-action-text">编辑资料</text></view>
 			</view>
 			<!-- 底部操作栏：与首页推荐页同款（分享 + 申请认识 + 收藏爱心）；红娘查看资料时改用红娘操作栏 -->
-			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !detailLoading && detailError == ''" class="float-bar">
+			<view v-if="!isOwnProfile && !isPreview && !fromMatchmaker && !matchmakerActions && !detailLoading && detailError == ''" class="float-bar">
 				<view class="share-btn" @tap="onShare"><text class="ic ic-sys ic-fenxiang share-icon"></text></view>
 				<view class="chat-btn" @tap="onMatch"><text class="ic ic-home ic-hello chat-icon"></text><text class="chat-text">申请认识</text></view>
 				<view class="like-btn" @tap="onLike">
@@ -365,17 +365,29 @@
 			</view>
 
 			<!-- 红娘查看会员主页时的底部操作栏：权限提示 + 编辑资料 + 红娘中心 -->
-			<view v-if="fromMatchmaker && !isPreview && !detailLoading && detailError == ''" class="mm-bar">
+			<view v-if="(fromMatchmaker || matchmakerActions) && !isPreview && !detailLoading && detailError == ''" class="mm-bar">
+				<view class="mm-bar-inner">
 				<view class="mm-bar-alert"><text class="mm-bar-alert-mark">!</text></view>
 				<text class="mm-bar-alert-text">您在以红娘权限查看资料</text>
 				<view class="mm-bar-actions">
 					<view class="mm-bar-btn mm-bar-btn-edit" @tap="onMatchmakerEditMember"><text>编辑资料</text><text class="mm-bar-btn-arrow">›</text></view>
 					<view class="mm-bar-btn mm-bar-btn-center" @tap="onMatchmakerCenter"><text>红娘中心</text><text class="mm-bar-btn-arrow">›</text></view>
 				</view>
+				</view>
 			</view>
 
 		<XsaApplySheet :visible="applyVisible" :user-id="applyUserId" @close="applyVisible = false" @success="onApplySuccess" />
 		<XsaSpotlightSuccessSheet :visible="spotlightSuccessVisible" :target="spotlightTarget" @close="closeSpotlightSuccess" />
+		<!-- 付费爆灯：免费额度用完后的支付面板。金额取服务端订单返回值，不用前端常量。 -->
+		<XsaPaymentSheet
+			:visible="spotlightPayVisible"
+			:amount="spotlightPayAmount"
+			:loading="spotlightPayLoading"
+			confirm-text="确认支付并爆灯"
+			:notice="'今日免费爆灯次数已用完，本次为付费爆灯，支付成功后立即送达。'"
+			@close="closeSpotlightPay"
+			@confirm="onSpotlightPayConfirm"
+		/>
 
 		<XsaAiMatchSheet
 			:visible="matchVisible"
@@ -401,6 +413,7 @@
 import { ref, computed } from 'vue'
 import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 import XsaSpotlightSuccessSheet from '@/pagesSub/userExtra/components/XsaSpotlightSuccessSheet.uvue'
+import XsaPaymentSheet from '@/pagesSub/userExtra/components/XsaPaymentSheet.uvue'
 import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
@@ -409,7 +422,7 @@ import { getUserDetail, likeUser, getOwnProfile, getMyPosts, getMembershipStatus
 import { normalizeIdealPartner } from '@/api/preference.uts'
 import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import { LOCATION_TREE as locationJson } from '../data/location.uts'
-import { sendSuperlike, SPOTLIGHT_AMOUNT } from '@/api/spotlight.uts'
+import { sendSuperlike, SPOTLIGHT_AMOUNT, getSpotlightPrice, createSpotlightOrder, paySpotlightOrder, SpotlightPaymentOrder } from '@/api/spotlight.uts'
 import { guardRealName } from '@/utils/realNameGate.uts'
 import { incomeDisplayText, locationDisplayByCodes, educationLabel as educationLabelOf, CERT_TAGS_COLLAPSED_COUNT } from '@/utils/profile-field-display.uts'
 import { recordProfileView, rollbackProfileView } from '@/utils/quota.uts'
@@ -421,6 +434,8 @@ const isOwnProfile = ref(false)
 const isPreview = ref(false)
 // 红娘从资料待审进入时跳过 VIP 解锁墙/额度限制（后端 view_profile 已豁免）。
 const fromMatchmaker = ref(false)
+// 保留普通会员主页的数据口径，仅切换从红娘工作台进入时的底部操作。
+const matchmakerActions = ref(false)
 const isLikedUser = ref(false)
 const showAiGuide = ref(false)
 const scrollAnchor = ref('')
@@ -432,16 +447,22 @@ const applyVisible = ref(false)
 const applyUserId = ref(1)
 const spotlightSuccessVisible = ref(false)
 const spotlightTarget = ref({ id: 0, name: '', avatar: '', meta: '' })
-// 免费额度爆灯：CTA 走真实 sendSuperlike（当前免费体验）。
-// 待后端：爆灯人数/头像列表/正式定价接口未上线，下列为图二定稿的设计占位，UI 已用「示意」标注，非真实数据。
+// 爆灯双通道：每日免费额度（sendSuperlike）用完后走付费（createSpotlightOrder → paySpotlightOrder）。
+// 待后端：爆灯人数/头像列表接口未上线，下列为图二定稿的设计占位，UI 已用「示意」标注，非真实数据。
 const spotlightGuestCount = 32
 const spotlightGuestExtra = 26
 const spotlightGuestPlaceholders = 4
-const spotlightAmount = SPOTLIGHT_AMOUNT
+// 单价以后端 GET /spotlights/price 为准（运行期配置 finance.spotlight_price）。
+// SPOTLIGHT_AMOUNT 只在拉取失败时兜底展示；真正扣款金额取订单返回的 amount。
+const spotlightPrice = ref(SPOTLIGHT_AMOUNT)
 const spotlightRemaining = ref(-1)
 const spotlightSending = ref(false)
 const spotlightDone = ref(false)
 const spotlightError = ref('')
+const spotlightPayVisible = ref(false)
+const spotlightPayLoading = ref(false)
+const spotlightPayAmount = ref(SPOTLIGHT_AMOUNT)
+let spotlightPendingOrderNo = ''
 const visitorCount = ref<number | null>(null)
 const user = ref({
 	id: 0,
@@ -621,7 +642,11 @@ const constellationFromBirthday = (birthday: any): string => {
 	const month = Number(value.substring(5, 7))
 	const day = Number(value.substring(8, 10))
 	const signs = ['摩羯座', '水瓶座', '双鱼座', '白羊座', '金牛座', '双子座', '巨蟹座', '狮子座', '处女座', '天秤座', '天蝎座', '射手座']
-	const cutoffs = [20, 19, 21, 21, 21, 22, 23, 23, 23, 23, 22, 22]
+	// 各月星座切换日（当日属于前一个星座）：摩羯12/22 水瓶1/20 双鱼2/19 白羊3/21
+	// 金牛4/20 双子5/21 巨蟹6/22 狮子7/23 处女8/23 天秤9/23 天蝎10/24 射手11/23。
+	// 原表 4 月 21、10 月 23、11 月 22 各偏一天，与生日真实星座对不上；
+	// 后端 app/services/discovery.py:_constellation_from_birthday 用同一张表，改一处须同步另一处。
+	const cutoffs = [20, 19, 21, 20, 21, 22, 23, 23, 23, 24, 23, 22]
 	if (month < 1 || month > 12 || day < 1 || day > 31) return ''
 	return signs[(day < cutoffs[month - 1] ? month - 1 : month) % 12]
 }
@@ -758,6 +783,29 @@ const mapDetailUser = (raw: any, id: number) => {
 		}
 		qaAnswers.push({ question: question != '' ? question : '关于我', answer: answer, mediaUrl: mediaUrl })
 	}
+	// 格文字区≈183rpx、值字号 24rpx ≈ 7 字/行：超容量行政段用规范简称防段内断词，全量串见详细资料。
+	const SEG_ABBR = [
+		['新疆维吾尔自治区', '新疆'], ['伊犁哈萨克自治州', '伊犁'], ['博尔塔拉蒙古自治州', '博州'],
+		['巴音郭楞蒙古自治州', '巴州'], ['克孜勒苏柯尔克孜自治州', '克州'], ['西双版纳傣族自治州', '西双版纳'],
+		['德宏傣族景颇族自治州', '德宏'], ['红河哈尼族彝族自治州', '红河'], ['文山壮族苗族自治州', '文山'],
+		['黔东南苗族侗族自治州', '黔东南'], ['黔南布依族苗族自治州', '黔南'], ['黔西南布依族苗族自治州', '黔西南'],
+		['恩施土家族苗族自治州', '恩施'], ['湘西土家族苗族自治州', '湘西'], ['延边朝鲜族自治州', '延边'],
+		['阿坝藏族羌族自治州', '阿坝'], ['海西蒙古族藏族自治州', '海西']
+	]
+	const segsOf = (text: string): string[] => {
+		const out: string[] = []
+		for (const part of text.split(' ')) {
+			if (part == '') continue
+			let seg = part
+			if (seg.length > 7) {
+				for (const pair of SEG_ABBR) {
+					if (pair[0] == seg) { seg = pair[1]; break }
+				}
+			}
+			out.push(seg)
+		}
+		return out
+	}
 	// 基础资料固定 3 行 × 3 列 = 9 格（2026-10-27 定版）：
 	// 婚姻、MBTI 与新增的 10 项一起归入「详细资料」，避免两块重复展示同一字段。
 	const mappedInfo = [
@@ -765,8 +813,8 @@ const mapDetailUser = (raw: any, id: number) => {
 		[{ label: '星座', value: constellation }, { label: '学历', value: edu }, { label: '职业', value: job }],
 		[{ label: '现居', value: city }, { label: '家乡', value: hometown }, { label: '收入', value: income }]
 	]
-	// 详细资料 12 项：取值优先 card，再 profile，都没有显示「未填写」。
-	// 12 项都不计入资料完整度，所以这里缺值不影响任何门槛。
+	// 详细资料 14 项：取值优先 card，再 profile，都没有显示「未填写」。
+	// 14 项都不计入资料完整度，所以这里缺值不影响任何门槛。
 	const pickDetail = (keys: string[]): string => {
 		const fromCard = firstField(card, keys)
 		if (fromCard != null) return ('' + fromCard).trim()
@@ -783,6 +831,8 @@ const mapDetailUser = (raw: any, id: number) => {
 		{ label: 'MBTI', value: mbti },
 		{ label: '属相', value: pickDetail(['zodiac']) != '' ? pickDetail(['zodiac']) : (zodiacFromBirthday(birthday) != '' ? zodiacFromBirthday(birthday) : missing) },
 		{ label: '户口', value: householdText != '' ? householdText : missing },
+		{ label: '现居', value: city },
+		{ label: '家乡', value: hometown },
 		{ label: '购房', value: detailValue(['house']) },
 		{ label: '购车', value: detailValue(['car']) },
 		{ label: '毕业学校', value: detailValue(['school']) },
@@ -1049,6 +1099,7 @@ onMounted(async () => {
 	const options = currentPage.options
 	isPreview.value = options.preview === 'true' || options.preview === true
 	fromMatchmaker.value = options.matchmakerView === '1' || options.matchmakerView === 'true' || options.matchmakerView === true
+	matchmakerActions.value = options.matchmakerActions === '1'
 
 	let parsed = 0
 	if (options.userId != null && options.userId != '') {
@@ -1064,7 +1115,7 @@ onMounted(async () => {
 		}
 	} catch (e) {}
 	// guest=1：明确以「访客资料」打开（推荐/广场卡片入口），即使 userId 与登录账号相同也不按本人主页处理
-	const guestForced = options.guest === 'true' || options.guest === true
+	const guestForced = options.guest === '1' || options.guest === 'true' || options.guest === true
 	isOwnProfile.value = !guestForced && (options.own === 'true' || options.own === true || isPreview.value || (viewerId > 0 && viewerId == parsed))
 	user.value.id = parsed
 	applyUserId.value = parsed
@@ -1080,6 +1131,8 @@ onMounted(async () => {
 	}
 	await load()
 	detailLoadedOnce = true
+	// 爆灯单价：只影响爆灯卡片上的数字，不阻塞首屏；本人主页/预览/红娘代看不展示爆灯卡片。
+	if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value) refreshSpotlightPrice()
 	if (!isOwnProfile.value && !isPreview.value && !fromMatchmaker.value && uni.getStorageSync('xsa_ai_avatar_guide_shown') != true) showAiGuide.value = true
 	if (options.anchor != null && ('' + options.anchor) != '') {
 		const anchorId = '' + options.anchor
@@ -1146,7 +1199,7 @@ const onMatchmakerEditMember = () => {
 }
 const onMatchmakerCenter = () => {
 	uni.navigateTo({
-		url: '/pagesSub/matchmaker/become-matchmaker',
+		url: '/pagesSub/matchmaker/become-matchmaker?workspace=center',
 		fail: () => uni.showToast({ title: '打开红娘中心失败', icon: 'none' })
 	})
 }
@@ -1220,18 +1273,21 @@ const onZhiyuHubSelect = (key: string) => {
 		})
 	}
 }
-/** 爆灯按钮是否可点：本人/预览态不展示，发送中、今日额度用完、本次已送出都不可点。 */
+/**
+ * 爆灯按钮是否可点：本人/预览态不展示，发送中、本次已送出不可点。
+ * 注意：`spotlightRemaining == 0` **不再**置灰——额度用完后按钮转为付费爆灯入口，
+ * 由 onSpotlight 走 createSpotlightOrder → paySpotlightOrder，不再拦在这里。
+ */
 const canSpotlight = computed((): boolean => {
 	if (isOwnProfile.value || isPreview.value) return false
 	if (spotlightSending.value || spotlightDone.value) return false
-	if (spotlightRemaining.value == 0) return false
 	return true
 })
 
 const spotlightButtonText = computed((): string => {
 	if (spotlightSending.value) return '发送中...'
 	if (spotlightDone.value) return '爆灯已送出'
-	if (spotlightRemaining.value == 0) return '今日爆灯次数已用完'
+	if (spotlightRemaining.value == 0) return '今日免费次数已用完 · ¥' + spotlightPrice.value + ' 立即爆灯'
 	if (spotlightRemaining.value > 0) return '我要爆灯 · 今日还剩 ' + spotlightRemaining.value + ' 次'
 	return '我要爆灯'
 })
@@ -1247,12 +1303,128 @@ const openSpotlightList = () => {
 }
 
 /**
- * 免费额度爆灯：走 POST /discovery/superlikes/{id}，额度扣减与「收到爆灯」通知都在后端完成，
- * 前端不做支付、也不做二次履约。额度默认普通号 1 次/天、VIP 3 次/天。
+ * 免费额度爆灯：走 POST /discovery/superlikes/{id}，额度扣减与「收到爆灯」通知都在后端完成。
+ * 额度默认普通号 1 次/天、VIP 3 次/天；后端在额度不足时还会尝试用积分兑换一次。
+ * 额度彻底用完时不再拦在按钮上，转 openSpotlightPay() 走付费通道。
  */
 // 幂等键在本页实例内复用：网络超时重试时复用同一 key，避免后端已落库却被再扣一次额度。
 // 页面实例 = 一个爆灯对象（详情页按目标用户新开页面栈），所以这个粒度是正确的。
 let spotlightRequestKey = ''
+
+/** 当前爆灯对象的展示信息，支付面板与成功弹窗共用。 */
+const buildSpotlightTarget = (targetId: number) => {
+	return {
+		id: targetId,
+		name: '' + user.value.name,
+		avatar: '' + user.value.avatar,
+		meta: '' + user.value.age + '岁 · ' + user.value.job
+	}
+}
+
+const closeSpotlightPay = () => {
+	if (spotlightPayLoading.value) return
+	spotlightPayVisible.value = false
+	spotlightPendingOrderNo = ''
+}
+
+/**
+ * 拉取爆灯单价（公开接口，读运行期配置 finance.spotlight_price）。
+ * 失败时保持 SPOTLIGHT_AMOUNT 兜底展示即可，不弹错、不阻塞页面：
+ * 这里只影响文案里的数字，真正的扣款金额始终由服务端订单决定。
+ */
+const refreshSpotlightPrice = async () => {
+	try {
+		const res = await getSpotlightPrice()
+		if (res.success === true && res.data != null) {
+			const amount = Number(res.data)
+			if (amount > 0) spotlightPrice.value = amount
+		}
+	} catch (e) {}
+}
+
+/**
+ * 付费爆灯：先建单、再弹支付面板。
+ * 顺序刻意是「建单 → 展示」而不是「展示 → 建单」：单价来自运行期配置 finance.spotlight_price，
+ * 只有订单返回的 amount 才是真正要扣的钱，先建单才能保证面板上的数字与实际扣款一致，
+ * 也避免运营调价后前端还拿 SPOTLIGHT_AMOUNT 弹确认框（历史上出过 9.9 / 5.00 的口径分裂）。
+ * 实名门禁由后端 create_spotlight_order 校验（与免费路径同一条规则），失败直接提示、不弹面板。
+ */
+const openSpotlightPay = async () => {
+	const targetId = Number(user.value.id)
+	if (!(targetId > 0)) return
+	spotlightSending.value = true
+	spotlightError.value = ''
+	try {
+		const res = await createSpotlightOrder(buildSpotlightTarget(targetId))
+		if (res.success !== true || res.data == null) {
+			const message = res != null && res.message != null ? '' + res.message : ''
+			const status = res != null && res.code != null ? Number(res.code) : 0
+			if (message.indexOf('实名') >= 0 || status == 403) {
+				spotlightError.value = '爆灯需要先完成实名认证'
+			} else if (message != '') {
+				spotlightError.value = message
+			} else {
+				spotlightError.value = '创建爆灯订单失败，请稍后重试'
+			}
+			uni.showToast({ title: spotlightError.value, icon: 'none' })
+			return
+		}
+		const order = res.data as SpotlightPaymentOrder
+		if (order.paymentStatus == 'paid') {
+			// 幂等命中已支付订单：直接按已送达处理，绝不能再收一次钱。
+			spotlightPendingOrderNo = ''
+			spotlightDone.value = true
+			spotlightSuccessVisible.value = true
+			return
+		}
+		spotlightPendingOrderNo = order.orderNo
+		spotlightPayAmount.value = order.amount
+		spotlightPayVisible.value = true
+	} catch (e) {
+		spotlightError.value = '网络异常，未能创建爆灯订单'
+		uni.showToast({ title: spotlightError.value, icon: 'none' })
+	} finally {
+		spotlightSending.value = false
+	}
+}
+
+/** 支付面板确认：预支付 → 调起微信 → 等回调把订单置为已支付。 */
+const onSpotlightPayConfirm = async () => {
+	if (spotlightPayLoading.value) return
+	const orderNo = spotlightPendingOrderNo
+	if (orderNo == '') {
+		spotlightPayVisible.value = false
+		return
+	}
+	const targetId = Number(user.value.id)
+	spotlightPayLoading.value = true
+	try {
+		const res = await paySpotlightOrder(orderNo, buildSpotlightTarget(targetId), spotlightPayAmount.value)
+		if (res.success !== true) {
+			const message = res != null && res.message != null ? '' + res.message : ''
+			// 用户主动取消支付不算错误：留在面板上让他自己决定，不弹红色提示。
+			const cancelled = message.indexOf('取消') >= 0
+			if (!cancelled) {
+				spotlightError.value = message != '' ? message : '支付未完成，请稍后重试'
+				uni.showToast({ title: spotlightError.value, icon: 'none' })
+			}
+			return
+		}
+		spotlightPayVisible.value = false
+		spotlightPendingOrderNo = ''
+		spotlightRemaining.value = 0
+		spotlightDone.value = true
+		spotlightSuccessVisible.value = true
+		const done = res.message != null ? '' + res.message : ''
+		// 「开通中」= 微信侧已扣款、服务端回调未到：告知用户不要重复支付，不要谎称已送达。
+		if (done != '' && done.indexOf('开通中') >= 0) uni.showToast({ title: done, icon: 'none' })
+	} catch (e) {
+		spotlightError.value = '网络异常，支付结果未确认，请勿重复支付'
+		uni.showToast({ title: spotlightError.value, icon: 'none' })
+	} finally {
+		spotlightPayLoading.value = false
+	}
+}
 
 const onSpotlight = async () => {
 	if (isOwnProfile.value) {
@@ -1260,21 +1432,27 @@ const onSpotlight = async () => {
 		return
 	}
 	if (!canSpotlight.value) return
+	// 今日免费额度已用完：转付费通道（后端另有积分兑换兜底，会在 429 之前先试一次）。
+	if (spotlightRemaining.value == 0) {
+		await openSpotlightPay()
+		return
+	}
 	const targetId = Number(user.value.id)
 	if (!(targetId > 0)) return
 	spotlightSending.value = true
 	spotlightError.value = ''
-	spotlightTarget.value = { id: targetId, name: '' + user.value.name, avatar: '' + user.value.avatar, meta: '' + user.value.age + '岁 · ' + user.value.job }
+	spotlightTarget.value = buildSpotlightTarget(targetId)
 	if (spotlightRequestKey == '') spotlightRequestKey = 'sl-' + Date.now() + '-' + targetId
 	try {
 		const res = await sendSuperlike(targetId, spotlightRequestKey)
 		if (res.success !== true) {
 			const message = res != null && res.message != null ? '' + res.message : ''
 			const status = res != null && res.code != null ? Number(res.code) : 0
-			// 后端额度耗尽返回 429「今日爆灯次数已用完」，顺手把本地次数归零，按钮立即置灰。
+			// 后端额度耗尽返回 429「今日爆灯次数已用完」：把本地次数归零，
+			// 按钮文案随即变为「¥X 立即爆灯」，下次点击走付费，不再置灰拦死。
 			if (status == 429 || message.indexOf('用完') >= 0) {
 				spotlightRemaining.value = 0
-				spotlightError.value = '今日爆灯次数已用完'
+				spotlightError.value = '今日免费次数已用完，可 ¥' + spotlightPrice.value + ' 立即爆灯'
 			} else if (message.indexOf('实名') >= 0) {
 				spotlightError.value = '爆灯需要先完成实名认证'
 			} else if (message != '') {
@@ -1418,6 +1596,8 @@ const onLike = async () => {
 .basic-info-cell { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6rpx; padding: 18rpx 8rpx; border-radius: 12rpx; background-color: var(--canvas); }
 .basic-info-label { color: var(--muted); font-size: 20rpx; }
 .basic-info-value { color: var(--ink); font-size: 24rpx; font-weight: 600; }
+.basic-info-segs { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; column-gap: 6rpx; row-gap: 0; width: 100%; }
+.basic-info-seg { flex-shrink: 1; max-width: 100%; text-align: center; }
 /* 详细资料 / Ta 的理想型：行容器 + 列间距 + label 固定宽 + value 左对齐；长值通栏。
    不能再用“每个 cell 50% + space-between + value 右对齐”，否则相邻 cell 零间距会粘字。 */
 .detail-info-grid, .ideal-grid { display: flex; flex-direction: column; }
@@ -1500,8 +1680,8 @@ const onLike = async () => {
 .spot-price-value { color: var(--ink); font-family: var(--serif); font-size: 40rpx; font-weight: 800; }
 /* 爆灯卡片：按图二定稿的「爆灯嘉宾」暖橙火焰视觉。颜色全部复用全局 token
    （--review-orange / --plane-yellow / --review-orange-soft / --warm / --muted），不引入新色值。
-   火焰/人形/灯泡均为 CSS 绘制，图标用单色字形；人数/头像/定价为设计占位，已在卡片底部标注「示意·待后端」。
-   CTA 仍走真实免费 sendSuperlike，不做支付。 */
+   火焰/人形/灯泡均为 CSS 绘制，图标用单色字形；人数/头像为设计占位，已在卡片底部标注「示意」。
+   CTA 双通道：免费额度内走 sendSuperlike，额度用完走付费爆灯（createSpotlightOrder → paySpotlightOrder）。 */
 .spotlight-card {
 	--spot-flame: var(--review-orange);
 	--spot-amber: var(--plane-yellow);
@@ -1543,14 +1723,15 @@ const onLike = async () => {
 .spacer-matchmaker { height: 560rpx; }
 
 /* 红娘查看会员主页：底部权限提示 + 编辑资料 / 红娘中心 */
-.mm-bar { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; flex-direction: row; align-items: center; gap: 10rpx; padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom)); background-color: var(--surface); border-top: 1rpx solid var(--line); box-shadow: 0 -4rpx 20rpx rgba(17, 23, 24, 0.06); }
-.mm-bar-alert { width: 32rpx; height: 32rpx; border-radius: 8rpx; background-color: var(--match-blush); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mm-bar { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); background-color: var(--surface); box-shadow: var(--shadow-md); }
+.mm-bar-inner { display: flex; flex-direction: row; align-items: center; gap: 8rpx; padding: 8rpx 10rpx 8rpx 16rpx; border-radius: 999rpx; background-color: var(--accent-bg); }
+.mm-bar-alert { width: 32rpx; height: 32rpx; border-radius: 50%; background-color: var(--accent2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .detail-ai-float { position: fixed; right: 20rpx; bottom: calc(200rpx + env(safe-area-inset-bottom)); width: 160rpx; z-index: 56; display: flex; align-items: center; justify-content: center; }
-.mm-bar-alert-mark { color: var(--match-coral); font-size: 21rpx; font-weight: 800; }
-.mm-bar-alert-text { flex: 1; min-width: 0; color: var(--ink2); font-size: 21rpx; }
-.mm-bar-actions { display: flex; flex-direction: row; align-items: center; gap: 12rpx; flex-shrink: 0; }
-.mm-bar-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4rpx; height: 62rpx; padding: 0 22rpx; border-radius: 999rpx; }
-.mm-bar-btn text { color: var(--paper); font-size: 23rpx; font-weight: 800; }
+.mm-bar-alert-mark { color: var(--paper); font-size: 21rpx; font-weight: 800; }
+.mm-bar-alert-text { flex: 1; min-width: 0; color: var(--accent2); font-size: 20rpx; font-weight: 700; white-space: nowrap; }
+.mm-bar-actions { display: flex; flex-direction: row; align-items: center; gap: 8rpx; flex-shrink: 0; }
+.mm-bar-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4rpx; height: 62rpx; padding: 0 16rpx; border-radius: 999rpx; }
+.mm-bar-btn text { color: var(--paper); font-size: 22rpx; font-weight: 800; }
 .mm-bar-btn-arrow { font-size: 22rpx !important; }
 .mm-bar-btn-edit { background-color: var(--accent2); }
 .mm-bar-btn-center { background-color: var(--match-coral); }

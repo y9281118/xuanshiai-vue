@@ -143,7 +143,6 @@
     <view v-else-if="subview == 'introductions' && selected != null" class="subpage">
       <view class="subpage-head">
         <text class="subpage-title">会员 {{ selected.nickname }} 的牵线记录</text>
-        <view class="subpage-close" @tap="closeSubpage"><text>✕</text></view>
       </view>
       <view class="seg">
         <view class="seg-item" :class="{ on: introTab == 'OUTGOING' }" @tap="selectIntroTab('OUTGOING')"><text>主动牵线</text></view>
@@ -316,6 +315,7 @@
          先把要复制的文本列出来，「修改」只改这段文本，不回写会员在库中的资料。 -->
     <view v-if="copyVisible" class="cpd-mask" @tap="closeCopyProfile">
       <view class="cpd-card" @tap.stop>
+        <view class="cpd-close" @tap="closeCopyProfile"><text>✕</text></view>
         <view class="cpd-icon"><text class="cpd-icon-glyph">◈</text></view>
         <text class="cpd-title">复制会员资料</text>
         <text class="cpd-subtitle">确认下方文本后再复制，可先修改。</text>
@@ -990,6 +990,13 @@ const closeSubpage = () => {
   introductions.value = []
   candidates.value = []
 }
+// 父页左上返回箭头先关子页（牵线记录 / 匹配），回到会员资料管理列表；无子页时才退出资料管理。
+const back = (): boolean => {
+  if (subview.value == '') return false
+  closeSubpage()
+  return true
+}
+defineExpose({ back })
 
 /* ---------- 红娘说 ---------- */
 const openNote = (member: any) => {
@@ -1398,12 +1405,12 @@ const onEditProfile = (member: any) => {
 const openMemberProfile = (member: any) => {
   closeMenu()
   const id = Number(member.user_id)
-  if (id <= 0) {
+  if (isNaN(id) || id <= 0) {
     notify('会员编号无效')
     return
   }
   uni.navigateTo({
-    url: '/pagesSub/userExtra/user/detail?userId=' + id + '&matchmakerView=1',
+    url: '/pagesSub/userExtra/user/detail?userId=' + id + '&guest=1&matchmakerActions=1',
     fail: () => notify('打开会员主页失败')
   })
 }
@@ -1595,8 +1602,6 @@ onMounted(() => {
 .subpage { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 20; background: var(--canvas); display: flex; flex-direction: column; }
 .subpage-head { flex-shrink: 0; padding: 26rpx 28rpx; border-bottom: 1rpx solid var(--line); display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
 .subpage-title { color: var(--ink); font-size: 28rpx; font-weight: 800; }
-.subpage-close { width: 52rpx; height: 52rpx; border-radius: 50%; background: var(--warm); display: flex; align-items: center; justify-content: center; }
-.subpage-close text { color: var(--muted); font-size: 24rpx; }
 .subpage-list { flex: 1; height: 0; padding: 20rpx 24rpx 60rpx; box-sizing: border-box; }
 
 /* member entry */
@@ -1745,7 +1750,9 @@ onMounted(() => {
 
 /* 复制资料弹窗：图标块 + 居中标题/说明 + 文本区 + 分隔线 + 左右双胶囊（配色沿用本组件 token） */
 .cpd-mask { position: fixed; left: 0; top: 0; right: 0; bottom: 0; z-index: 100; padding: 0 56rpx; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; justify-content: center; background: rgba(12, 19, 19, .46); }
-.cpd-card { width: 100%; max-width: 640rpx; padding: 40rpx 32rpx 0; border-radius: 32rpx; background: var(--surface); display: flex; flex-direction: column; box-sizing: border-box; box-shadow: var(--shadow-lg); }
+.cpd-card { position: relative; width: 100%; max-width: 640rpx; padding: 40rpx 32rpx 0; border-radius: 32rpx; background: var(--surface); display: flex; flex-direction: column; box-sizing: border-box; box-shadow: var(--shadow-lg); }
+.cpd-close { position: absolute; top: 24rpx; right: 24rpx; width: 52rpx; height: 52rpx; border-radius: 50%; background: var(--warm); display: flex; align-items: center; justify-content: center; }
+.cpd-close text { color: var(--muted); font-size: 24rpx; }
 .cpd-icon { align-self: center; width: 112rpx; height: 112rpx; border-radius: 28rpx; border: 1px solid var(--line); background: linear-gradient(160deg, var(--paper), var(--warm)); display: flex; align-items: center; justify-content: center; box-shadow: 0 10rpx 24rpx rgba(12, 19, 19, .10); }
 .cpd-icon-glyph { color: var(--accent2); font-size: 48rpx; line-height: 1; }
 .cpd-title { margin-top: 24rpx; color: var(--ink); font-size: 33rpx; font-weight: 800; text-align: center; }
