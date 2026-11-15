@@ -184,11 +184,23 @@
 
 	<!-- 自定义底部导航栏 -->
 	<XsaTabBar />
+		<!-- 右下角知遇悬浮机器人：页面级 fixed，与首页 .ai-float-btn 完全同构 -->
+<view class="ai-float-btn" @tap="openZhiyuHub">
+<XsaZhiyuVideo size="144rpx" :show-label="false" />
+</view>
+<XsaZhiyuHub
+:visible="zhiyuHubVisible"
+:actions="zhiyuHubActions"
+@close="zhiyuHubVisible = false"
+@select="onZhiyuHubSelect"
+/>
 </template>
 
 
 <script setup lang="uts">
 import XsaTabBar from '@/components/XsaTabBar.uvue'
+import XsaZhiyuVideo from '@/components/XsaZhiyuVideo.uvue'
+import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 	import XsaDynamicCard from '@/components/XsaDynamicCard.uvue'
 	import XsaEmpty from '@/components/XsaEmpty.uvue'
 	import XsaApplySheet from '@/components/XsaApplySheet.uvue'
@@ -976,6 +988,32 @@ const switchCity = () => {
 		if (loading.value || !hasMore.value) return
 		loadDynamics(false)
 	}
+
+// ===== 右下角知遇悬浮入口（页面级 fixed）=====
+// 原先放在自定义组件内部，部分基础库下组件内 fixed 不渲染，
+// 现与首页保持一致：页面里直接放 fixed 容器 + 页面级 XsaZhiyuHub。
+const zhiyuHubVisible = ref(false)
+const openZhiyuHub = () => { zhiyuHubVisible.value = true }
+const showZhiyuFail = () => { uni.showToast({ title: '页面打开失败，请重试', icon: 'none' }) }
+const zhiyuHubActions = [
+	{ key: 'avatar', glyph: '聊', icon: '/static/ai-cat/zhiyu-liao-sprite-alpha.webp', title: '和 TA 的分身聊聊', desc: '先看公开资料，不冒充本人，对方不会收到提醒' },
+	{ key: 'self', glyph: '己', icon: '/static/ai-cat/zhiyu-self-sprite-alpha.webp', title: '与知遇聊聊', desc: '用对话认识自己和期待的关系' },
+	{ key: 'match', glyph: '合', icon: '/static/ai-cat/zhiyu-match-sprite-alpha.webp', title: '看看合拍度', desc: '整理交集和破冰建议，仅供参考' },
+	{ key: 'search', glyph: '寻', icon: '/static/ai-cat/zhiyu-search-sprite-alpha.webp', title: '帮我找找', desc: '按条件筛选，结果仍由你自己判断' }
+]
+const onZhiyuHubSelect = (key: string) => {
+	zhiyuHubVisible.value = false
+	if (key == 'avatar') {
+		uni.navigateTo({ url: '/pagesSub/profileExtra/my-ai-avatar', fail: () => { showZhiyuFail() } })
+	} else if (key == 'self') {
+		uni.navigateTo({ url: '/pagesSub/profileExtra/my-portrait-master?flow_version=continuous_v2', fail: () => { showZhiyuFail() } })
+	} else if (key == 'match') {
+		uni.switchTab({ url: '/pages/index/index', fail: () => { showZhiyuFail() } })
+		uni.showToast({ title: '请在首页知遇中查看合拍度', icon: 'none' })
+	} else if (key == 'search') {
+		uni.navigateTo({ url: '/pagesSub/profileExtra/search', fail: () => { showZhiyuFail() } })
+	}
+}
 </script>
 
 <style scoped>
@@ -1690,4 +1728,16 @@ const switchCity = () => {
 		font-weight: 300;
 		line-height: 1;
 	}
+
+/* 右下角知遇悬浮机器人：与首页 .ai-float-btn 一致，页面级 fixed */
+.ai-float-btn {
+	position: fixed;
+	right: 20rpx;
+	bottom: 360rpx;
+	width: 160rpx;
+	z-index: 55;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
 </style>
