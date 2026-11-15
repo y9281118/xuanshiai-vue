@@ -195,4 +195,20 @@ assert.match(detail, /'人脸': \{ icon: '[^']+', desc: '[^']+' \}/, 'CERT_META 
   assert.match(discoveryApi, /gender: card\.gender != null \? '' \+ card\.gender : ''/, 'mapCard 须透传 gender')
 }
 
+// ── 8. 模板调用的辅助函数必须定义在 <script setup> 顶层（ADDR-WRAP 回归） ──
+// 2026-11-14 把 segsOf 写进了 mapDetailUser 内部，模板里的 segsOf(...) 被编译成
+// _ctx.segsOf，实例上没有该方法 → 渲染期 TypeError → 详情页永远停在「正在加载资料」。
+// 顶层语句在本文件行首无缩进，函数体内的语句有一层 tab，据此静态兜底。
+{
+  assert.match(detail, /in segsOf\(item\.value\)/, '详情页模板仍按 segsOf 分段渲染现居/家乡')
+  const head = detail.slice(0, detail.indexOf('</script>'))
+  const lines = head.split('\n')
+  const defIdx = lines.findIndex((line) => /^const segsOf\b/.test(line))
+  const mapIdx = lines.findIndex((line) => /^const mapDetailUser\b/.test(line))
+  assert.ok(defIdx >= 0, 'segsOf 必须定义在 <script setup> 顶层（行首无缩进）；定义在函数内部会导致 _ctx.segsOf is not a function')
+  assert.ok(mapIdx >= 0, '未找到 mapDetailUser 定义')
+  assert.ok(defIdx < mapIdx, 'segsOf 须定义在 mapDetailUser 之前，确保它是 setup 顶层绑定而非局部闭包')
+  assert.equal((detail.match(/const segsOf = /g) || []).length, 1, 'segsOf 只允许存在一份定义')
+}
+
 console.log('PASS 卡片基础字段契约：9 格语义一致、缺值不渲染 0、折叠阈值单一来源、姓名行带性别')

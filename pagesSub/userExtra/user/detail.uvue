@@ -698,6 +698,32 @@ certs.value = []
 
 const formatAttachmentStyle = (rawStyle: any): string => attachmentStyleLabel(rawStyle)
 
+// 格文字区≈183rpx、值字号 24rpx ≈ 7 字/行：超容量行政段用规范简称防段内断词，全量串见详细资料。
+// 必须留在 <script setup> 顶层：模板里的 segsOf(...) 会被编译成 _ctx.segsOf，写在函数内部就取不到，
+// 渲染期 TypeError 会让整个详情页停在 loading（ADDR-WRAP-20261114 回归修复）。
+const SEG_ABBR = [
+	['新疆维吾尔自治区', '新疆'], ['伊犁哈萨克自治州', '伊犁'], ['博尔塔拉蒙古自治州', '博州'],
+	['巴音郭楞蒙古自治州', '巴州'], ['克孜勒苏柯尔克孜自治州', '克州'], ['西双版纳傣族自治州', '西双版纳'],
+	['德宏傣族景颇族自治州', '德宏'], ['红河哈尼族彝族自治州', '红河'], ['文山壮族苗族自治州', '文山'],
+	['黔东南苗族侗族自治州', '黔东南'], ['黔南布依族苗族自治州', '黔南'], ['黔西南布依族苗族自治州', '黔西南'],
+	['恩施土家族苗族自治州', '恩施'], ['湘西土家族苗族自治州', '湘西'], ['延边朝鲜族自治州', '延边'],
+	['阿坝藏族羌族自治州', '阿坝'], ['海西蒙古族藏族自治州', '海西']
+]
+const segsOf = (text: string): string[] => {
+	const out: string[] = []
+	for (const part of text.split(' ')) {
+		if (part == '') continue
+		let seg = part
+		if (seg.length > 7) {
+			for (const pair of SEG_ABBR) {
+				if (pair[0] == seg) { seg = pair[1]; break }
+			}
+		}
+		out.push(seg)
+	}
+	return out
+}
+
 const mapDetailUser = (raw: any, id: number) => {
 	if (raw == null) return
 	const envelope = raw.data != null ? raw.data : raw
@@ -784,29 +810,6 @@ const mapDetailUser = (raw: any, id: number) => {
 			if (url != null) mediaUrl = resolveMediaUrl('' + url)
 		}
 		qaAnswers.push({ question: question != '' ? question : '关于我', answer: answer, mediaUrl: mediaUrl })
-	}
-	// 格文字区≈183rpx、值字号 24rpx ≈ 7 字/行：超容量行政段用规范简称防段内断词，全量串见详细资料。
-	const SEG_ABBR = [
-		['新疆维吾尔自治区', '新疆'], ['伊犁哈萨克自治州', '伊犁'], ['博尔塔拉蒙古自治州', '博州'],
-		['巴音郭楞蒙古自治州', '巴州'], ['克孜勒苏柯尔克孜自治州', '克州'], ['西双版纳傣族自治州', '西双版纳'],
-		['德宏傣族景颇族自治州', '德宏'], ['红河哈尼族彝族自治州', '红河'], ['文山壮族苗族自治州', '文山'],
-		['黔东南苗族侗族自治州', '黔东南'], ['黔南布依族苗族自治州', '黔南'], ['黔西南布依族苗族自治州', '黔西南'],
-		['恩施土家族苗族自治州', '恩施'], ['湘西土家族苗族自治州', '湘西'], ['延边朝鲜族自治州', '延边'],
-		['阿坝藏族羌族自治州', '阿坝'], ['海西蒙古族藏族自治州', '海西']
-	]
-	const segsOf = (text: string): string[] => {
-		const out: string[] = []
-		for (const part of text.split(' ')) {
-			if (part == '') continue
-			let seg = part
-			if (seg.length > 7) {
-				for (const pair of SEG_ABBR) {
-					if (pair[0] == seg) { seg = pair[1]; break }
-				}
-			}
-			out.push(seg)
-		}
-		return out
 	}
 	// 基础资料固定 3 行 × 3 列 = 9 格（2026-10-27 定版）：
 	// 婚姻、MBTI 与新增的 10 项一起归入「详细资料」，避免两块重复展示同一字段。
