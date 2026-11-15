@@ -711,13 +711,19 @@
 				</view>
 			</view>
 
-			<!-- 知遇悬浮入口（仅推荐页显示）：点开聚合能力，不直接进分身 -->
-			<view v-if="currentTab === 0 && canShowRecommendUsers" class="ai-float-btn" @click="openZhiyuHub">
-				<XsaZhiyuMark size="112rpx" />
+			<!-- 知遇悬浮入口（仅推荐页显示）：点开聚合能力，不直接进分身。显示条件不再绑
+			     canShowRecommendUsers，否则首页无推荐数据时用户退出知遇后再也进不去。 -->
+			<view
+				v-if="currentTab === 0"
+				class="ai-float-btn"
+				:class="{ 'with-bottom-bar': canShowRecommendUsers }"
+				@click="openZhiyuHub"
+			>
+				<XsaZhiyuVideo size="144rpx" :show-label="false" />
 			</view>
 			<!-- 知遇说话气泡：随机 3~6 秒自动弹出，点击气泡打开聚合面板，× 关闭后本次会话不再弹出 -->
 			<XsaAiCatBubble
-				:active="currentTab === 0 && canShowRecommendUsers"
+				:active="currentTab === 0"
 				right="112rpx"
 				bottom="560rpx"
 				@tap="openZhiyuHub"
@@ -825,7 +831,7 @@
 	import MatchmakerCard from '@/components/MatchmakerCard.uvue'
 	import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 	import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
-	import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
+	import XsaZhiyuVideo from '@/components/XsaZhiyuVideo.uvue'
 	import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 	import { getEmotionLabSummary } from '@/api/emotionLab.uts'
 	import { guardRealName } from '@/utils/realNameGate.uts'
@@ -1540,10 +1546,10 @@
 	// ========== 知遇聚合入口 ==========
 	const zhiyuHubVisible = ref(false)
 	const zhiyuHubActions = [
-		{ key: 'avatar', glyph: '聊', title: '和 TA 的分身聊聊', desc: '先看公开资料，不冒充本人，对方不会收到提醒' },
-		{ key: 'self', glyph: '己', title: '与知遇聊聊', desc: '用对话认识自己和期待的关系' },
-		{ key: 'match', glyph: '合', title: '看看合拍度', desc: '整理交集和破冰建议，仅供参考' },
-		{ key: 'search', glyph: '寻', title: '帮我找找', desc: '按条件筛选，结果仍由你自己判断' }
+		{ key: 'avatar', glyph: '聊', icon: '/static/ai-cat/zhiyu-liao-sprite-alpha.webp', title: '和 TA 的分身聊聊', desc: '先看公开资料，不冒充本人，对方不会收到提醒' },
+		{ key: 'self', glyph: '己', icon: '/static/ai-cat/zhiyu-self-sprite-alpha.webp', title: '与知遇聊聊', desc: '用对话认识自己和期待的关系' },
+		{ key: 'match', glyph: '合', icon: '/static/ai-cat/zhiyu-match-sprite-alpha.webp', title: '看看合拍度', desc: '整理交集和破冰建议，仅供参考' },
+		{ key: 'search', glyph: '寻', icon: '/static/ai-cat/zhiyu-search-sprite-alpha.webp', title: '帮我找找', desc: '按条件筛选，结果仍由你自己判断' }
 	]
 	const openZhiyuHub = () => { zhiyuHubVisible.value = true }
 	const onZhiyuHubSelect = (key: string) => {
@@ -2089,7 +2095,8 @@
 .heart-icon { font-size: 52rpx; }
 
 /* ==================== AI悬浮按钮（3D 小猫形象，静态） ==================== */
-.ai-float-btn { position: fixed; right: 20rpx; bottom: 200rpx; width: 136rpx; z-index: 10; display: flex; align-items: center; justify-content: center; }
+/* z-index 55：压在欢迎页(60)与 Sheet 遮罩(60)之下，浮在底部操作栏同级 */
+.ai-float-btn { position: fixed; right: 20rpx; bottom: 200rpx; width: 160rpx; z-index: 55; display: flex; align-items: center; justify-content: center; }
 
 /* ==================== AI解读文案 ==================== */
 .ai-interpret { display: flex; flex-direction: column; gap: 12rpx; padding: 24rpx; border-radius: var(--radius-md); background-color: var(--accent-soft); }
@@ -2365,7 +2372,8 @@
 .invite-share-cancel:active { transform: scale(0.99); }
 /* 底部操作栏 */
 
-.ai-float-btn { z-index: 55; bottom: 360rpx; }
+/* 有底部操作栏时上移，避免压住「申请认识」按钮 */
+.ai-float-btn.with-bottom-bar { bottom: 360rpx; }
 /* Ta的动态 */
 .feed-section { display: flex; flex-direction: column; gap: 20rpx; }
 .feed-section-header { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
