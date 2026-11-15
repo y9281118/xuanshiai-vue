@@ -170,7 +170,7 @@
 
 	<!-- 知遇悬浮入口：与首页同一只动态浅绿米白机器人；画像分流仍在面板里的「我的画像」 -->
 	<view class="ai-portrait-fab" @tap="openZhiyuHub">
-		<XsaZhiyuMark size="144rpx" :show-label="false" />
+		<XsaZhiyuVideo size="144rpx" :show-label="false" />
 	</view>
 
 	<!-- 邀请分享弹窗：复用“我的任务.pen”的邀请分享弹窗-遮罩 -->
@@ -207,6 +207,7 @@
 import { ref, computed } from 'vue'
 import XsaTabBar from '@/components/XsaTabBar.uvue'
 import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
+import XsaZhiyuVideo from '@/components/XsaZhiyuVideo.uvue'
 import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getProfileOverview, getProfileCompletion, getMembershipStatus, getPortraitNarrative } from '@/api'
 import { getContinuousMoxiangState, type ContinuousMoxiangState } from '@/api/ai-moxiang.uts'
