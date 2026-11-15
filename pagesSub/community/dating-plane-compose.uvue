@@ -36,6 +36,7 @@
 
 		<view class="polish-overlay" v-if="polishVisible" @click="closePolishReview">
 			<view class="polish-sheet" @click.stop>
+				<XsaAiGeneratedTag text="AI 生成" note="润色结果由 AI 生成，仅替换草稿" block />
 				<text class="polish-title">AI 润色预览</text>
 				<text class="polish-note">AI 润色仅替换待发送草稿，绝不自动发送</text>
 				<text class="polish-label">原文</text>
@@ -59,6 +60,7 @@
 <script setup lang="uts">
 	import { getCommunityQuotas, sendPaperPlane, polishPaperPlaneText } from '@/api'
 	import { guardRealName } from '@/utils/realNameGate.uts'
+	import XsaAiGeneratedTag from '@/components/XsaAiGeneratedTag.uvue'
 
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20

@@ -20,11 +20,12 @@
 			<!-- #ifdef MP-WEIXIN -->
 			<button class="wechat-button" :disabled="authLoading || !agreementChecked" @click="handleWechatLogin">
 				<text class="wechat-dot">W</text>
-				<text>微信一键登录</text>
+				<text>微信登录</text>
 			</button>
 			<!-- #endif -->
+			<text class="wechat-privacy-note">仅用于微信登录，不读取手机号 / 头像 / 昵称</text>
 
-			<button class="demo-login-button" :disabled="authLoading || !agreementChecked" @click="handleDemoLogin">演示登录，选择身份</button>
+			<button v-if="isDevBuild" class="demo-login-button" :disabled="authLoading || !agreementChecked" @click="handleDemoLogin">演示登录，选择身份</button>
 			<button class="first-login-button" :disabled="authLoading || !agreementChecked" @click="handleFirstLogin">首次登录</button>
 			<view class="agreement-row">
 				<checkbox-group @change="handleAgreementChange">
@@ -39,9 +40,8 @@
 			</view>
 		</view>
 
-		<!-- 测试账号：默认只露出账号一、账号二（VIP 主验证号），其余折叠，
-		     避免一屏全是调试按钮把正式入口挤下去。 -->
-		<view class="secondary-actions">
+		<!-- 测试账号仅开发版可见；正式/体验版不暴露测试号与演示登录。 -->
+		<view v-if="isDevBuild" class="secondary-actions">
 			<button class="debug-login-button" :disabled="authLoading || !agreementChecked" @click="handleDebugLogin(debugAccountPhones[0])">账号一 19730552884</button>
 			<button class="debug-login-button" :disabled="authLoading || !agreementChecked" @click="handleDebugLogin(debugAccountPhones[1])">账号二 13000000000</button>
 			<view v-if="debugAccountsExpanded" class="debug-accounts-more">
@@ -53,6 +53,9 @@
 			<text class="secondary-toggle" @click="toggleDebugAccounts">{{ debugAccountsExpanded ? '收起其他账号' : '其他测试账号' }}</text>
 			<text class="secondary-divider">|</text>
 			<text class="secondary-link" @click="handleFirstLogin">首次登录引导</text>
+		</view>
+		<view class="guest-browse-row">
+			<text class="guest-browse-link" @click="goBrowseGuest">先逛逛，暂不登录 ›</text>
 		</view>
 
 		<view class="login-footer">
@@ -70,6 +73,21 @@
 
 	const authLoading = ref(false)
 	const agreementChecked = ref(uni.getStorageSync('xsa_login_agreed') == true)
+	// 测试账号/演示登录仅开发版可见；体验版与正式版隐藏，避免暴露测试号与假登录态。
+	const isDevBuild = computed((): boolean => {
+		try {
+			const info: any = (uni as any).getAccountInfoSync()
+			const mp: any = info != null ? info.miniProgram : null
+			const env = mp != null && mp.envVersion != null ? '' + mp.envVersion : ''
+			return env == 'develop' || env == ''
+		} catch (e) {
+			return true
+		}
+	})
+	const goBrowseGuest = () => {
+		uni.setStorageSync('xsa_skip_welcome_once', true)
+		uni.switchTab({ url: '/pages/index/index' })
+	}
 	// 测试账号白名单：登录页快捷登录按钮与之一一对应，密码统一走 debugAccountPassword。
 	// 账号三/四/五/六 为「完全普通用户」：仅 user 角色、无会员记录（男/女/男/女），
 	// 用于实名、开通会员、浏览额度与权益回归。
@@ -264,4 +282,7 @@
 	.login-footer { position: relative; z-index: 1; display: flex; flex-direction: row; align-items: center; width: 100%; max-width: 390px; gap: 12px; margin-top: 38px; }
 	.footer-line { flex: 1; height: 1px; background: var(--line); }
 	.footer-text { flex-shrink: 0; color: var(--muted); font-size: 11px; }
+	.wechat-privacy-note { margin-top: 8px; text-align: center; color: var(--muted); font-size: 11px; }
+	.guest-browse-row { position: relative; z-index: 1; display: flex; flex-direction: row; justify-content: center; margin-top: 16px; }
+	.guest-browse-link { color: var(--accent2); font-size: 13px; }
 </style>

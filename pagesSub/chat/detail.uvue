@@ -51,6 +51,7 @@
 				scroll-with-animation
 			>
 				<view v-if="isAiAvatarMode && !isParentMode" class="ai-avatar-notice">
+					<XsaAiGeneratedTag text="AI 生成" note="回复由 AI 基于公开资料生成" />
 					<text class="ai-avatar-notice-title">AI 公开资料问答</text>
 					<scroll-view v-if="aiQuickQuestions.length > 0" class="ai-quick-list" scroll-x show-scrollbar="false">
 						<view v-for="question in aiQuickQuestions" :key="question.id" class="ai-quick-question" @click="askQuickQuestion(question.prompt)">
@@ -395,6 +396,7 @@
 
 <script setup lang="uts">
 	import XsaButton from '@/components/XsaButton.uvue'
+	import XsaAiGeneratedTag from '@/components/XsaAiGeneratedTag.uvue'
 	import XsaReportSheet from '@/components/XsaReportSheet.uvue'
 	import XsaAiAdvisorSheet from '@/pagesSub/chat/components/XsaAiAdvisorSheet.uvue'
 	import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'

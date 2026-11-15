@@ -1,6 +1,7 @@
 <template>
 	<view class="analysis-card">
 		<view class="analysis-card-heading"><view class="analysis-kicker"><text class="analysis-kicker-mark">✦</text><text class="analysis-kicker-text">AI 用心度 · 初次使用</text></view><view class="analysis-close" :class="{ disabled: analyzing }" @tap="onClose" @click="onClose"><text class="analysis-close-text">×</text></view></view>
+		<XsaAiGeneratedTag text="AI 生成" note="用心度与建议由 AI 生成，仅供参考" block />
 		<view class="analysis-content">
 				<view class="analysis-intro">
 					<view class="analysis-copy-column">
@@ -35,6 +36,7 @@
 </template>
 
 <script setup lang="uts">
+	import XsaAiGeneratedTag from '@/components/XsaAiGeneratedTag.uvue'
 	interface Props { analyzing: boolean, errorMessage: string }
 	const props = withDefaults(defineProps<Props>(), { analyzing: false, errorMessage: '' })
 	const emit = defineEmits<{ close: [], start: [] }>()

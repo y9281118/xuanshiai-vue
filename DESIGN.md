@@ -334,6 +334,8 @@ Canvas 唯一色源为 `utils/portrait-chart-theme.uts`，只镜像 uni.scss；�
 
 - 先讲清一个人的生活，再展示认证与关系期待，最后给行动。
 - 使用 `XsaButton`、`XsaCard`、`XsaInput`、`XsaTag`、`XsaSheet`、`XsaModal` 等已有组件。
+- AI 输出位统一使用 `XsaAiGeneratedTag`（`components/XsaAiGeneratedTag.uvue`）首屏显著标注「AI 生成」+ 参考性说明；复用 `--accent2/--accent-bg/--paper/--muted` Token，不新增色值。规则引擎（非 AI）结果不得挂该标识。
+- 游客首页（`pages/index/index.uvue` 的 `guest-scroll` 区块）继承首页 Token：`--canvas` 底、`--surface` 卡片、`--accent2` 主按钮、`--line` 描边、既有圆角与阴影；登录入口常驻但不阻断浏览。
 - 让安全提示、认证状态、申请门槛和付费权益在决策点附近出现。
 - 用真实图片、真实内容结构和清晰的空 / 加载 / 错误状态建立信任。
 - 让 H5 与微信小程序共享同一套 Token，关键路径在微信开发者工具回归。

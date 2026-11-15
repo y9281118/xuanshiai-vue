@@ -13,6 +13,7 @@
 
 		<scroll-view class="search-scroll" scroll-y enhanced show-scrollbar="false">
 			<view v-if="activeTab === 0" class="search-panel ai-panel">
+				<XsaAiGeneratedTag text="AI 生成" note="解析与建议由 AI 生成，仅供参考" block />
 				<view class="ai-input-wrap">
 					<textarea class="ai-input" :value="aiQuery" maxlength="300" :placeholder="aiPlaceholder" :disabled="!aiEnabled" @input="onAiInput"></textarea>
 					<view class="ai-input-foot"><view class="ai-template-trigger" :class="{ 'ai-template-trigger--disabled': !aiEnabled }" @tap="onAiSuggestTap"><text class="ai-trigger-text">{{ aiSuggestions.length > 0 ? '选择一条期待' : '读取可编辑建议' }}</text></view><button class="ai-submit-button" :disabled="!aiEnabled || aiGenerating || aiQuery.trim().length == 0" @tap="submitAiSearch">{{ aiGenerating ? '正在解析…' : '解析期待' }}</button></view>
@@ -132,6 +133,7 @@
 
 				<view v-else class="result-success-state">
 					<view class="result-heading">
+						<XsaAiGeneratedTag v-if="activeTab == 0" text="AI 生成" note="条件解析由 AI 完成" />
 						<text class="result-heading-title">已为你找到合适人选</text>
 						<text class="result-heading-copy">基于“{{ resultQuerySummary }}”整理，仅供参考</text>
 					</view>
@@ -171,6 +173,8 @@
 	import { buildStructuredSearchParams, residenceCityCodeFor } from '@/utils/searchFilterMapping.uts'
 	import { aiFailureNotice } from '@/utils/ai-error.uts'
 	import { getOwnProfile, getEmotionLabSummary, setMyMbtiType, getDiscoveryRecommendations, getDiscoveryFilterOptions, getAiCapabilities, isAiSearchEnabled, createSearchDraft, getSearchDraft, patchSearchDraft, confirmSearchDraft, waitForSearchTask, getSearchSnapshotResults, getSearchSuggestions, generateSearchSuggestions, searchResultItems, searchNextCursor, searchDraftConditions, searchDraftUnknown, searchDraftConflicts, searchDraftRevision } from '@/api'
+	import { getAccessToken } from '@/api/config.uts'
+	import XsaAiGeneratedTag from '@/components/XsaAiGeneratedTag.uvue'
 
 	const systemInfo = uni.getSystemInfoSync()
 	const statusBarHeight = systemInfo.statusBarHeight != null ? systemInfo.statusBarHeight : 20
@@ -247,11 +251,17 @@
 	const aiTaskStage = ref('正在等待后端任务完成')
 	const aiEnabled = ref(false)
 	const aiCapabilityState = ref('unknown')
-	const aiCapabilityNotice = computed(() => aiCapabilityState.value == 'error' ? 'AI 能力状态读取失败，点击重试' : (aiCapabilityState.value == 'unknown' ? '正在确认 AI 能力…' : 'AI 觅遇暂未开放'))
+	const aiCapabilityNotice = computed(() => aiCapabilityState.value == 'guest' ? '登录后使用 AI 觅遇' : (aiCapabilityState.value == 'error' ? 'AI 能力状态读取失败，点击重试' : (aiCapabilityState.value == 'unknown' ? '正在确认 AI 能力…' : 'AI 觅遇暂未开放')))
 	let aiCapabilityTask: any = null
 	const loadAiCapabilities = (): any => {
 		if (aiCapabilityTask != null) return aiCapabilityTask
 		aiCapabilityTask = (async () => {
+			// 游客不请求需登录的 /ai/capabilities，避免 401 与强制跳登录。
+			if (getAccessToken() == '') {
+				aiEnabled.value = false
+				aiCapabilityState.value = 'guest'
+				return false
+			}
 			try {
 				const res = await getAiCapabilities()
 				if (!searchPageAlive) return false
@@ -275,6 +285,10 @@
 		return aiCapabilityTask
 	}
 	const retryAiCapability = () => {
+		if (aiCapabilityState.value == 'guest') {
+			uni.navigateTo({ url: '/pages/auth/login' })
+			return
+		}
 		if (aiCapabilityState.value != 'error') return
 		aiCapabilityTask = null
 		loadAiCapabilities()
@@ -1467,7 +1481,7 @@
 		aiCapabilityTask = null
 		loadAiCapabilities()
 		loadMbtiOptions()
-		loadOwnMbti()
+		if (getAccessToken() != '') loadOwnMbti()
 		loadHistory()
 	})
 	onUnmounted(() => {

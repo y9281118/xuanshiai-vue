@@ -1,0 +1,28 @@
+<template>
+	<view class="ai-generated-tag" :class="{ block: block }">
+		<text class="ai-generated-mark">✦</text>
+		<text class="ai-generated-text">{{ text }}</text>
+		<text v-if="note != ''" class="ai-generated-note">{{ note }}</text>
+	</view>
+</template>
+
+<script setup lang="uts">
+	interface Props {
+		text?: string;
+		note?: string;
+		block?: boolean;
+	}
+	withDefaults(defineProps<Props>(), {
+		text: 'AI 生成',
+		note: '',
+		block: false
+	})
+</script>
+
+<style scoped>
+	.ai-generated-tag { display: flex; flex-direction: row; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--accent-bg); border-radius: 999px; background: var(--paper); align-self: flex-start; }
+	.ai-generated-tag.block { align-self: stretch; justify-content: center; margin-bottom: 10px; }
+	.ai-generated-mark { color: var(--accent2); font-size: 11px; }
+	.ai-generated-text { color: var(--accent2); font-size: 11px; font-weight: 700; }
+	.ai-generated-note { color: var(--muted); font-size: 11px; }
+</style>

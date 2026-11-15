@@ -211,6 +211,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 		deleteDynamic
 	} from '@/api'
 	import { guardCommunityVerification, guardRealName } from '@/utils/realNameGate.uts'
+	import { getAccessToken } from '@/api/config.uts'
 
 	// 主 Tab：follow | city | discover
 	// 二级筛选：
@@ -224,6 +225,8 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	const hasShown = ref(false)
 	const loading = ref(false)
 	const loadError = ref('')
+	// 游客态：不请求鉴权接口，空态改为登录引导，不自动跳登录。
+	const isGuest = ref(false)
 	const hasMore = ref(true)
 	const page = ref(1)
 	const pageSize = 10
@@ -309,18 +312,22 @@ const cityName = ref('')
 
 	onMounted(async () => {
 		consumeEntryTarget()
-			await loadCity()
-			await loadDynamics(true)
-			loadTopics()
-			loadActivity()
-			loadBanners()
-			loadUnread()
-			communityMounted.value = true
-		})
+		isGuest.value = getAccessToken() == ''
+		communityMounted.value = true
+		if (isGuest.value) return
+		await loadCity()
+		await loadDynamics(true)
+		loadTopics()
+		loadActivity()
+		loadBanners()
+		loadUnread()
+	})
 
 	onShow(() => {
 		const firstShow = !hasShown.value
 		hasShown.value = true
+		isGuest.value = getAccessToken() == ''
+		if (isGuest.value) return
 		const targeted = consumeEntryTarget()
 		loadUnread()
 		if (firstShow || !communityMounted.value) return
@@ -331,6 +338,7 @@ const cityName = ref('')
 	})
 
 	const emptyTitle = computed(() => {
+		if (isGuest.value) return '登录后查看社区动态'
 		if (currentTab.value === 'follow') {
 			if (currentFilter.value === 'likedUsers') return '还没有喜欢用户的动态'
 			if (currentFilter.value === 'following') return '还没有关注动态'
@@ -346,6 +354,7 @@ const cityName = ref('')
 	})
 
 	const emptyDesc = computed(() => {
+		if (isGuest.value) return '社区动态与话题需登录后浏览；可先在首页浏览公开红娘服务与平台介绍。'
 		if (currentTab.value === 'follow') {
 			if (currentFilter.value === 'likedUsers') return '在用户资料页点「喜欢」后，TA 的动态会出现在这里'
 			return '关注认真嘉宾后，他们的动态会出现在这里'
@@ -358,6 +367,7 @@ const cityName = ref('')
 	})
 
 const emptyAction = computed(() => {
+			if (isGuest.value) return '去登录'
 			if (currentTab.value === 'follow') return '去发现'
 			if (currentTab.value === 'city' && !isValidCity(cityName.value)) return '选择城市'
 			return '发布动态'
@@ -893,6 +903,10 @@ const handleLike = async (dynamicId: number) => {
 	}
 
 const handleEmptyAction = () => {
+			if (isGuest.value) {
+				uni.navigateTo({ url: '/pages/auth/login' })
+				return
+			}
 			if (currentTab.value === 'follow') {
 				switchTab('discover')
 				return

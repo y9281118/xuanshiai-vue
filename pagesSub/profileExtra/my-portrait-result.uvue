@@ -94,6 +94,7 @@
 					</view>
 
 					<view v-if="narrative.insight != null && narrative.insight != ''" class="mpr-section">
+						<XsaAiGeneratedTag text="AI 生成" note="画像叙事由 AI 生成，仅供参考" />
 						<text class="mpr-section-label">AI 的理解</text>
 						<text class="mpr-section-copy">{{ narrative.insight }}</text>
 					</view>
@@ -234,6 +235,7 @@
 	import { getMeProfile, getOwnProfile } from '@/api/user.uts'
 	import { getPublicProfileCardExport } from '@/api/ai-profile.uts'
 	import MoxiangPosterSheet from '@/pagesSub/profileExtra/components/moxiang/MoxiangPosterSheet.uvue'
+	import XsaAiGeneratedTag from '@/components/XsaAiGeneratedTag.uvue'
 	import { displayFieldValue } from '@/utils/profile-field-display.uts'
 	import type { MoxiangPosterData } from '@/utils/moxiang-poster-drawer.uts'
 

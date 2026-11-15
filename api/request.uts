@@ -239,6 +239,15 @@ function extractDetail(data: any): string {
   return '请求失败'
 }
 
+/** 网络层 errMsg 归一为用户可读中文；原始 errMsg 仅留 console，不上屏。 */
+function friendlyNetworkMessage(errMsg: string): string {
+  const text = errMsg != null ? errMsg.toLowerCase() : ''
+  if (text.indexOf('url not in domain list') >= 0) return '网络配置异常，请稍后重试或联系客服'
+  if (text.indexOf('timeout') >= 0) return '网络较慢，请求超时，请稍后重试'
+  if (text.indexOf('fail') >= 0 || text == '') return '网络暂时不可用，请稍后重试'
+  return '网络暂时不可用，请稍后重试'
+}
+
 /** 代理错误页、数据库异常和调试堆栈只用于排查，不能作为业务提示上屏。 */
 function safeErrorMessage(data: any, status: number): string {
   const message = extractDetail(data)
@@ -285,6 +294,8 @@ async function httpRequest(options: any) {
   const method = methodRaw
   const urlPath = options.url != null ? ('' + options.url) : ''
   let url = buildApiUrl(urlPath)
+  // 游客（无 token）请求失败不应把用户强制带回登录页；只有「原本已登录但失效」才跳登录。
+  const hadToken = getAccessToken() != ''
   const headers: any = {
     'Content-Type': 'application/json'
   }
@@ -373,7 +384,7 @@ async function httpRequest(options: any) {
           const preserved = snapshotOnboardingState()
           clearAuthTokens()
           restoreOnboardingState(preserved)
-          if (options.skipAuth != true) redirectToLoginAfterAuthFailure()
+          if (options.skipAuth != true && hadToken && options.suppressAuthRedirect != true) redirectToLoginAfterAuthFailure()
         }
         const message = safeErrorMessage(raw, status)
         const biz = extractBusinessError(raw)
@@ -393,11 +404,13 @@ async function httpRequest(options: any) {
       },
       fail: (err: any) => {
         console.error('❌ [HTTP Error]', err)
+        const rawMsg = err != null && err.errMsg != null ? '' + err.errMsg : ''
         resolve({
           success: false,
           data: null,
           code: -1,
-          message: err != null && err.errMsg != null ? err.errMsg : '网络请求失败'
+          message: friendlyNetworkMessage(rawMsg),
+          retryable: true
         })
       }
     })

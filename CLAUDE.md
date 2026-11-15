@@ -32,7 +32,9 @@ xuanshiai-vue/
 - 当前根目录式 UniApp 工程的 npm CLI 会查找 src/manifest.json；即使调整输入目录，仍可能在 App.uvue 解析阶段失败。因此 npm run dev:mp-weixin、npm run build:mp-weixin 以及对应 H5 命令不能作为端侧验收结论。
 - H5 冒烟常见端口：`http://localhost:8080`（不要用 `:5173` 当本工程 UI）。
 - `.uts` 返回对象时避免属性简写（`{ tab }`）；UTS 可能丢掉局部变量，页面 catch 会误显示“网络异常”。社区列表已按显式键名修复，详见 docs/TROUBLESHOOTING.md §5.1。
-- 可用的自动化检查：`node tests/test-mock-system.js`、`node tests/test-community-flow.js`；提交前还要运行 `git diff --check`。
+- 可用的自动化检查：`node tests/run-tests.cjs`（核心契约，设 `XSA_BACKEND_ROOT` 可启用跨仓断言）、`node tests/test-mock-system.js`、`node tests/test-community-flow.js`；提交前还要运行 `git diff --check`。
+- 提审合规预检：`node scripts/verify-release-compliance.js`（只读源码断言：生产/体验域名映射、登录页测试入口隔离、游客态不强制登录、401 不踢游客、AI 能力游客门）。
+- 游客态（REVIEW-COMPLIANCE-20261115）：未登录首页渲染 `guest-scroll` 公开内容；`api/request.uts` 仅「原本已登录但 401 失效」才 reLaunch 登录页，游客请求失败只回页面不跳转；网络 errMsg 经 `friendlyNetworkMessage` 归一，`url not in domain list` 特判为可重试提示。
 
 ## 4. 常用定位
 

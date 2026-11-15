@@ -16,6 +16,7 @@
 						<text>✕</text>
 					</view>
 				</view>
+				<XsaAiGeneratedTag v-if="isAiEngine" text="AI 生成" note="合拍参考由 AI 整理，仅供参考" block />
 			</view>
 
 			<!-- 内容区：scroll-view 保证小程序内可滚动 -->
@@ -66,6 +67,7 @@
 <script setup lang="uts">
 import { getCompatibility, waitForCompatibilityTask } from '@/api/ai-compatibility.uts'
 import { USE_MOCK } from '@/api/config.uts'
+import XsaAiGeneratedTag from '@/components/XsaAiGeneratedTag.uvue'
 /** 资料合拍参考；沿用现有可拖拽、可滚动的小窗。 */
 interface Props {
 	visible: boolean;
@@ -180,6 +182,7 @@ const engineLabel = computed((): string => {
 	if (!isDisplayReady.value) return ''
 	return compatibility.value.engine == 'llm-v1' ? 'AI 资料合拍参考' : '规则资料参考，非 AI 精算'
 })
+const isAiEngine = computed((): boolean => isDisplayReady.value && compatibility.value.engine == 'llm-v1')
 const statusTitle = computed((): string => {
 	const result = compatibility.value
 	if (result == null) return '暂无合拍参考'

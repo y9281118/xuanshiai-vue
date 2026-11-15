@@ -31,8 +31,8 @@
 		</view>
 
 		<view v-else class="page">
-			<!-- 固定头部 -->
-			<view class="sticky-header" :style="{ paddingTop: statusBarHeight + 'px' }">
+			<!-- 固定头部（游客态隐藏，改用游客首页自带头部） -->
+			<view v-if="!isGuest" class="sticky-header" :style="{ paddingTop: statusBarHeight + 'px' }">
 			<!-- 导航栏 -->
 			<view class="nav-bar">
 				<view class="nav-tabs">
@@ -55,8 +55,62 @@
 			</view>
 
 			</view>
+			<!-- 游客首页：未登录可浏览公开内容，登录仅在交互动作时触发 -->
+			<scroll-view v-if="isGuest" scroll-y class="content-scroll guest-scroll" enhanced show-scrollbar="false">
+				<view class="guest-hero" :style="{ paddingTop: (statusBarHeight + 12) + 'px' }">
+					<view class="guest-brand-mark"><image src="/static/logo.png" mode="aspectFit"></image></view>
+					<text class="guest-title text-serif">宣誓爱</text>
+					<text class="guest-subtitle">认真认识一个人，慢慢走进一段关系</text>
+					<view class="guest-login-button" @tap="goLogin"><text>微信登录</text></view>
+					<text class="guest-login-note">仅用于微信登录，不读取手机号 / 头像 / 昵称</text>
+				</view>
+
+				<view class="guest-section">
+					<text class="guest-section-title">先体验筛选，再决定是否登录</text>
+					<text class="guest-section-copy">以下条件来自平台公开筛选项，可先点选感受；登录后查看真实匹配结果。</text>
+					<view v-if="guestLoading" class="guest-inline-note"><text>正在读取公开筛选项…</text></view>
+					<view v-else>
+						<text class="guest-filter-label">学历偏好</text>
+						<view class="guest-chip-row">
+							<view v-for="(item, i) in guestEducationOptions" :key="i" class="guest-chip" :class="{ active: guestEduPick == item }" @tap="guestEduPick = (guestEduPick == item ? '' : item)"><text>{{ item }}</text></view>
+						</view>
+						<text class="guest-filter-label">现居城市</text>
+						<view class="guest-chip-row">
+							<view v-for="(item, i) in guestCityOptions" :key="i" class="guest-chip" :class="{ active: guestCityPick == item }" @tap="guestCityPick = (guestCityPick == item ? '' : item)"><text>{{ item }}</text></view>
+						</view>
+						<view class="guest-filter-summary"><text>{{ guestFilterSummary }}</text></view>
+						<view class="guest-cta-button" @tap="goLogin"><text>登录后查看匹配结果</text></view>
+					</view>
+				</view>
+
+				<view class="guest-section">
+					<text class="guest-section-title">服务红娘（公开资料）</text>
+					<text class="guest-section-copy">红娘资料与评价公开可浏览；联系红娘需登录。</text>
+					<view v-if="guestError != ''" class="guest-inline-note"><text>{{ guestError }}</text><view class="guest-retry" @tap="loadGuestHome"><text>重新加载</text></view></view>
+					<view v-for="(item, i) in guestMatchmakers" :key="i" class="guest-matchmaker-wrap">
+						<MatchmakerCard :data="item" action-text="联系她" @detail="onGuestMatchmakerDetail" @contact="goLogin" />
+					</view>
+					<view v-if="!guestLoading && guestMatchmakers.length === 0 && guestError == ''" class="guest-inline-note"><text>暂无公开红娘资料，请稍后再来看看。</text></view>
+				</view>
+
+				<view class="guest-section">
+					<text class="guest-section-title">平台如何工作</text>
+					<view class="guest-step"><text class="guest-step-index">1</text><text class="guest-step-copy">浏览公开资料与红娘服务，了解平台氛围。</text></view>
+					<view class="guest-step"><text class="guest-step-index">2</text><text class="guest-step-copy">微信登录后绑定手机号、完善资料，读取真实推荐。</text></view>
+					<view class="guest-step"><text class="guest-step-index">3</text><text class="guest-step-copy">完成实名认证后发起申请认识，双方同意才开放聊天。</text></view>
+					<text class="guest-section-title guest-safety-title">认证与安全</text>
+					<text class="guest-section-copy">浏览不要求实名；点赞 / 评论 / 申请认识等互动需实名通过；发布动态需实名 + 人脸。联系方式在双方同意前不交换。</text>
+					<view class="guest-link-row">
+						<text class="guest-link" @tap="openWelcomeDocument('terms')">《用户协议》</text>
+						<text class="guest-link" @tap="openWelcomeDocument('privacy')">《隐私政策》</text>
+						<text class="guest-link" @tap="openAiServiceAgreement">《AI 服务协议》</text>
+						<text class="guest-link" @tap="openGuestHelp">客服与帮助</text>
+					</view>
+				</view>
+				<view class="guest-bottom-space"></view>
+			</scroll-view>
 			<!-- 推荐 Tab -->
-			<scroll-view v-if="currentTab === 0" scroll-y class="content-scroll" enhanced show-scrollbar="false" @touchstart="onTouchStart" @touchend="onTouchEnd">
+			<scroll-view v-if="currentTab === 0 && !isGuest" scroll-y class="content-scroll" enhanced show-scrollbar="false" @touchstart="onTouchStart" @touchend="onTouchEnd">
 				<view v-if="recommendLoading && recommendUsers.length === 0" class="completion-gate">
 					<text class="completion-gate-title">正在加载推荐</text>
 					<text class="completion-gate-copy">正在读取公开推荐资料，请稍候。</text>
@@ -71,7 +125,12 @@
 					<text class="completion-gate-copy">{{ authExpired ? '请重新登录后继续浏览公开推荐资料。' : '登录后即可按你的条件读取公开推荐资料。' }}</text>
 					<view class="completion-gate-button" @tap="goLogin"><text>去登录</text></view>
 				</view>
-				<view v-if="!needLogin && !recommendLoading && recommendUsers.length === 0 && discoveryError == ''" class="completion-gate">
+				<view v-if="discoveryGate != ''" class="completion-gate">
+					<text class="completion-gate-title">{{ discoveryGate == 'phone' ? '绑定手机号后查看推荐' : '补充资料后查看推荐' }}</text>
+					<text class="completion-gate-copy">{{ discoveryGate == 'phone' ? '浏览推荐需先绑定手机号；实名认证仅在互动时需要。' : '浏览推荐需先把资料补充完整；实名认证仅在互动时需要。' }}</text>
+					<view class="completion-gate-button" @tap="goDiscoveryGate"><text>{{ discoveryGate == 'phone' ? '去绑定手机号' : '去补充资料' }}</text></view>
+				</view>
+				<view v-if="!needLogin && discoveryGate == '' && !recommendLoading && recommendUsers.length === 0 && discoveryError == ''" class="completion-gate">
 					<text class="completion-gate-title">暂时没有新的推荐</text>
 					<text class="completion-gate-copy">我们正在更新公开推荐资料，请稍后再来看看。</text>
 				</view>
@@ -275,7 +334,7 @@
 			</scroll-view>
 
 			<!-- 广场 Tab -->
-			<scroll-view v-if="currentTab === 1" scroll-y class="content-scroll" enhanced show-scrollbar="false">
+			<scroll-view v-if="currentTab === 1 && !isGuest" scroll-y class="content-scroll" enhanced show-scrollbar="false">
 				<view class="pinned-bar">
 					<view class="pinned-left">
 						<text class="pinned-title">置顶推荐</text>
@@ -527,7 +586,7 @@
 			</scroll-view>
 
 			<!-- 会员专区 Tab -->
-			<scroll-view v-if="currentTab === 2" scroll-y class="content-scroll" enhanced show-scrollbar="false">
+			<scroll-view v-if="currentTab === 2 && !isGuest" scroll-y class="content-scroll" enhanced show-scrollbar="false">
 				<view class="vip-hero">
 					<view class="vip-hero-gold-line"></view>
 					<view class="vip-hero-content">
@@ -763,6 +822,7 @@
 	import XsaToast from '@/components/XsaToast.uvue'
 	import XsaApplySheet from '@/components/XsaApplySheet.uvue'
 	import XsaTabBar from '@/components/XsaTabBar.uvue'
+	import MatchmakerCard from '@/components/MatchmakerCard.uvue'
 	import XsaAiMatchSheet from '@/components/XsaAiMatchSheet.uvue'
 	import XsaAiCatBubble from '@/components/XsaAiCatBubble.uvue'
 	import XsaZhiyuMark from '@/components/XsaZhiyuMark.uvue'
@@ -770,7 +830,7 @@
 	import { getEmotionLabSummary } from '@/api/emotionLab.uts'
 	import { guardRealName } from '@/utils/realNameGate.uts'
 	import { likeUser, blockUser, unblockUser, saveAiAvatarProfileSnapshot } from '@/api'
-	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserCardPreview, getOwnProfile } from '@/api'
+	import { getDiscoveryRecommendations, getDiscoveryPlaza, getDynamicList, getDynamicDetail, getUserCardPreview, getOwnProfile, getDiscoveryFilterOptions, getServiceMatchmakers } from '@/api'
 	import { getMembershipPackages } from '@/api/discovery.uts'
 	import { getMembershipStatus } from '@/api/membership.uts'
 	import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
@@ -789,7 +849,7 @@
 	const welcomeAgreementVisible = ref(false)
 	const WELCOME_AGREEMENT_KEY = 'xsa_welcome_agreed_v2'
 
-	const showWelcomeService = () => { uni.showToast({ title: '客服功能将在完成登录后提供', icon: 'none' }) }
+	const showWelcomeService = () => { uni.navigateTo({ url: '/pagesSub/profileExtra/help' }) }
 	const openWelcomeAgreement = () => { welcomeAgreementVisible.value = true }
 	const closeWelcomeAgreement = () => { welcomeAgreementVisible.value = false }
 	const openWelcomeDocument = (type: string) => {
@@ -803,6 +863,7 @@
 		uni.removeStorageSync('xsa_skip_welcome_once')
 		welcomeAgreementVisible.value = false; welcomeVisible.value = false
 		if (getAccessToken() != '') {
+			isGuest.value = false
 			needLogin.value = false
 			authExpired.value = false
 			loadHomeDiscovery()
@@ -810,7 +871,11 @@
 			syncViewerVipStatus()
 			return
 		}
-		uni.navigateTo({ url: '/pages/auth/login' })
+		// 游客态：停留首页浏览公开内容，不强制跳登录。
+		isGuest.value = true
+		needLogin.value = false
+		authExpired.value = false
+		loadGuestHome()
 	}
 
 	const routeParentMode = (): boolean => {
@@ -952,9 +1017,72 @@
 	const currentVipZone = computed(() => vipZones.value[vipCatIndex.value] != null ? vipZones.value[vipCatIndex.value] : vipZones.value[0])
 	const recommendUsers = ref<any[]>([])
 	const discoveryError = ref('')
+	// 发现链路 403 门槛：'phone'=需绑定手机号；'profile'=需完善资料（非实名）。
+	const discoveryGate = ref('')
 	// H3：推荐区块的加载态与整体刷新代际。初次加载显示加载中，
 	// 只有最新一次刷新允许写列表，旧刷新不回灌。
 	const recommendLoading = ref(false)
+	// ========== 游客首页（未登录可浏览公开内容） ==========
+	const isGuest = ref(false)
+	const guestLoading = ref(false)
+	const guestError = ref('')
+	const guestMatchmakers = ref<any[]>([])
+	const guestEducationOptions = ref<string[]>([])
+	const guestCityOptions = ref<string[]>([])
+	const guestEduPick = ref('')
+	const guestCityPick = ref('')
+	const guestFilterSummary = computed((): string => {
+		const parts: string[] = []
+		if (guestEduPick.value != '') parts.push('学历 ' + guestEduPick.value)
+		if (guestCityPick.value != '') parts.push('现居 ' + guestCityPick.value)
+		return parts.length > 0 ? '已选：' + parts.join(' · ') : '未选择条件，登录后可按任意条件读取匹配'
+	})
+	const loadGuestHome = async () => {
+		guestLoading.value = true
+		guestError.value = ''
+		try {
+			const optRes = await getDiscoveryFilterOptions()
+			if (optRes.success && optRes.data != null) {
+				const data = optRes.data as any
+				const edu: string[] = []
+				if (data.education_levels != null) {
+					for (const item of data.education_levels as any[]) {
+						if (item != null && item.label != null) edu.push('' + item.label)
+					}
+				}
+				guestEducationOptions.value = edu
+				const cities: string[] = []
+				if (data.cities != null) {
+					for (const item of data.cities as any[]) {
+						if (item != null && cities.length < 6) cities.push('' + item)
+					}
+				}
+				guestCityOptions.value = cities
+			}
+			const mmRes = await getServiceMatchmakers()
+			if (mmRes.success && mmRes.data != null) {
+				guestMatchmakers.value = (mmRes.data as any[]).slice(0, 3)
+			} else {
+				guestError.value = '公开红娘资料暂时无法加载，请稍后重试'
+			}
+		} catch (e) {
+			guestError.value = '公开内容暂时无法加载，请稍后重试'
+		} finally {
+			guestLoading.value = false
+		}
+	}
+	const onGuestMatchmakerDetail = (item: any) => {
+		const id = Number(item != null ? item.id : 0)
+		if (id <= 0) return
+		uni.navigateTo({ url: '/pagesSub/matchmaker/detail?id=' + id })
+	}
+	const openGuestHelp = () => {
+		uni.navigateTo({ url: '/pagesSub/profileExtra/help' })
+	}
+	const openAiServiceAgreement = () => {
+		uni.navigateTo({ url: '/pagesSub/about/article?type=ai_service' })
+	}
+
 	// H6：推荐区的「未登录 / 登录已失效」态。true 时不发请求，渲染登录引导，
 	// 不再让「没登录」冒充「平台没资料」。
 	const needLogin = ref(false)
@@ -1106,8 +1234,18 @@
 	const goLogin = () => {
 		uni.navigateTo({ url: '/pages/auth/login' })
 	}
+	const goDiscoveryGate = () => {
+		if (discoveryGate.value == 'phone') {
+			uni.navigateTo({ url: '/pagesSub/profileExtra/certification?focus=phone' })
+			return
+		}
+		if (discoveryGate.value == 'profile') {
+			uni.navigateTo({ url: '/pagesSub/userExtra/onboarding/profile' })
+		}
+	}
 	const loadHomeDiscovery = async () => {
 		discoveryError.value = ''
+		discoveryGate.value = ''
 		recommendLoading.value = true
 		// H2/H3：整体刷新带请求代际，只有最新一次刷新允许写列表，避免旧刷新覆盖新列表。
 		homeRefreshSeq += 1
@@ -1118,6 +1256,14 @@
 			// 否则并发/重入时旧刷新会被代际守卫丢弃，页面就停在「暂无推荐」上。
 			if (recommendRes != null && !recommendRes.success && Number(recommendRes.code) == 401) {
 				applyUnauthorizedState()
+				return
+			}
+			// 403 = 手机号/完整度门槛（非实名）：成引导态，由用户点击去绑定/完善，不自动跳转避免循环。
+			if (recommendRes != null && !recommendRes.success && Number(recommendRes.code) == 403) {
+				const biz = recommendRes.businessCode != null ? '' + recommendRes.businessCode : ''
+				const msg = recommendRes.message != null ? '' + recommendRes.message : ''
+				discoveryGate.value = (biz == 'PHONE_REQUIRED' || msg.indexOf('绑定手机') >= 0) ? 'phone' : 'profile'
+				recommendUsers.value = []
 				return
 			}
 			if (refreshSeq != homeRefreshSeq) return
@@ -1673,17 +1819,20 @@
 		}
 		resetDailyIfNeeded()
 		if (getAccessToken() != '') {
+			isGuest.value = false
 			needLogin.value = false
 			authExpired.value = false
 			loadHomeDiscovery()
 			loadMembershipPlans()
 			syncViewerVipStatus()
 		} else {
-			// H6：没有 token 时不再静默跳过，落到登录引导而不是「暂时没有新的推荐」。
-			needLogin.value = true
+			// 游客态：渲染游客首页（公开内容），不强制登录、不请求鉴权接口。
+			isGuest.value = true
+			needLogin.value = false
 			authExpired.value = false
 			recommendUsers.value = []
 			discoveryError.value = ''
+			loadGuestHome()
 		}
 	})
 
@@ -1703,15 +1852,18 @@
 		aiProfileLoaded.value = false
 		if (!welcomeVisible.value) {
 			if (getAccessToken() != '') {
+				isGuest.value = false
 				needLogin.value = false
 				authExpired.value = false
 				loadHomeDiscovery()
 				syncViewerVipStatus()
 			} else {
-				// H6：没有 token 时无条件落到登录态；若本次会话内刚发生过 401，保留「已失效」文案。
-				needLogin.value = true
+				// 游客态：停留游客首页；不请求鉴权接口、不自动跳登录。
+				isGuest.value = true
+				needLogin.value = false
 				recommendUsers.value = []
 				discoveryError.value = ''
+				loadGuestHome()
 			}
 		}
 	})
@@ -1733,6 +1885,44 @@
 .welcome-actions { position: absolute; z-index: 1; left: 12%; right: 12%; bottom: calc(40px + env(safe-area-inset-bottom)); }
 .welcome-start-button { width: 100%; height: 50px; border-radius: 999px; border: 0; background: var(--accent2); color: var(--text-invert); font-weight: 800; font-size: 18px; line-height: 50px; }
 .welcome-start-button:active { transform: scale(0.98); }
+
+/* ============================================================
+   游客首页（继承本页 Token：canvas/surface/accent/line）
+   ============================================================ */
+.guest-scroll { background: var(--canvas); }
+.guest-hero { display: flex; flex-direction: column; align-items: center; padding: 0 24px 20px; }
+.guest-brand-mark { width: 56px; height: 56px; padding: 8px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-sm); }
+.guest-brand-mark image { width: 100%; height: 100%; }
+.guest-title { margin-top: 10px; color: var(--accent2); font-size: 30px; font-weight: 800; }
+.guest-subtitle { margin-top: 6px; color: var(--muted); font-size: 13px; }
+.guest-login-button { margin-top: 16px; width: 100%; max-width: 320px; height: 46px; border-radius: 999px; background: var(--accent2); display: flex; align-items: center; justify-content: center; }
+.guest-login-button text { color: var(--text-invert); font-size: 16px; font-weight: 800; }
+.guest-login-button:active { opacity: .9; }
+.guest-login-note { margin-top: 8px; color: var(--muted); font-size: 11px; }
+.guest-section { margin: 0 16px 16px; padding: 18px 16px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; }
+.guest-section-title { color: var(--ink); font-size: 16px; font-weight: 800; }
+.guest-safety-title { margin-top: 14px; }
+.guest-section-copy { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.guest-inline-note { margin-top: 10px; color: var(--muted); font-size: 12px; display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.guest-retry { padding: 4px 12px; border: 1px solid var(--accent); border-radius: 999px; }
+.guest-retry text { color: var(--accent2); font-size: 12px; }
+.guest-filter-label { margin-top: 12px; color: var(--ink2); font-size: 12px; font-weight: 700; }
+.guest-chip-row { margin-top: 8px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+.guest-chip { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); }
+.guest-chip text { color: var(--ink2); font-size: 12px; }
+.guest-chip.active { border-color: var(--accent); background: var(--accent-bg); }
+.guest-chip.active text { color: var(--accent2); font-weight: 700; }
+.guest-filter-summary { margin-top: 12px; color: var(--muted); font-size: 12px; }
+.guest-cta-button { margin-top: 12px; height: 42px; border-radius: 999px; border: 1px solid var(--accent); background: var(--surface); display: flex; align-items: center; justify-content: center; }
+.guest-cta-button text { color: var(--accent2); font-size: 14px; font-weight: 800; }
+.guest-cta-button:active { background: var(--accent-bg); }
+.guest-matchmaker-wrap { margin-top: 12px; }
+.guest-step { margin-top: 10px; display: flex; flex-direction: row; align-items: flex-start; gap: 10px; }
+.guest-step-index { width: 20px; height: 20px; border-radius: 999px; background: var(--accent-bg); color: var(--accent2); font-size: 12px; font-weight: 800; text-align: center; line-height: 20px; flex-shrink: 0; }
+.guest-step-copy { color: var(--ink2); font-size: 12px; line-height: 1.7; }
+.guest-link-row { margin-top: 14px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 14px; }
+.guest-link { color: var(--accent2); font-size: 12px; }
+.guest-bottom-space { height: 110px; }
 .agreement-mask { position: absolute; z-index: 2; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(12, 19, 19, 0.36); }
 .agreement-dialog { width: 100%; padding: 22px; background: var(--paper); border-radius: 12px; }
 .agreement-title { display: block; margin-bottom: 12px; font-family: var(--serif); font-size: 20px; font-weight: 700; text-align: center; }

@@ -46,7 +46,11 @@
 				<text>已隐藏 {{ hiddenSessionIds.length }} 个会话</text><text class="hidden-session-action">恢复</text>
 			</view>
 
-			<view v-if="messageError != '' && messageList.length == 0" class="message-state">
+			<view v-if="isGuest" class="message-state">
+				<text class="message-state-text">登录后查看消息与认识申请</text>
+				<view class="message-state-action" @click="goLoginFromMessage"><text>去登录</text></view>
+			</view>
+			<view v-else-if="messageError != '' && messageList.length == 0" class="message-state">
 				<text class="message-state-text">{{ messageError }}</text>
 				<view class="message-state-action" @click="retryMessages"><text>重试</text></view>
 			</view>
@@ -106,7 +110,7 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	import XsaSheet from '@/components/XsaSheet.uvue'
 	import XsaButton from '@/components/XsaButton.uvue'
 	import XsaToast from '@/components/XsaToast.uvue'
-	import { CURRENT_USER_ID_KEY } from '@/api/config.uts'
+	import { CURRENT_USER_ID_KEY, getAccessToken } from '@/api/config.uts'
 	import {
 		getConversationPage,
 		getApplicationPage,
@@ -124,6 +128,9 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 	const iconLab = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRTNDOUE2IiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNOSAzaDZNMTAgM3Y1bC00IDhhMyAzIDAgMCAwIDIuOCA0aDYuNEEzIDMgMCAwIDAgMTggMTZsLTQtOFYzIi8+PC9zdmc+'
 	const loading = ref(false)
 	const hasMore = ref(true)
+	// 游客态：不请求鉴权接口，展示登录引导，不自动跳登录。
+	const isGuest = ref(false)
+	const goLoginFromMessage = () => { uni.navigateTo({ url: '/pages/auth/login' }) }
 	const messageList = ref([] as any[])
 	const messageLoaded = ref(false)
 	const messageCursor = ref('')
@@ -492,14 +499,18 @@ import XsaTabBar from '@/components/XsaTabBar.uvue'
 
 	onMounted(() => {
 		mounted = true
+		isGuest.value = getAccessToken() == ''
 		loadHiddenSessionIds()
+		if (isGuest.value) return
 		loadMessages(true)
 		loadApplications()
 	})
 
 	onShow(() => {
 		if (!mounted) return
+		isGuest.value = getAccessToken() == ''
 		loadHiddenSessionIds()
+		if (isGuest.value) return
 		loadMessages(true)
 		loadApplications()
 	})

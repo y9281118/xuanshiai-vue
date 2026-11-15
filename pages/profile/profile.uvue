@@ -15,6 +15,11 @@
 		<!-- 滚动内容区 -->
 		<scroll-view scroll-y class="content-scroll" enhanced show-scrollbar="false">
 			<view class="content-inner">
+			<!-- 游客登录引导 -->
+			<view v-if="isGuest" class="guest-login-banner" @tap="goLoginFromProfile">
+				<text class="guest-login-banner-text">登录后查看个人资料、认证与会员权益</text>
+				<text class="guest-login-banner-action">去登录 ›</text>
+			</view>
 			<!-- 个人资料头部（横向布局） -->
 			<view class="profile-header">
 				<view class="avatar-col">
@@ -206,7 +211,7 @@ import XsaZhiyuHub from '@/components/XsaZhiyuHub.uvue'
 import { getProfileOverview, getProfileCompletion, getMembershipStatus, getPortraitNarrative } from '@/api'
 import { getContinuousMoxiangState, type ContinuousMoxiangState } from '@/api/ai-moxiang.uts'
 import { mapProfileError } from '@/api/ai-profile.uts'
-import { resolveMediaUrl } from '@/api/config.uts'
+import { resolveMediaUrl, getAccessToken } from '@/api/config.uts'
 import { setCurrentUserVipStatus } from '@/utils/quota.uts'
 import { attachmentStyleLabel, MASTER_ROLE_NAME } from '@/utils/moxiang-badge.uts'
 
@@ -692,8 +697,13 @@ const bottomMenuItems = [
 
 // H3：页面级刷新代际——只允许最新一次刷新写入，避免旧响应覆盖新数据。
 let overviewRefreshSeq = 0
+// 游客态：不请求鉴权接口，展示登录引导，不自动跳登录。
+const isGuest = ref(false)
+const goLoginFromProfile = () => { uni.navigateTo({ url: '/pages/auth/login' }) }
 onShow(() => {
 	portraitPageVisible = true
+	isGuest.value = getAccessToken() == ''
+	if (isGuest.value) return
 	overviewRefreshSeq += 1
 	const seq = overviewRefreshSeq
 	loadOverview().then(() => {
@@ -1532,4 +1542,10 @@ page {
 	color: #627A5F;
 	font-size: 24rpx;
 }
+</style>
+
+<style scoped>
+.guest-login-banner { margin: 0 0 20rpx; padding: 24rpx 28rpx; border: 1px solid var(--line); border-radius: 20rpx; background: var(--surface); display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16rpx; }
+.guest-login-banner-text { color: var(--ink2); font-size: 26rpx; }
+.guest-login-banner-action { color: var(--accent2); font-size: 26rpx; font-weight: 700; flex-shrink: 0; }
 </style>
